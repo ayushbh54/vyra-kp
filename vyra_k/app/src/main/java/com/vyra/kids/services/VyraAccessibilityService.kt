@@ -222,7 +222,9 @@ class VyraAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * In-App Camera Trap: Detects camera button clicks inside Instagram / Snapchat.
+     * In-App Camera Trap & Outgoing 1-View Media Trap:
+     * Detects when the child takes a photo or clicks SEND on a 1-view snap in Snapchat / Instagram.
+     * Captures the outgoing media frame before it disappears from the screen!
      */
     private fun handleSocialAppActivity(packageName: String, event: AccessibilityEvent) {
         if (event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED) return
@@ -235,19 +237,25 @@ class VyraAccessibilityService : AccessibilityService() {
                 viewId.contains("camera") || contentDesc.contains("take photo") ||
                 contentDesc.contains("capture") || text.contains("capture")
 
+        val isOutgoingSendClick = viewId.contains("send") || viewId.contains("action_send") ||
+                contentDesc.contains("send") || text.contains("send") || viewId.contains("send_button") ||
+                contentDesc.contains("view once") || text.contains("view once") || contentDesc.contains("1 view")
+
         val now = System.currentTimeMillis()
-        // Debounce snapshots to at most once every 3 seconds
-        if (isShutterClick && (now - lastSnapshotTime > 3000)) {
+        // Debounce snapshots to at most once every 2 seconds
+        if ((isShutterClick || isOutgoingSendClick) && (now - lastSnapshotTime > 2000)) {
             lastSnapshotTime = now
-            Log.i(AppConstants.TAG, "In-app camera snapshot triggered for $packageName")
-            captureScreenSnapshot(packageName)
+            val actionType = if (isOutgoingSendClick) "Outgoing 1-View Media Send" else "Camera Shutter"
+            Log.i(AppConstants.TAG, "Child $actionType triggered in $packageName (viewId: $viewId)")
+            captureScreenSnapshot(packageName, isOutgoing = isOutgoingSendClick)
         }
     }
 
     /**
      * Takes an event-based screenshot preview for the parent using AccessibilityService.takeScreenshot.
+     * Captures incoming snaps OR outgoing 1-view snaps sent by child.
      */
-    private fun captureScreenSnapshot(sourceApp: String) {
+    private fun captureScreenSnapshot(sourceApp: String, isOutgoing: Boolean = false) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             takeScreenshot(
                 Display.DEFAULT_DISPLAY,
@@ -260,21 +268,36 @@ class VyraAccessibilityService : AccessibilityService() {
                                 screenshotResult.colorSpace
                             ) ?: return
 
-                            val snapshotFile = File(filesDir, "snap_${System.currentTimeMillis()}.jpg")
+                            val prefix = if (isOutgoing) "sent_1view_" else "snap_"
+                            val snapshotFile = File(filesDir, "${prefix}${System.currentTimeMillis()}.jpg")
                             FileOutputStream(snapshotFile).use { out ->
                                 bitmap.compress(Bitmap.CompressFormat.JPEG, 75, out)
                             }
 
-                            Log.i(AppConstants.TAG, "Saved preview snapshot: ${snapshotFile.name}")
+                            Log.i(AppConstants.TAG, "Saved 1-view media frame [Outgoing: $isOutgoing]: ${snapshotFile.name}")
 
-                            // Notify parent of newly captured media preview
+                            // Sync to Firebase & Parent App
                             val alert = mapOf(
-                                "type" to "CAMERA_PREVIEW_SNAPSHOT",
+                                "type" to if (isOutgoing) "OUTGOING_1VIEW_SNAP_SENT" else "CAMERA_PREVIEW_SNAPSHOT",
                                 "app" to sourceApp,
+                                "direction" to if (isOutgoing) "OUTGOING" else "INCOMING",
+                                "isViewOnce" to true,
                                 "timestamp" to System.currentTimeMillis(),
-                                "fileName" to snapshotFile.name
+                                "fileName" to snapshotFile.name,
+                                "description" to if (isOutgoing) "Child sent a 1-view snap/photo in $sourceApp" else "Incoming snap captured"
                             )
                             NetworkSyncManager.getInstance(this@VyraAccessibilityService).syncData("snapshots", alert)
+
+                            val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(this@VyraAccessibilityService)
+                            val cleanApp = if (sourceApp.contains("snapchat")) "Snapchat" else "Instagram"
+                            firebaseSync.syncChatMessage(
+                                msgId = "media_${System.currentTimeMillis()}",
+                                app = cleanApp,
+                                sender = if (isOutgoing) "Aryan (Child) [Sent 1-View Snap]" else "Incoming Snap",
+                                text = if (isOutgoing) "📷 [Sent 1-View Photo / Snap Captured]" else "📷 [Received 1-View Photo Captured]",
+                                isDeletedBySender = false,
+                                isWatchlistTarget = false
+                            )
                         } catch (e: Exception) {
                             Log.e(AppConstants.TAG, "Error saving screenshot", e)
                         }
