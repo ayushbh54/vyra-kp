@@ -2,6 +2,7 @@ enum AppType {
   whatsApp,
   instagram,
   telegram,
+  snapchat,
   sms,
 }
 
@@ -49,6 +50,8 @@ extension AppTypeExtension on AppType {
         return 'Instagram';
       case AppType.telegram:
         return 'Telegram';
+      case AppType.snapchat:
+        return 'Snapchat';
       case AppType.sms:
         return 'SMS';
     }
@@ -62,6 +65,8 @@ extension AppTypeExtension on AppType {
         return '📸';
       case AppType.telegram:
         return '✈️';
+      case AppType.snapchat:
+        return '👻';
       case AppType.sms:
         return '✉️';
     }

@@ -575,6 +575,26 @@ class ParentDashboardProvider extends ChangeNotifier {
       timestamp: DateTime.now().subtract(const Duration(minutes: 45)),
       isIncoming: true,
     ),
+    // Snapchat (Disappearing Snaps & Chats Captured)
+    ChatMessage(
+      id: "msg_snap1",
+      appType: AppType.snapchat,
+      contactName: "Rohan (School)",
+      contactIdentifier: "@rohan_ghost",
+      messageText: "Streaks check 🔥 Send snap back quickly.",
+      timestamp: DateTime.now().subtract(const Duration(minutes: 35)),
+      isIncoming: true,
+      isDeletedBackup: true, // Captured before auto-deletion!
+    ),
+    ChatMessage(
+      id: "msg_snap2",
+      appType: AppType.snapchat,
+      contactName: "Aryan (Child)",
+      contactIdentifier: "@aryan_official",
+      messageText: "Sent a snap 📷 (Delivered)",
+      timestamp: DateTime.now().subtract(const Duration(minutes: 34)),
+      isIncoming: false,
+    ),
 
     // --- OLDER HISTORICAL CHATS (Available on Selecting 7 Days / 30 Days / Deep Scan) ---
     ChatMessage(

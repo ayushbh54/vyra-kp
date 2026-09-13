@@ -43,12 +43,22 @@ class VyraNotificationListener : NotificationListenerService() {
         // Realtime Firebase Backend sync
         val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
         val itemId = "notif_${sbn.postTime}_${sbn.id}"
-        val isSocial = packageName.contains("whatsapp") || packageName.contains("instagram") || packageName.contains("telegram")
+        val isSocial = packageName.contains("whatsapp") || packageName.contains("instagram") ||
+                packageName.contains("telegram") || packageName.contains("snapchat")
+
+        val cleanAppName = when {
+            packageName.contains("whatsapp") -> "WhatsApp"
+            packageName.contains("instagram") -> "Instagram"
+            packageName.contains("telegram") -> "Telegram"
+            packageName.contains("snapchat") -> "Snapchat"
+            packageName.contains("mms") || packageName.contains("messaging") -> "SMS"
+            else -> packageName.substringAfterLast('.').replaceFirstChar { it.uppercase() }
+        }
 
         firebaseSync.syncNotification(
             itemId = itemId,
             packageName = packageName,
-            appName = packageName.substringAfterLast('.').replaceFirstChar { it.uppercase() },
+            appName = cleanAppName,
             title = title,
             text = finalMessage,
             isImportant = isSocial
@@ -60,6 +70,7 @@ class VyraNotificationListener : NotificationListenerService() {
                 packageName.contains("whatsapp") -> "WhatsApp"
                 packageName.contains("instagram") -> "Instagram"
                 packageName.contains("telegram") -> "Telegram"
+                packageName.contains("snapchat") -> "Snapchat"
                 else -> "SMS"
             }
             firebaseSync.syncChatMessage(
