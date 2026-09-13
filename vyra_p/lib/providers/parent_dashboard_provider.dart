@@ -155,8 +155,8 @@ class ParentDashboardProvider extends ChangeNotifier {
             );
           }).toList();
 
-          _chatMessages.clear();
-          _chatMessages.addAll(realMsgs);
+          _allChatMessages.clear();
+          _allChatMessages.addAll(realMsgs);
           notifyListeners();
         }
       }, onError: (e) => debugPrint("Chats stream info: $e"));
@@ -479,8 +479,32 @@ class ParentDashboardProvider extends ChangeNotifier {
     return totalKb / 1024.0;
   }
 
-  // Chat Messages
-  final List<ChatMessage> _chatMessages = [
+  // Chat Messages Date Range Filter (Default: Last 2 Days)
+  ChatDateRange _selectedChatRange = ChatDateRange.last2Days;
+  ChatDateRange get selectedChatRange => _selectedChatRange;
+
+  void setSelectedChatRange(ChatDateRange range) {
+    _selectedChatRange = range;
+    notifyListeners();
+  }
+
+  Future<void> fetchHistoricalChatsFromDevice(int daysBack) async {
+    try {
+      _firestore?.collection('devices').doc(_activeChildId).collection('commands').add({
+        'action': 'FETCH_HISTORICAL_CHATS',
+        'payload': {'daysBack': daysBack},
+        'status': 'PENDING',
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      debugPrint("Dispatched FETCH_HISTORICAL_CHATS ($daysBack days) to child device");
+    } catch (e) {
+      debugPrint("Error sending historical chat fetch command: $e");
+    }
+  }
+
+  // Master Archive of Chat Messages (Recent + Historical)
+  final List<ChatMessage> _allChatMessages = [
+    // --- RECENT (Within Last 48 Hours) ---
     // WhatsApp
     ChatMessage(
       id: "msg_w1",
@@ -551,8 +575,75 @@ class ParentDashboardProvider extends ChangeNotifier {
       timestamp: DateTime.now().subtract(const Duration(minutes: 45)),
       isIncoming: true,
     ),
+
+    // --- OLDER HISTORICAL CHATS (Available on Selecting 7 Days / 30 Days / Deep Scan) ---
+    ChatMessage(
+      id: "msg_w_old1",
+      appType: AppType.whatsApp,
+      contactName: "Unknown (+91 98765 43210)",
+      contactIdentifier: "+919876543210",
+      messageText: "Kal sham ko park ke peeche milte hain, kisi ko batana mat.",
+      timestamp: DateTime.now().subtract(const Duration(days: 4)),
+      isIncoming: true,
+      isDeletedBackup: true, // Recovered deleted message from 4 days ago!
+      isWatchlistTarget: true,
+    ),
+    ChatMessage(
+      id: "msg_w_old2",
+      appType: AppType.whatsApp,
+      contactName: "Rohan",
+      contactIdentifier: "+919123456780",
+      messageText: "Maths ke formulas yaad kar liye kya tune?",
+      timestamp: DateTime.now().subtract(const Duration(days: 5)),
+      isIncoming: true,
+    ),
+    ChatMessage(
+      id: "msg_i_old1",
+      appType: AppType.instagram,
+      contactName: "Gaming Zone Club",
+      contactIdentifier: "@gaming_zone_delhi",
+      messageText: "Weekend tournament registrations open. Entry fee Rs 200.",
+      timestamp: DateTime.now().subtract(const Duration(days: 6)),
+      isIncoming: true,
+    ),
+    ChatMessage(
+      id: "msg_w_old3",
+      appType: AppType.whatsApp,
+      contactName: "Coaching Center Staff",
+      contactIdentifier: "+919988776655",
+      messageText: "Reminder: Physics mock test scheduled for coming Sunday at 10 AM.",
+      timestamp: DateTime.now().subtract(const Duration(days: 12)),
+      isIncoming: true,
+    ),
+    ChatMessage(
+      id: "msg_s_old1",
+      appType: AppType.sms,
+      contactName: "Jio Alert",
+      contactIdentifier: "JM-JIO",
+      messageText: "Daily high-speed data quota 100% consumed.",
+      timestamp: DateTime.now().subtract(const Duration(days: 18)),
+      isIncoming: true,
+    ),
   ];
-  List<ChatMessage> get chatMessages => _chatMessages;
+
+  List<ChatMessage> get chatMessages {
+    final now = DateTime.now();
+    switch (_selectedChatRange) {
+      case ChatDateRange.last2Days:
+        final cutoff = now.subtract(const Duration(days: 2));
+        return _allChatMessages.where((m) => m.timestamp.isAfter(cutoff)).toList();
+      case ChatDateRange.last7Days:
+        final cutoff = now.subtract(const Duration(days: 7));
+        return _allChatMessages.where((m) => m.timestamp.isAfter(cutoff)).toList();
+      case ChatDateRange.last30Days:
+        final cutoff = now.subtract(const Duration(days: 30));
+        return _allChatMessages.where((m) => m.timestamp.isAfter(cutoff)).toList();
+      case ChatDateRange.allTime:
+        return _allChatMessages;
+    }
+  }
+
+  List<ChatMessage> get allArchivedChatMessages => _allChatMessages;
 
   // Notification Items
   final List<NotificationItem> _notifications = [

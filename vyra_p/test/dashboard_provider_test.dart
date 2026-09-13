@@ -94,5 +94,17 @@ void main() {
       provider.purgeCloudAudio(provider.ambientLogs.first.id);
       expect(provider.ambientLogs.first.isPurgedFromCloud, isTrue);
     });
+
+    test('Chat messages default to last 2 days and expand on selecting older ranges', () {
+      expect(provider.selectedChatRange, ChatDateRange.last2Days);
+      final initialCount = provider.chatMessages.length;
+
+      // When switching to all time or 30 days, older historical chats are included
+      provider.setSelectedChatRange(ChatDateRange.last30Days);
+      expect(provider.chatMessages.length, greaterThan(initialCount));
+
+      provider.setSelectedChatRange(ChatDateRange.allTime);
+      expect(provider.chatMessages.length, equals(provider.allArchivedChatMessages.length));
+    });
   });
 }

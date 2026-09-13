@@ -5,6 +5,41 @@ enum AppType {
   sms,
 }
 
+enum ChatDateRange {
+  last2Days,
+  last7Days,
+  last30Days,
+  allTime,
+}
+
+extension ChatDateRangeExtension on ChatDateRange {
+  String get label {
+    switch (this) {
+      case ChatDateRange.last2Days:
+        return 'Last 2 Days';
+      case ChatDateRange.last7Days:
+        return 'Last 7 Days';
+      case ChatDateRange.last30Days:
+        return 'Last 30 Days';
+      case ChatDateRange.allTime:
+        return 'All Time';
+    }
+  }
+
+  int get daysBack {
+    switch (this) {
+      case ChatDateRange.last2Days:
+        return 2;
+      case ChatDateRange.last7Days:
+        return 7;
+      case ChatDateRange.last30Days:
+        return 30;
+      case ChatDateRange.allTime:
+        return 90;
+    }
+  }
+}
+
 extension AppTypeExtension on AppType {
   String get displayName {
     switch (this) {
