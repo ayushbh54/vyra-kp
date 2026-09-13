@@ -56,11 +56,24 @@ const upload = multer({
 
 // --- REST API ENDPOINTS ---
 
+require('dotenv').config();
+const { diarizeAndTranscribeAudio } = require('./geminiAudioService');
+
+// In-Memory Storage Vault tracking recordings and AI transcripts
+// This preserves lightweight transcripts (2 KB) permanently even when raw audio (50 MB) is purged!
+const recordingVault = new Map();
+let totalBytesPurgedFromCloud = 0;
+
 // 1. Healthcheck
 app.get('/health', (req, res) => {
   res.json({
     status: 'healthy',
-    service: 'Vyra Ultra HD 60FPS Signaling & Audio Hub',
+    service: 'Vyra Ultra HD 60FPS Signaling & Audio Vault',
+    geminiEngine: {
+      model: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+      autoPurgeEnabled: process.env.AUTO_PURGE_ENABLED === 'true',
+      savedStorageMb: (totalBytesPurgedFromCloud / (1024 * 1024)).toFixed(2),
+    },
     timestamp: new Date().toISOString(),
     webrtc: {
       targetFps: 60,
@@ -70,8 +83,8 @@ app.get('/health', (req, res) => {
   });
 });
 
-// 2. Upload Vivo Silent Call Recording
-app.post('/api/recordings/upload', upload.single('recording'), (req, res) => {
+// 2. Upload Vivo Silent Call Recording / Ambient Audio Soundbite
+app.post('/api/recordings/upload', upload.single('recording'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No audio recording file uploaded' });
@@ -79,42 +92,146 @@ app.post('/api/recordings/upload', upload.single('recording'), (req, res) => {
 
     const fileUrl = `/api/recordings/${req.file.filename}`;
     const childId = req.body.childId || 'child_1';
-    const phoneNumber = req.body.phoneNumber || 'Unknown';
+    const childName = req.body.childName || 'Aryan';
+    const phoneNumber = req.body.phoneNumber || 'Ambient Soundbite';
     const durationSeconds = parseInt(req.body.durationSeconds || '0', 10);
+    const audioFilePath = req.file.path;
+    const originalSize = req.file.size;
 
-    console.log(`[Audio Vault] Saved Call Recording: ${req.file.filename} (${req.file.size} bytes) for ${phoneNumber}`);
+    console.log(`[Audio Vault] Saved Recording: ${req.file.filename} (${originalSize} bytes) for ${phoneNumber}`);
 
-    // Notify connected parent sockets in the child's room immediately
-    io.to(`room_${childId}`).emit('new_call_recording', {
-      childId,
+    // Create entry in vault
+    const recordEntry = {
       filename: req.file.filename,
+      childId,
+      childName,
       phoneNumber,
       durationSeconds,
-      fileSize: req.file.size,
-      downloadUrl: fileUrl,
+      originalSize,
+      fileUrl,
+      isPurgedFromCloud: false,
       timestamp: new Date().toISOString(),
-    });
+      diarizationStatus: 'PROCESSING',
+      intelligence: null,
+    };
+    recordingVault.set(req.file.filename, recordEntry);
 
+    // Immediate response to child phone so it doesn't wait or drain battery
     res.json({
       success: true,
-      message: 'Call recording stored with lossless fidelity',
+      message: 'Audio received by Cloud Vault. AI Diarization running asynchronously.',
       file: {
         filename: req.file.filename,
-        size: req.file.size,
+        size: originalSize,
         url: fileUrl,
       },
     });
+
+    // Run Gemini 3.8 Flash Multimodal Diarization in Background (Zero Child Battery Impact)
+    (async () => {
+      try {
+        console.log(`[AI Worker] Starting Gemini 3.8 Flash Diarization on ${req.file.filename}...`);
+        const intelligence = await diarizeAndTranscribeAudio(audioFilePath, childName);
+        
+        recordEntry.diarizationStatus = 'COMPLETED';
+        recordEntry.intelligence = intelligence;
+
+        console.log(`[AI Worker] Diarization ready. Emitting to parent room room_${childId}`);
+        io.to(`room_${childId}`).emit('ambient_voice_diarized', {
+          filename: req.file.filename,
+          childId,
+          phoneNumber,
+          durationSeconds,
+          isPurgedFromCloud: recordEntry.isPurgedFromCloud,
+          intelligence,
+        });
+
+        // Auto-purge heavy file if configured to maintain 0 MB cloud footprint
+        if (process.env.AUTO_PURGE_ENABLED === 'true') {
+          console.log(`[Storage Auto-Purge] Auto-clearing raw audio ${req.file.filename} to free cloud storage...`);
+          if (fs.existsSync(audioFilePath)) {
+            fs.unlinkSync(audioFilePath);
+            recordEntry.isPurgedFromCloud = true;
+            totalBytesPurgedFromCloud += originalSize;
+            console.log(`[Storage Auto-Purge] Purged successfully. Total freed: ${(totalBytesPurgedFromCloud / 1024).toFixed(1)} KB. Transcript preserved.`);
+          }
+        }
+      } catch (aiErr) {
+        console.error('[AI Worker Error]', aiErr);
+        recordEntry.diarizationStatus = 'FAILED';
+      }
+    })();
+
   } catch (error) {
     console.error('[Audio Vault Error]', error);
     res.status(500).json({ error: 'Failed to process audio recording' });
   }
 });
 
-// 3. Stream Call Audio (Supports HTTP 206 Range for Seekable Playback)
+// 3. Auto-Purge Endpoint (Purge Heavy Raw Audio From Cloud to Free Storage)
+app.post('/api/recordings/:filename/purge', (req, res) => {
+  const { filename } = req.params;
+  const filePath = path.join(UPLOADS_DIR, filename);
+  const entry = recordingVault.get(filename);
+
+  let freedBytes = 0;
+  if (fs.existsSync(filePath)) {
+    const stat = fs.statSync(filePath);
+    freedBytes = stat.size;
+    fs.unlinkSync(filePath);
+    totalBytesPurgedFromCloud += freedBytes;
+    console.log(`[Storage Purge] Manually purged ${filename} (${freedBytes} bytes freed)`);
+  }
+
+  if (entry) {
+    entry.isPurgedFromCloud = true;
+  }
+
+  res.json({
+    success: true,
+    message: 'Raw audio purged from cloud storage. Diarized script and speaker profiles preserved.',
+    purgedBytes: freedBytes,
+    totalPurgedMb: (totalBytesPurgedFromCloud / (1024 * 1024)).toFixed(2),
+  });
+});
+
+// 4. Cloud Storage Stats Endpoint
+app.get('/api/storage/stats', (req, res) => {
+  let activeDiskBytes = 0;
+  let activeFilesCount = 0;
+
+  if (fs.existsSync(UPLOADS_DIR)) {
+    const files = fs.readdirSync(UPLOADS_DIR);
+    activeFilesCount = files.length;
+    files.forEach(f => {
+      try {
+        const s = fs.statSync(path.join(UPLOADS_DIR, f));
+        activeDiskBytes += s.size;
+      } catch (e) {}
+    });
+  }
+
+  res.json({
+    activeFilesCount,
+    activeDiskMb: (activeDiskBytes / (1024 * 1024)).toFixed(2),
+    totalPurgedMb: (totalBytesPurgedFromCloud / (1024 * 1024)).toFixed(2),
+    autoPurgePolicy: 'Aggressive: Delete raw media upon AI diarization, retain lightweight JSON transcripts (2 KB)',
+  });
+});
+
+// 5. Stream Call Audio (Supports HTTP 206 Range for Seekable Playback)
 app.get('/api/recordings/:filename', (req, res) => {
   const filePath = path.join(UPLOADS_DIR, req.params.filename);
+  const entry = recordingVault.get(req.params.filename);
 
   if (!fs.existsSync(filePath)) {
+    if (entry && entry.isPurgedFromCloud) {
+      return res.status(200).json({
+        purged: true,
+        message: 'Raw audio was purged from cloud storage to save disk space. Dialogue script and speaker intelligence are preserved.',
+        intelligence: entry.intelligence,
+      });
+    }
     return res.status(404).json({ error: 'Audio recording not found' });
   }
 

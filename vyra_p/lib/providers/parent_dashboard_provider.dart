@@ -261,7 +261,7 @@ class ParentDashboardProvider extends ChangeNotifier {
   ];
   List<CallRecord> get callRecords => _callRecords;
 
-  // Ambient Soundbites & Voice Activity Logs (Screen-Off Pocket Recordings)
+  // Ambient Soundbites & Voice Activity Logs (Screen-Off Pocket Recordings with Gemini 3.8 Flash Diarization)
   final List<AmbientLogItem> _ambientLogs = [
     AmbientLogItem(
       id: "ambient_1",
@@ -269,9 +269,72 @@ class ParentDashboardProvider extends ChangeNotifier {
       durationSeconds: 192,
       audioUrl: "mock_ambient_1.m4a",
       locationContext: "Near City Coaching Center, Sector 4",
-      speechSnippet: "Discussion about practical files and plans after class.",
+      speechSnippet: "Discussion about practical files and planning to meet at metro gate.",
       isFlagged: true,
       detectedKeyword: "bunk",
+      isPurgedFromCloud: true,
+      storageFreedKb: 3840,
+      conversationSummary: "Aryan and two coaching friends planning to assemble near Metro Gate 2 after class. Friend 1 warned not to bunk.",
+      speakers: [
+        SpeakerVoiceProfile(
+          speakerId: "spk_1",
+          displayName: "Aryan (Child)",
+          isChild: true,
+          pitch: "Medium-high pitch, adolescent voice",
+          tone: "Casual & curious",
+          acousticDescription: "Adolescent boy voice, clear pronunciation, typical familiar cadence.",
+        ),
+        SpeakerVoiceProfile(
+          speakerId: "spk_2",
+          displayName: "Speaker 2 (Friend 1)",
+          isChild: false,
+          pitch: "Deep baritone",
+          tone: "Confident & fast-talking",
+          acousticDescription: "Deeper masculine tone, fast tempo with North Indian / Delhi colloquial slang.",
+        ),
+        SpeakerVoiceProfile(
+          speakerId: "spk_3",
+          displayName: "Speaker 3 (Friend 2)",
+          isChild: false,
+          pitch: "Light, soft-spoken",
+          tone: "Whispering & hesitant",
+          acousticDescription: "Low muffled volume, cautious whisper, occasional background laughter.",
+        ),
+      ],
+      dialogue: [
+        DialogueTurn(
+          speakerId: "spk_1",
+          speakerName: "Aryan",
+          timestamp: "00:04",
+          hindiText: "Bhai kal coaching ke baad chalna hai kya udhar?",
+          englishText: "Brother, do we have to go there after coaching tomorrow?",
+          emotion: "Curious",
+        ),
+        DialogueTurn(
+          speakerId: "spk_2",
+          speakerName: "Speaker 2 (Deep Voice)",
+          timestamp: "00:11",
+          hindiText: "Haan sab arahe hain, 4 baje metro gate 2 pe milte hain. Bunk mat maariyo bas.",
+          englishText: "Yes everyone is coming, let's meet at 4 PM at metro gate 2. Just don't bunk.",
+          emotion: "Decisive",
+        ),
+        DialogueTurn(
+          speakerId: "spk_3",
+          speakerName: "Speaker 3 (Whispering)",
+          timestamp: "00:18",
+          hindiText: "Shhh dheere bol, koi sun na le. Practical file bhi le aana sath me.",
+          englishText: "Shhh speak softly, lest someone hears. Bring the practical file along too.",
+          emotion: "Cautious",
+        ),
+        DialogueTurn(
+          speakerId: "spk_1",
+          speakerName: "Aryan",
+          timestamp: "00:26",
+          hindiText: "Haan theek hai, mai time pe pahuch jaunga, file ready hai.",
+          englishText: "Okay fine, I will reach on time, the file is ready.",
+          emotion: "Agreeing",
+        ),
+      ],
     ),
     AmbientLogItem(
       id: "ambient_2",
@@ -279,9 +342,48 @@ class ParentDashboardProvider extends ChangeNotifier {
       durationSeconds: 285,
       audioUrl: "mock_ambient_2.m4a",
       locationContext: "Cafeteria / Market Area",
-      speechSnippet: "Whispering conversation about meeting near metro gate.",
+      speechSnippet: "Whispering conversation about a secret Instagram account.",
       isFlagged: true,
       detectedKeyword: "secret",
+      isPurgedFromCloud: true,
+      storageFreedKb: 4620,
+      conversationSummary: "Quiet discussion about an alternate social media account and hiding it from parents.",
+      speakers: [
+        SpeakerVoiceProfile(
+          speakerId: "spk_1",
+          displayName: "Aryan (Child)",
+          isChild: true,
+          pitch: "Medium-high pitch",
+          tone: "Whispering",
+          acousticDescription: "Subdued tone, checking surroundings while speaking.",
+        ),
+        SpeakerVoiceProfile(
+          speakerId: "spk_2",
+          displayName: "Speaker 2 (Friend 1)",
+          isChild: false,
+          pitch: "Deep voice",
+          tone: "Insistent",
+          acousticDescription: "Fast-paced whisper with muffled laughter.",
+        ),
+      ],
+      dialogue: [
+        DialogueTurn(
+          speakerId: "spk_2",
+          speakerName: "Speaker 2 (Deep Voice)",
+          timestamp: "00:08",
+          hindiText: "Tu us secret ID se message kar, kisi ko pata nahi chalega.",
+          englishText: "You message from that secret ID, no one will find out.",
+          emotion: "Conspiratorial",
+        ),
+        DialogueTurn(
+          speakerId: "spk_1",
+          speakerName: "Aryan",
+          timestamp: "00:19",
+          hindiText: "Nahi bhai, phone me pakde gaye to dikkat ho jaegi.",
+          englishText: "No brother, if caught on the phone it will be troublesome.",
+          emotion: "Hesitant",
+        ),
+      ],
     ),
     AmbientLogItem(
       id: "ambient_3",
@@ -289,11 +391,75 @@ class ParentDashboardProvider extends ChangeNotifier {
       durationSeconds: 150,
       audioUrl: "mock_ambient_3.m4a",
       locationContext: "Coaching Gate 2",
-      speechSnippet: "Group laughter and discussion on homework notes.",
+      speechSnippet: "Group laughter and discussion on homework notes and exam dates.",
       isFlagged: false,
+      isPurgedFromCloud: true,
+      storageFreedKb: 2980,
+      conversationSummary: "Casual banter between classmates discussing teacher test schedules.",
+      speakers: [
+        SpeakerVoiceProfile(
+          speakerId: "spk_1",
+          displayName: "Aryan (Child)",
+          isChild: true,
+          pitch: "Normal clear pitch",
+          tone: "Cheerful",
+          acousticDescription: "Lively adolescent tone with natural laughter.",
+        ),
+        SpeakerVoiceProfile(
+          speakerId: "spk_4",
+          displayName: "Speaker 4 (Female Voice)",
+          isChild: false,
+          pitch: "Higher pitch, clear",
+          tone: "Studious",
+          acousticDescription: "Articulate female classmate voice discussing formula sheets.",
+        ),
+      ],
+      dialogue: [
+        DialogueTurn(
+          speakerId: "spk_4",
+          speakerName: "Speaker 4 (Classmate)",
+          timestamp: "00:05",
+          hindiText: "Physics ke numerical solve hue tumhare?",
+          englishText: "Did you solve the Physics numericals?",
+          emotion: "Normal",
+        ),
+        DialogueTurn(
+          speakerId: "spk_1",
+          speakerName: "Aryan",
+          timestamp: "00:12",
+          hindiText: "Haan bas 2 bache hain, kal subah submit kar dunga.",
+          englishText: "Yes only 2 remaining, will submit tomorrow morning.",
+          emotion: "Relaxed",
+        ),
+      ],
     ),
   ];
   List<AmbientLogItem> get ambientLogs => _ambientLogs;
+
+  bool _autoPurgeCloudStorage = true;
+  bool get autoPurgeCloudStorage => _autoPurgeCloudStorage;
+
+  void toggleAutoPurgeCloudStorage() {
+    _autoPurgeCloudStorage = !_autoPurgeCloudStorage;
+    notifyListeners();
+  }
+
+  void purgeCloudAudio(String logId) {
+    final idx = _ambientLogs.indexWhere((l) => l.id == logId);
+    if (idx != -1) {
+      _ambientLogs[idx] = _ambientLogs[idx].copyWith(
+        isPurgedFromCloud: true,
+      );
+      notifyListeners();
+    }
+  }
+
+  double get totalCloudPurgedMb {
+    final totalKb = _ambientLogs
+        .where((l) => l.isPurgedFromCloud)
+        .fold<int>(0, (total, item) => total + item.storageFreedKb);
+    return totalKb / 1024.0;
+  }
 
   // Chat Messages
   final List<ChatMessage> _chatMessages = [
