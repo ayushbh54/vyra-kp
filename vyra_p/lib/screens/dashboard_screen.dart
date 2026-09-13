@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/parent_dashboard_provider.dart';
+import '../models/child_profile.dart';
 import '../widgets/quick_action_tile.dart';
 import '../widgets/voice_intercom_sheet.dart';
 import 'live_monitor_screen.dart';
@@ -86,6 +87,12 @@ class DashboardScreen extends StatelessWidget {
               ],
             ),
           ),
+          IconButton(
+            icon: const Icon(Icons.security, color: Color(0xFF38BDF8), size: 22),
+            tooltip: 'Safety & Emergency Controls',
+            onPressed: () => _showSafetySettingsSheet(context, provider),
+          ),
+          const SizedBox(width: 8),
         ],
       ),
       body: SingleChildScrollView(
@@ -418,21 +425,21 @@ class DashboardScreen extends StatelessWidget {
                 QuickActionTile(
                   icon: provider.isPhoneLocked ? Icons.lock : Icons.lock_open,
                   label: provider.isPhoneLocked ? 'Locked' : 'Lock Phone',
-                  sublabel: provider.isPhoneLocked ? 'Emergency Lock' : 'Restricts Usage',
+                  sublabel: provider.isPhoneLocked ? 'Tap to Unlock' : 'Restricts Usage',
                   color: provider.isPhoneLocked ? Colors.redAccent : const Color(0xFFA855F7),
                   isActive: provider.isPhoneLocked,
                   onTap: () {
-                    provider.toggleLockPhone();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          provider.isPhoneLocked
-                              ? 'Emergency Lock command sent to ${activeChild.name}\'s phone.'
-                              : '${activeChild.name}\'s phone unlocked.',
+                    if (!provider.isPhoneLocked) {
+                      _showSafeLockDialog(context, provider, activeChild);
+                    } else {
+                      provider.toggleLockPhone();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('${activeChild.name}\'s phone unlocked. Full access restored.'),
+                          backgroundColor: const Color(0xFF10B981),
                         ),
-                        backgroundColor: provider.isPhoneLocked ? Colors.redAccent : const Color(0xFF10B981),
-                      ),
-                    );
+                      );
+                    }
                   },
                 ),
               ],
@@ -579,6 +586,312 @@ class DashboardScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showSafeLockDialog(BuildContext context, ParentDashboardProvider provider, ChildProfile child) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.amber.withValues(alpha: 0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.shield_outlined, color: Colors.amber, size: 24),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Safety Verification',
+                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Are you sure you want to lock ${child.name}\'s phone?',
+              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.verified_user_rounded, color: Color(0xFF10B981), size: 16),
+                      SizedBox(width: 6),
+                      Text(
+                        'EMERGENCY PROTECTION ACTIVE',
+                        style: TextStyle(color: Color(0xFF10B981), fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    '• Emergency SOS (112, 100, Police) is NEVER blocked.\n'
+                    '• Child can call Parents with 1 emergency tap.\n'
+                    '• Only games, social apps & browser are restricted.',
+                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, height: 1.4),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel / Keep Safe', style: TextStyle(color: Color(0xFF94A3B8))),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              provider.toggleLockPhone();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Restricted mode sent to ${child.name}\'s phone. Emergency SOS remains open.'),
+                  backgroundColor: Colors.redAccent,
+                ),
+              );
+            },
+            child: const Text('Confirm Lock', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSafetySettingsSheet(BuildContext context, ParentDashboardProvider provider) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E293B),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setStateSheet) {
+            return Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0284C7).withValues(alpha: 0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.security, color: Color(0xFF38BDF8), size: 22),
+                          ),
+                          const SizedBox(width: 12),
+                          const Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Safety & Emergency Controls',
+                                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                'Granular safeguards & emergency configuration',
+                                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white54),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Emergency Whitelist Status
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF064E3B).withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.5)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.health_and_safety_rounded, color: Color(0xFF10B981), size: 24),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Emergency SOS Immune from All Locks',
+                                style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                '112, 100, Police, Ambulance & Parent Contacts will never be blocked under any circumstance.',
+                                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 10),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Control 1: Geo-Fence Toggle (Default OFF)
+                  _ControlSwitchTile(
+                    title: 'Geo-Fence Boundary Monitoring',
+                    subtitle: provider.isGeofenceEnabled
+                        ? 'Active: Alerts if child exits designated safe area'
+                        : 'OFF (Recommended Default): No automated lock or restriction while moving',
+                    value: provider.isGeofenceEnabled,
+                    icon: Icons.share_location_rounded,
+                    activeTrackColor: const Color(0xFF38BDF8),
+                    onChanged: (val) {
+                      provider.toggleGeofence();
+                      setStateSheet(() {});
+                    },
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // Control 2: Stealth Security Guard
+                  _ControlSwitchTile(
+                    title: 'Stealth Guard (Screen-On Auto-Cut)',
+                    subtitle: 'Cuts camera and mic instantly when child wakes screen to prevent green dot visibility',
+                    value: provider.isStealthScreenGuardEnabled,
+                    icon: Icons.remove_red_eye_outlined,
+                    activeTrackColor: const Color(0xFF10B981),
+                    onChanged: (val) {
+                      provider.toggleStealthScreenGuard();
+                      setStateSheet(() {});
+                    },
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // Control 3: Cloud Auto-Purge
+                  _ControlSwitchTile(
+                    title: 'Cloud Storage Auto-Purge',
+                    subtitle: 'Wipes heavy raw audio from cloud disk after sync; preserves dialogue transcripts (0 MB bloat)',
+                    value: provider.autoPurgeCloudStorage,
+                    icon: Icons.cleaning_services_rounded,
+                    activeTrackColor: const Color(0xFF0284C7),
+                    onChanged: (val) {
+                      provider.toggleAutoPurgeCloudStorage();
+                      setStateSheet(() {});
+                    },
+                  ),
+
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0284C7),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Save & Close Controls', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _ControlSwitchTile extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final bool value;
+  final IconData icon;
+  final Color activeTrackColor;
+  final ValueChanged<bool> onChanged;
+
+  const _ControlSwitchTile({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.icon,
+    required this.activeTrackColor,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF334155)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: value ? activeTrackColor.withValues(alpha: 0.2) : const Color(0xFF334155),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: value ? activeTrackColor : const Color(0xFF94A3B8), size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text(subtitle, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10, height: 1.2)),
+              ],
+            ),
+          ),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeTrackColor: activeTrackColor,
+          ),
+        ],
       ),
     );
   }

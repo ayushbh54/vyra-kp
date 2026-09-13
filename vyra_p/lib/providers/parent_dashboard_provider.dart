@@ -212,6 +212,24 @@ class ParentDashboardProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _isGeofenceEnabled = false; // Default OFF so child is never locked or restricted unexpectedly
+  bool get isGeofenceEnabled => _isGeofenceEnabled;
+
+  void toggleGeofence() {
+    _isGeofenceEnabled = !_isGeofenceEnabled;
+    try {
+      _firestore?.collection('devices').doc(_activeChildId).collection('commands').add({
+        'action': 'SET_GEOFENCE_ACTIVE',
+        'payload': {'enabled': _isGeofenceEnabled},
+        'status': 'PENDING',
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint("Could not dispatch geofence command: $e");
+    }
+    notifyListeners();
+  }
+
   String _currentCameraLens = "back"; // "back" or "front"
   String get currentCameraLens => _currentCameraLens;
 
