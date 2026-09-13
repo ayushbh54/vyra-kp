@@ -4,6 +4,7 @@ import '../providers/parent_dashboard_provider.dart';
 import '../widgets/quick_action_tile.dart';
 import '../widgets/voice_intercom_sheet.dart';
 import 'live_monitor_screen.dart';
+import 'ambient_logs_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -437,7 +438,74 @@ class DashboardScreen extends StatelessWidget {
               ],
             ),
 
-            const SizedBox(height: 28),
+            const SizedBox(height: 14),
+
+            // 🎙️ Ambient Voice Logs Banner
+            InkWell(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AmbientLogsScreen()),
+                );
+              },
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFF334155)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0284C7).withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.graphic_eq, color: Color(0xFF38BDF8), size: 22),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Text(
+                                'Ambient Voice Logs',
+                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  '${provider.ambientLogs.length} SESSIONS',
+                                  style: const TextStyle(color: Color(0xFF10B981), fontSize: 9, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          const Text(
+                            'Review what was spoken around child while phone was in pocket.',
+                            style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right, color: Color(0xFF64748B)),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 24),
             const Text(
               'Critical Safety Alerts',
               style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),

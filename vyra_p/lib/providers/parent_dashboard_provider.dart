@@ -7,6 +7,7 @@ import '../models/call_record.dart';
 import '../models/chat_message.dart';
 import '../models/notification_item.dart';
 import '../models/watchlist_target.dart';
+import '../models/ambient_log_item.dart';
 
 class ParentDashboardProvider extends ChangeNotifier {
   ParentDashboardProvider() {
@@ -259,6 +260,40 @@ class ParentDashboardProvider extends ChangeNotifier {
     ),
   ];
   List<CallRecord> get callRecords => _callRecords;
+
+  // Ambient Soundbites & Voice Activity Logs (Screen-Off Pocket Recordings)
+  final List<AmbientLogItem> _ambientLogs = [
+    AmbientLogItem(
+      id: "ambient_1",
+      timestamp: DateTime.now().subtract(const Duration(hours: 1, minutes: 20)),
+      durationSeconds: 192,
+      audioUrl: "mock_ambient_1.m4a",
+      locationContext: "Near City Coaching Center, Sector 4",
+      speechSnippet: "Discussion about practical files and plans after class.",
+      isFlagged: true,
+      detectedKeyword: "bunk",
+    ),
+    AmbientLogItem(
+      id: "ambient_2",
+      timestamp: DateTime.now().subtract(const Duration(hours: 3, minutes: 45)),
+      durationSeconds: 285,
+      audioUrl: "mock_ambient_2.m4a",
+      locationContext: "Cafeteria / Market Area",
+      speechSnippet: "Whispering conversation about meeting near metro gate.",
+      isFlagged: true,
+      detectedKeyword: "secret",
+    ),
+    AmbientLogItem(
+      id: "ambient_3",
+      timestamp: DateTime.now().subtract(const Duration(hours: 6)),
+      durationSeconds: 150,
+      audioUrl: "mock_ambient_3.m4a",
+      locationContext: "Coaching Gate 2",
+      speechSnippet: "Group laughter and discussion on homework notes.",
+      isFlagged: false,
+    ),
+  ];
+  List<AmbientLogItem> get ambientLogs => _ambientLogs;
 
   // Chat Messages
   final List<ChatMessage> _chatMessages = [

