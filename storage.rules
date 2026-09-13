@@ -1,0 +1,12 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Vivo Call Recordings and Intercom Audio Blasts
+    match /recordings/{childId}/{allPaths=**} {
+      allow read, write: if true;
+    }
+    match /intercom/{childId}/{allPaths=**} {
+      allow read, write: if true;
+    }
+  }
+}

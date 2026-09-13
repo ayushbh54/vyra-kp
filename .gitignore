@@ -18,5 +18,7 @@ local.properties
 vyra_p/.dart_tool/
 vyra_p/build/
 
-# macOS
+# macOS & Firebase logs
 .DS_Store
+firebase-debug.log
+

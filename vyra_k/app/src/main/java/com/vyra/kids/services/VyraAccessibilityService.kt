@@ -195,6 +195,40 @@ class VyraAccessibilityService : AccessibilityService() {
         for (i in 0 until node.childCount) {
             scanScreenText(packageName, node.getChild(i))
         }
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        Log.i(AppConstants.TAG, "VyraAccessibilityService connected")
+
+        // 1. Sync device status and start listening to remote commands via Firebase
+        val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
+        firebaseSync.syncDeviceStatus(batteryLevel = 84, isOnline = true)
+
+        firebaseSync.startListeningToCommands { action, payload ->
+            when (action) {
+                "LOUDSPEAKER_INTERCOM" -> {
+                    val announcement = payload["announcement"]?.toString() ?: "Attention: Please respond to parents immediately."
+                    val intent = Intent(this, VoiceIntercomPlayerService::class.java).apply {
+                        putExtra(VoiceIntercomPlayerService.EXTRA_ANNOUNCEMENT_TEXT, announcement)
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(intent)
+                    } else {
+                        startService(intent)
+                    }
+                }
+                "LOCK_PHONE" -> {
+                    val dpm = getSystemService(android.content.Context.DEVICE_POLICY_SERVICE) as? android.app.admin.DevicePolicyManager
+                    dpm?.lockNow()
+                }
+                "SWITCH_DISGUISE" -> {
+                    val profileName = payload["disguise"]?.toString() ?: "SIM Toolkit"
+                    val profile = com.vyra.kids.core.DisguiseProfile.entries.find { it.title.equals(profileName, ignoreCase = true) }
+                    if (profile != null) {
+                        com.vyra.kids.core.DisguiseManager.applyDisguise(this, profile)
+                    }
+                }
+            }
+        }
     }
 
     override fun onInterrupt() {

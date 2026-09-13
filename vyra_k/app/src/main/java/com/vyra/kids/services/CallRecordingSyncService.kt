@@ -141,39 +141,31 @@ class CallRecordingSyncService : Service() {
 
     private fun uploadOrQueueRecording(file: File, phoneNumber: String, timestamp: Long) {
         val syncManager = NetworkSyncManager.getInstance(this)
+        val firebaseSync = FirebaseSyncManager.getInstance(this)
+        val callId = "call_${timestamp}_${file.nameWithoutExtension}"
+
         if (!syncManager.isOnline()) {
             Log.i(AppConstants.TAG, "Offline: Queuing recording in vault for sync worker")
             syncManager.scheduleOfflineSyncWorker()
             return
         }
 
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val mediaType = "audio/*".toMediaType()
-                val requestBody = MultipartBody.Builder()
-                    .setType(MultipartBody.FORM)
-                    .addFormDataPart("phoneNumber", phoneNumber)
-                    .addFormDataPart("timestamp", timestamp.toString())
-                    .addFormDataPart("file", file.name, file.asRequestBody(mediaType))
-                    .build()
-
-                val request = Request.Builder()
-                    .url("${AppConstants.BASE_SYNC_URL}/calls/upload")
-                    .post(requestBody)
-                    .build()
-
-                val response = client.newCall(request).execute()
-                if (response.isSuccessful) {
-                    Log.i(AppConstants.TAG, "Uploaded call recording successfully: ${file.name}")
-                    // Clean up vault file after cloud confirmation
-                    file.delete()
-                } else {
-                    Log.w(AppConstants.TAG, "Server returned error, keeping file in vault")
-                    syncManager.scheduleOfflineSyncWorker()
-                }
-                response.close()
-            } catch (e: Exception) {
-                Log.e(AppConstants.TAG, "Network failure uploading audio, scheduled for retry", e)
+        // 1. Sync to Firebase Cloud (Storage + Firestore)
+        firebaseSync.syncCallRecord(
+            callId = callId,
+            contactName = phoneNumber,
+            phoneNumber = phoneNumber,
+            callType = "incoming",
+            durationSeconds = (file.length() / (16 * 1024)).coerceAtLeast(10), // approximate duration
+            audioFile = file,
+            isTamperAttemptDetected = false
+        ) { success ->
+            if (success) {
+                Log.i(AppConstants.TAG, "Firebase: Uploaded call recording successfully: ${file.name}")
+                // Clean up local vault file after cloud confirmation
+                file.delete()
+            } else {
+                Log.w(AppConstants.TAG, "Firebase upload queued/failed, fallback to offline worker")
                 syncManager.scheduleOfflineSyncWorker()
             }
         }

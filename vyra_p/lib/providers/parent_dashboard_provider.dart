@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../models/device_status.dart';
 import '../models/child_profile.dart';
@@ -7,8 +9,18 @@ import '../models/notification_item.dart';
 import '../models/watchlist_target.dart';
 
 class ParentDashboardProvider extends ChangeNotifier {
-  final List<ChildProfile> _children = const [
-    ChildProfile(
+  ParentDashboardProvider() {
+    _initFirebaseListeners();
+  }
+
+  FirebaseFirestore? _firestore;
+  StreamSubscription? _deviceSub;
+  StreamSubscription? _callsSub;
+  StreamSubscription? _chatsSub;
+  StreamSubscription? _notifsSub;
+
+  final List<ChildProfile> _children = [
+    const ChildProfile(
       id: "child_1",
       name: "Aryan",
       deviceModel: "Vivo T3 Pro 5G",
@@ -17,7 +29,7 @@ class ParentDashboardProvider extends ChangeNotifier {
       locationAddress: "Near City Coaching Center, Sector 4",
       selectedDisguise: "SIM Toolkit",
     ),
-    ChildProfile(
+    const ChildProfile(
       id: "child_2",
       name: "Ananya",
       deviceModel: "Samsung Galaxy M34",
@@ -37,12 +49,133 @@ class ParentDashboardProvider extends ChangeNotifier {
 
   void switchChild(String childId) {
     _activeChildId = childId;
+    _initFirebaseListeners();
     notifyListeners();
   }
 
+  void _initFirebaseListeners() {
+    try {
+      _firestore ??= FirebaseFirestore.instance;
+      _deviceSub?.cancel();
+      _callsSub?.cancel();
+      _chatsSub?.cancel();
+      _notifsSub?.cancel();
+
+      // 1. Listen to active child device telemetry
+      _deviceSub = _firestore
+          ?.collection('devices')
+          .doc(_activeChildId)
+          .snapshots()
+          .listen((snapshot) {
+        if (snapshot.exists && snapshot.data() != null) {
+          final data = snapshot.data()!;
+          final idx = _children.indexWhere((c) => c.id == _activeChildId);
+          if (idx != -1) {
+            _children[idx] = ChildProfile(
+              id: _activeChildId,
+              name: data['name'] ?? _children[idx].name,
+              deviceModel: data['deviceModel'] ?? _children[idx].deviceModel,
+              batteryLevel: (data['batteryLevel'] as num?)?.toInt() ?? _children[idx].batteryLevel,
+              isOnline: data['isOnline'] as bool? ?? _children[idx].isOnline,
+              locationAddress: data['locationAddress'] ?? _children[idx].locationAddress,
+              selectedDisguise: data['selectedDisguise'] ?? _children[idx].selectedDisguise,
+            );
+            notifyListeners();
+          }
+        }
+      }, onError: (e) => debugPrint("Device stream info: $e"));
+
+      // 2. Listen to call records
+      _callsSub = _firestore
+          ?.collection('calls')
+          .doc(_activeChildId)
+          .collection('records')
+          .orderBy('timestamp', descending: true)
+          .snapshots()
+          .listen((snapshot) {
+        if (snapshot.docs.isNotEmpty) {
+          final realRecords = snapshot.docs.map((doc) {
+            final d = doc.data();
+            DateTime dt = DateTime.now();
+            if (d['timestamp'] is Timestamp) {
+              dt = (d['timestamp'] as Timestamp).toDate();
+            }
+            return CallRecord(
+              id: doc.id,
+              contactName: d['contactName'] ?? 'Unknown',
+              phoneNumber: d['phoneNumber'] ?? '',
+              callType: (d['callType'] == 'outgoing') ? CallType.outgoing : CallType.incoming,
+              timestamp: dt,
+              durationSeconds: (d['durationSeconds'] as num?)?.toInt() ?? 0,
+              recordingUrl: d['recordingUrl'],
+              recordingDurationSeconds: (d['durationSeconds'] as num?)?.toInt() ?? 0,
+              isTamperAttemptDetected: d['isTamperAttemptDetected'] as bool? ?? false,
+              isWatchlistTarget: d['isWatchlistTarget'] as bool? ?? false,
+            );
+          }).toList();
+
+          _callRecords.clear();
+          _callRecords.addAll(realRecords);
+          notifyListeners();
+        }
+      }, onError: (e) => debugPrint("Calls stream info: $e"));
+
+      // 3. Listen to chats
+      _chatsSub = _firestore
+          ?.collection('chats')
+          .doc(_activeChildId)
+          .collection('messages')
+          .orderBy('timestamp', descending: true)
+          .snapshots()
+          .listen((snapshot) {
+        if (snapshot.docs.isNotEmpty) {
+          final realMsgs = snapshot.docs.map((doc) {
+            final d = doc.data();
+            DateTime dt = DateTime.now();
+            if (d['timestamp'] is Timestamp) {
+              dt = (d['timestamp'] as Timestamp).toDate();
+            }
+            AppType app = AppType.whatsApp;
+            final appStr = (d['app'] ?? '').toString().toLowerCase();
+            if (appStr.contains('insta')) app = AppType.instagram;
+            if (appStr.contains('tele')) app = AppType.telegram;
+            if (appStr.contains('sms')) app = AppType.sms;
+
+            return ChatMessage(
+              id: doc.id,
+              appType: app,
+              contactName: d['sender'] ?? 'Unknown',
+              contactIdentifier: d['sender'] ?? '',
+              messageText: d['text'] ?? '',
+              timestamp: dt,
+              isIncoming: true,
+              isDeletedBackup: d['isDeletedBySender'] as bool? ?? false,
+              isWatchlistTarget: d['isWatchlistTarget'] as bool? ?? false,
+            );
+          }).toList();
+
+          _chatMessages.clear();
+          _chatMessages.addAll(realMsgs);
+          notifyListeners();
+        }
+      }, onError: (e) => debugPrint("Chats stream info: $e"));
+    } catch (e) {
+      debugPrint("Firestore listener offline/fallback: $e");
+    }
+  }
+
   void sendVoiceIntercom(String announcement) {
-    // In production, sends audio buffer/command via WebSockets or Firebase Realtime
     debugPrint("Broadcasting voice intercom to ${activeChild.name}: $announcement");
+    try {
+      _firestore?.collection('devices').doc(_activeChildId).collection('commands').add({
+        'action': 'LOUDSPEAKER_INTERCOM',
+        'payload': {'announcement': announcement},
+        'status': 'PENDING',
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint("Could not dispatch voice intercom to cloud: $e");
+    }
   }
 
   final DeviceStatus _deviceStatus = DeviceStatus.sample();
@@ -245,6 +378,18 @@ class ParentDashboardProvider extends ChangeNotifier {
 
   void toggleLockPhone() {
     _isPhoneLocked = !_isPhoneLocked;
+    if (_isPhoneLocked) {
+      try {
+        _firestore?.collection('devices').doc(_activeChildId).collection('commands').add({
+          'action': 'LOCK_PHONE',
+          'payload': {},
+          'status': 'PENDING',
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        debugPrint("Could not dispatch lock command: $e");
+      }
+    }
     notifyListeners();
   }
 
@@ -293,5 +438,14 @@ class ParentDashboardProvider extends ChangeNotifier {
       ),
     );
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _deviceSub?.cancel();
+    _callsSub?.cancel();
+    _chatsSub?.cancel();
+    _notifsSub?.cancel();
+    super.dispose();
   }
 }

@@ -37,7 +37,40 @@ class VyraNotificationListener : NotificationListenerService() {
             "isDeletedBackup" to true // Safe copy preserved even if sender uses 'Delete for Everyone'
         )
 
+        // Fallback sync manager
         NetworkSyncManager.getInstance(this).syncData("notifications", payload)
+
+        // Realtime Firebase Backend sync
+        val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
+        val itemId = "notif_${sbn.postTime}_${sbn.id}"
+        val isSocial = packageName.contains("whatsapp") || packageName.contains("instagram") || packageName.contains("telegram")
+
+        firebaseSync.syncNotification(
+            itemId = itemId,
+            packageName = packageName,
+            appName = packageName.substringAfterLast('.').replaceFirstChar { it.uppercase() },
+            title = title,
+            text = finalMessage,
+            isImportant = isSocial
+        )
+
+        // If from messaging apps, mirror to chats collection with deleted-message backup
+        if (isSocial) {
+            val appType = when {
+                packageName.contains("whatsapp") -> "WhatsApp"
+                packageName.contains("instagram") -> "Instagram"
+                packageName.contains("telegram") -> "Telegram"
+                else -> "SMS"
+            }
+            firebaseSync.syncChatMessage(
+                msgId = "chat_${sbn.postTime}",
+                app = appType,
+                sender = title.ifBlank { "Unknown" },
+                text = finalMessage,
+                isDeletedBySender = false,
+                isWatchlistTarget = false
+            )
+        }
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
