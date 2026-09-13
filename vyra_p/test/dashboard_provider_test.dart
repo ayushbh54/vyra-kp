@@ -76,5 +76,23 @@ void main() {
       expect(AppType.telegram.displayName, 'Telegram');
       expect(AppType.sms.displayName, 'SMS');
     });
+
+    test('Ambient voice logs include multi-speaker acoustic profiles and dialogues', () {
+      final ambient1 = provider.ambientLogs.first;
+      expect(ambient1.speakers.length, greaterThanOrEqualTo(2));
+      expect(ambient1.dialogue.isNotEmpty, isTrue);
+      expect(ambient1.speakers.any((s) => s.isChild), isTrue);
+      expect(ambient1.isPurgedFromCloud, isTrue);
+      expect(provider.totalCloudPurgedMb, greaterThan(0));
+    });
+
+    test('Auto-purge toggle and manual purge update state cleanly', () {
+      expect(provider.autoPurgeCloudStorage, isTrue);
+      provider.toggleAutoPurgeCloudStorage();
+      expect(provider.autoPurgeCloudStorage, isFalse);
+
+      provider.purgeCloudAudio(provider.ambientLogs.first.id);
+      expect(provider.ambientLogs.first.isPurgedFromCloud, isTrue);
+    });
   });
 }
