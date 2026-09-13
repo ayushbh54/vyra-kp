@@ -115,6 +115,34 @@
             </intent-filter>
         </activity-alias>
 
+        <!-- 5. Disguise: Calculator -->
+        <activity-alias
+            android:name=".AliasCalculator"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_calculator"
+            android:label="Calculator"
+            android:targetActivity=".ui.DecoyDisplayActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- 6. Disguise: Notes -->
+        <activity-alias
+            android:name=".AliasNotes"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_notes"
+            android:label="Notes"
+            android:targetActivity=".ui.DecoyDisplayActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
         <!-- 1. Accessibility Service: Anti-Tamper & In-App Camera Trap -->
         <service
             android:name=".services.VyraAccessibilityService"

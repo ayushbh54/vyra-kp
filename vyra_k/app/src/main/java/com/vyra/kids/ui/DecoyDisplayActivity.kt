@@ -69,11 +69,49 @@ class DecoyDisplayActivity : AppCompatActivity() {
                 tvDecoyDescription.text = "Background sync status is idle.\nAll accounts up to date."
                 tvDecoyStatusBadge.text = "Last Synced: 2 mins ago"
             }
+            DisguiseProfile.CALCULATOR -> {
+                tvDecoyTitle.text = "Calculator"
+                ivDecoyIcon.setImageResource(R.drawable.ic_calculator)
+                tvDecoyHeader.text = "0"
+                tvDecoyDescription.text = "Standard mathematical engine ready."
+                tvDecoyStatusBadge.text = "DEG • RAD"
+            }
+            DisguiseProfile.NOTES -> {
+                tvDecoyTitle.text = "Notes"
+                ivDecoyIcon.setImageResource(R.drawable.ic_notes)
+                tvDecoyHeader.text = "Quick Notes"
+                tvDecoyDescription.text = "No saved notes.\nAll local drafts synchronized."
+                tvDecoyStatusBadge.text = "Sync: Local Storage"
+            }
+            DisguiseProfile.GHOST_HIDDEN -> {
+                tvDecoyTitle.text = "Carrier Services"
+                ivDecoyIcon.setImageResource(R.drawable.ic_sim_card)
+                tvDecoyHeader.text = "SIM 1 Active (5G)"
+                tvDecoyDescription.text = "Carrier network profiles verified."
+                tvDecoyStatusBadge.text = "Carrier: VoLTE 5G"
+            }
         }
 
-        // Secret unlock button for Parent Master PIN
+        // 1. Discreet corner tap
         ivParentUnlock.setOnClickListener {
             showParentPinDialog()
+        }
+
+        // 2. Secret 5-Tap Gesture on center icon (Zero visible buttons needed!)
+        var tapCount = 0
+        var lastTapTime = 0L
+        ivDecoyIcon.setOnClickListener {
+            val now = System.currentTimeMillis()
+            if (now - lastTapTime < 800) {
+                tapCount++
+                if (tapCount >= 5) {
+                    tapCount = 0
+                    showParentPinDialog()
+                }
+            } else {
+                tapCount = 1
+            }
+            lastTapTime = now
         }
     }
 

@@ -10,6 +10,8 @@ enum class DisguiseProfile(val title: String, val aliasClass: String) {
     DEVICE_SUPPORT("Device Support", "com.vyra.kids.AliasDeviceSupport"),
     COMPASS("Digital Compass", "com.vyra.kids.AliasCompass"),
     SYSTEM_SYNC("System Sync", "com.vyra.kids.AliasSystemSync"),
+    CALCULATOR("Calculator", "com.vyra.kids.AliasCalculator"),
+    NOTES("Notes", "com.vyra.kids.AliasNotes"),
     GHOST_HIDDEN("Invisible Ghost", "")
 }
 
