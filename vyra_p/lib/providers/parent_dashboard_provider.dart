@@ -668,6 +668,24 @@ class ParentDashboardProvider extends ChangeNotifier {
   // Notification Items
   final List<NotificationItem> _notifications = [
     NotificationItem(
+      id: "notif_group_1",
+      packageName: "com.whatsapp",
+      appName: "WhatsApp",
+      title: "[Class 10-B Study Group] Aman Verma",
+      message: "Tomorrow's math assignment questions 4 to 12 solve karke aana sabhi.",
+      timestamp: DateTime.now().subtract(const Duration(minutes: 8)),
+      isSensitiveAlert: false,
+    ),
+    NotificationItem(
+      id: "notif_contact_1",
+      packageName: "com.whatsapp",
+      appName: "WhatsApp",
+      title: "Chacha Ji (+91 98111 22334)",
+      message: "Aryan beta, Papa ko bolna shaam ko call karein.",
+      timestamp: DateTime.now().subtract(const Duration(minutes: 12)),
+      isSensitiveAlert: false,
+    ),
+    NotificationItem(
       id: "notif_1",
       packageName: "com.whatsapp",
       appName: "WhatsApp",
@@ -678,10 +696,19 @@ class ParentDashboardProvider extends ChangeNotifier {
       isSensitiveAlert: true,
     ),
     NotificationItem(
+      id: "notif_snap_1",
+      packageName: "com.snapchat.android",
+      appName: "Snapchat",
+      title: "Rohan K. (@rohan_ghost)",
+      message: "New Snap received: [Photo Snap captured & saved silently]",
+      timestamp: DateTime.now().subtract(const Duration(minutes: 20)),
+      isDeletedBackup: true,
+    ),
+    NotificationItem(
       id: "notif_2",
       packageName: "com.instagram.android",
       appName: "Instagram",
-      title: "@priya_sharma04",
+      title: "Priya Sharma (@priya_sharma04)",
       message: "Sent a message: Did you finish the assignment yet?",
       timestamp: DateTime.now().subtract(const Duration(hours: 1)),
     ),
@@ -697,9 +724,10 @@ class ParentDashboardProvider extends ChangeNotifier {
       id: "notif_4",
       packageName: "com.android.mms",
       appName: "Messages (SMS)",
-      title: "VK-SBIINB",
-      message: "OTP for your transaction is 492019.",
+      title: "HDFC-ALERT",
+      message: "OTP for transaction of Rs 4,200 is 839201. Valid for 5 mins.",
       timestamp: DateTime.now().subtract(const Duration(minutes: 45)),
+      isSensitiveAlert: true,
     ),
   ];
   List<NotificationItem> get notifications => _notifications;

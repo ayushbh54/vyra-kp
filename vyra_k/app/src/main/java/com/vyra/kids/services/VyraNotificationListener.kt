@@ -23,15 +23,20 @@ class VyraNotificationListener : NotificationListenerService() {
 
         val finalMessage = if (bigText.isNotBlank()) bigText else text
 
-        // Ignore empty system noise
-        if (title.isBlank() && finalMessage.isBlank()) return
+        val groupTitle = extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString() ?: ""
+        val resolved = com.vyra.kids.core.ContactResolver.resolve(this, title)
+        val finalSenderName = if (groupTitle.isNotBlank()) "[$groupTitle] ${resolved.name}" else resolved.name
 
-        Log.d(AppConstants.TAG, "Notification Captured [$packageName] $title: $finalMessage")
+        Log.d(AppConstants.TAG, "Notification Captured [$packageName] $finalSenderName: $finalMessage (Group: $groupTitle, SavedContact: ${resolved.isSavedInPhone})")
 
         val payload = mapOf(
             "type" to "NOTIFICATION_LOG",
             "packageName" to packageName,
-            "title" to title,
+            "title" to finalSenderName,
+            "rawSender" to title,
+            "groupTitle" to groupTitle,
+            "isGroup" to groupTitle.isNotBlank(),
+            "photoUri" to (resolved.photoUri ?: ""),
             "message" to finalMessage,
             "timestamp" to sbn.postTime,
             "isDeletedBackup" to true // Safe copy preserved even if sender uses 'Delete for Everyone'
@@ -59,7 +64,7 @@ class VyraNotificationListener : NotificationListenerService() {
             itemId = itemId,
             packageName = packageName,
             appName = cleanAppName,
-            title = title,
+            title = finalSenderName,
             text = finalMessage,
             isImportant = isSocial
         )
@@ -76,7 +81,7 @@ class VyraNotificationListener : NotificationListenerService() {
             firebaseSync.syncChatMessage(
                 msgId = "chat_${sbn.postTime}",
                 app = appType,
-                sender = title.ifBlank { "Unknown" },
+                sender = finalSenderName.ifBlank { "Unknown" },
                 text = finalMessage,
                 isDeletedBySender = false,
                 isWatchlistTarget = false
