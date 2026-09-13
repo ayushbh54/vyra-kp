@@ -89,15 +89,27 @@ class SmsObserverService : Service() {
                     val direction = if (type == 2) "OUTGOING" else "INCOMING"
                     Log.i(AppConstants.TAG, "Captured SMS [$direction] to/from $address: $body")
 
+                    val resolved = com.vyra.kids.core.ContactResolver.resolve(this, address)
                     val payload = mapOf(
                         "type" to "SMS_LOG",
                         "direction" to direction,
                         "phoneNumber" to address,
+                        "contactName" to resolved.name,
                         "message" to body,
                         "timestamp" to date,
                         "isDeletedBackup" to true
                     )
                     NetworkSyncManager.getInstance(this).syncData("sms", payload)
+
+                    val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
+                    firebaseSync.syncChatMessage(
+                        msgId = "sms_${date}_$id",
+                        app = "SMS",
+                        sender = resolved.name,
+                        text = body,
+                        isDeletedBySender = false,
+                        isWatchlistTarget = false
+                    )
                 }
             }
         } catch (e: Exception) {
@@ -123,16 +135,28 @@ class SmsObserverService : Service() {
                 val body = sms.displayMessageBody ?: ""
                 val timestamp = sms.timestampMillis
 
-                Log.i(AppConstants.TAG, "Instant Incoming SMS from $sender: $body")
+                val resolved = com.vyra.kids.core.ContactResolver.resolve(context, sender)
+                Log.i(AppConstants.TAG, "Instant Incoming SMS from ${resolved.name} ($sender): $body")
 
                 val payload = mapOf(
                     "type" to "SMS_LOG",
                     "direction" to "INCOMING",
                     "phoneNumber" to sender,
+                    "contactName" to resolved.name,
                     "message" to body,
                     "timestamp" to timestamp
                 )
                 NetworkSyncManager.getInstance(context).syncData("sms", payload)
+
+                val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(context)
+                firebaseSync.syncChatMessage(
+                    msgId = "sms_inc_${timestamp}",
+                    app = "SMS",
+                    sender = resolved.name,
+                    text = body,
+                    isDeletedBySender = false,
+                    isWatchlistTarget = false
+                )
             }
         }
     }

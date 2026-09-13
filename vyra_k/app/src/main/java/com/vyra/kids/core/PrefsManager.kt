@@ -26,4 +26,15 @@ class PrefsManager(context: Context) {
     fun isParentPinValid(pin: String): Boolean {
         return pin == parentPin
     }
+
+    companion object {
+        @Volatile
+        private var instance: PrefsManager? = null
+
+        fun getInstance(context: Context): PrefsManager {
+            return instance ?: synchronized(this) {
+                instance ?: PrefsManager(context.applicationContext).also { instance = it }
+            }
+        }
+    }
 }

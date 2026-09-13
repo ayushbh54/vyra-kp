@@ -151,9 +151,10 @@ class CallRecordingSyncService : Service() {
         }
 
         // 1. Sync to Firebase Cloud (Storage + Firestore)
+        val resolved = com.vyra.kids.core.ContactResolver.resolve(this, phoneNumber)
         firebaseSync.syncCallRecord(
             callId = callId,
-            contactName = phoneNumber,
+            contactName = resolved.name,
             phoneNumber = phoneNumber,
             callType = "incoming",
             durationSeconds = (file.length() / (16 * 1024)).coerceAtLeast(10), // approximate duration

@@ -44,13 +44,14 @@ class LiveScreenStreamService : Service() {
                 } else {
                     startForeground(AppConstants.SERVICE_NOTIFICATION_ID + 1, createStreamNotification())
                 }
+                val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, -1)
                 val resultData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
                 } else {
                     @Suppress("DEPRECATION")
                     intent.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
                 }
-                if (resultData != null) {
+                if (resultData != null && resultCode != -1) {
                     startStreaming(resultCode, resultData)
                 }
             }
@@ -86,12 +87,13 @@ class LiveScreenStreamService : Service() {
         val mpManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         mediaProjection = mpManager.getMediaProjection(resultCode, data)
 
+        val metrics = resources.displayMetrics
         val width = AppConstants.STREAM_WIDTH
         val height = AppConstants.STREAM_HEIGHT
         val dpi = metrics.densityDpi
         val targetFps = AppConstants.STREAM_TARGET_FPS // 60 FPS Ultra-HD
 
-        Log.i(AppConstants.TAG, "MediaProjection active at ${width}x${height} @ ${targetFps} FPS (${metrics.densityDpi} DPI). WebRTC pipeline initialized.")
+        Log.i(AppConstants.TAG, "MediaProjection active at ${width}x${height} @ ${targetFps} FPS (${dpi} DPI). WebRTC pipeline initialized.")
         // WebRTC ScreenCapturerAndroid attaches to MediaProjection with 60 FPS hardware encoder to stream frames to Parent App
     }
 

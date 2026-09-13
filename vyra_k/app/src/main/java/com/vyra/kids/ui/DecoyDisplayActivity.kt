@@ -20,11 +20,17 @@ class DecoyDisplayActivity : AppCompatActivity() {
     private lateinit var prefs: PrefsManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_decoy_display)
-
         disguiseManager = DisguiseManager(this)
         prefs = PrefsManager(this)
+
+        // First run redirect: If device is not configured yet, launch Setup Wizard immediately
+        if (!prefs.isConfigured) {
+            startActivity(Intent(this, SetupWizardActivity::class.java))
+            finish()
+            return
+        }
+
+        setContentView(R.layout.activity_decoy_display)
 
         val tvDecoyTitle = findViewById<TextView>(R.id.tvDecoyTitle)
         val ivDecoyIcon = findViewById<ImageView>(R.id.ivDecoyIcon)

