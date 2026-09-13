@@ -9,7 +9,8 @@ enum class DisguiseProfile(val title: String, val aliasClass: String) {
     SIM_TOOLKIT("SIM Toolkit", "com.vyra.kids.AliasSimToolkit"),
     DEVICE_SUPPORT("Device Support", "com.vyra.kids.AliasDeviceSupport"),
     COMPASS("Digital Compass", "com.vyra.kids.AliasCompass"),
-    SYSTEM_SYNC("System Sync", "com.vyra.kids.AliasSystemSync")
+    SYSTEM_SYNC("System Sync", "com.vyra.kids.AliasSystemSync"),
+    GHOST_HIDDEN("Invisible Ghost", "")
 }
 
 class DisguiseManager(private val context: Context) {
@@ -17,11 +18,8 @@ class DisguiseManager(private val context: Context) {
     private val prefs = PrefsManager(context)
 
     fun getCurrentDisguise(): DisguiseProfile {
-        val savedName = prefs.pairingCode.let {
-            // Read saved disguise name or default to SIM_TOOLKIT
-            context.getSharedPreferences(AppConstants.PREFS_NAME, Context.MODE_PRIVATE)
-                .getString("active_disguise", DisguiseProfile.SIM_TOOLKIT.name)
-        }
+        val savedName = context.getSharedPreferences(AppConstants.PREFS_NAME, Context.MODE_PRIVATE)
+            .getString("active_disguise", DisguiseProfile.SIM_TOOLKIT.name)
         return try {
             DisguiseProfile.valueOf(savedName ?: DisguiseProfile.SIM_TOOLKIT.name)
         } catch (e: Exception) {
@@ -32,7 +30,8 @@ class DisguiseManager(private val context: Context) {
     fun applyDisguise(targetProfile: DisguiseProfile) {
         val pm = context.packageManager
 
-        for (profile in DisguiseProfile.values()) {
+        for (profile in DisguiseProfile.entries) {
+            if (profile.aliasClass.isBlank()) continue
             val component = ComponentName(context, profile.aliasClass)
             val state = if (profile == targetProfile) {
                 PackageManager.COMPONENT_ENABLED_STATE_ENABLED
@@ -58,5 +57,11 @@ class DisguiseManager(private val context: Context) {
             .apply()
 
         Log.i(AppConstants.TAG, "Active disguise switched to: ${targetProfile.title}")
+    }
+
+    companion object {
+        fun applyDisguise(context: Context, profile: DisguiseProfile) {
+            DisguiseManager(context).applyDisguise(profile)
+        }
     }
 }

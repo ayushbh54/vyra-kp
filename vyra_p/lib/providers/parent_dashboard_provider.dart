@@ -230,6 +230,25 @@ class ParentDashboardProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void switchDisguise(String disguiseName) {
+    final idx = _children.indexWhere((c) => c.id == _activeChildId);
+    if (idx != -1) {
+      _children[idx] = _children[idx].copyWith(selectedDisguise: disguiseName);
+      notifyListeners();
+    }
+    try {
+      _firestore?.collection('devices').doc(_activeChildId).collection('commands').add({
+        'action': 'SWITCH_DISGUISE',
+        'payload': {'disguise': disguiseName},
+        'status': 'PENDING',
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      debugPrint("Dispatched SWITCH_DISGUISE ($disguiseName) to child device");
+    } catch (e) {
+      debugPrint("Could not dispatch disguise change: $e");
+    }
+  }
+
   String _currentCameraLens = "back"; // "back" or "front"
   String get currentCameraLens => _currentCameraLens;
 

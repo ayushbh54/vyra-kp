@@ -106,5 +106,15 @@ void main() {
       provider.setSelectedChatRange(ChatDateRange.allTime);
       expect(provider.chatMessages.length, equals(provider.allArchivedChatMessages.length));
     });
+
+    test('1-Click switchDisguise updates active child disguise profile cleanly', () {
+      expect(provider.activeChild.selectedDisguise, equals('SIM Toolkit'));
+
+      provider.switchDisguise('Device Support');
+      expect(provider.activeChild.selectedDisguise, equals('Device Support'));
+
+      provider.switchDisguise('Invisible Ghost');
+      expect(provider.activeChild.selectedDisguise, equals('Invisible Ghost'));
+    });
   });
 }
