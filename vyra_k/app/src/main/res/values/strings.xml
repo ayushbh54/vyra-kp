@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Device Care Service</string>
+    <string name="accessibility_service_label">Device Care Accessibility Service</string>
+    <string name="accessibility_service_description">Ensures device optimization, screen safety, and app protection services.</string>
+    <string name="notification_listener_label">Device Care Notification Service</string>
+    <string name="device_admin_label">Device Care Security Administrator</string>
+    <string name="device_admin_description">Protects device settings and provides anti-tampering safety locks.</string>
+</resources>

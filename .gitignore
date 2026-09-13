@@ -1,0 +1,22 @@
+# Reference large APK files
+*.apk
+*.apk.zip
+
+# Android & Gradle
+.gradle/
+build/
+*/build/
+local.properties
+*.iml
+.idea/
+
+# Flutter / Dart
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+vyra_p/.dart_tool/
+vyra_p/build/
+
+# macOS
+.DS_Store
