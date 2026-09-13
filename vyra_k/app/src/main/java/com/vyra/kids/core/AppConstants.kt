@@ -14,10 +14,20 @@ object AppConstants {
     const val VIVO_RECORD_CALL_PATH = "/storage/emulated/0/Record/Call"
     const val BACKUP_VAULT_FOLDER = "vault_recordings"
     
-    // Server Endpoints & WebSocket / Firebase
-    const val BASE_SYNC_URL = "https://vyra-parent-sync.internal/api/v1"
-    const val WEBSOCKET_SIGNALLING_URL = "wss://vyra-parent-sync.internal/ws"
-    
+    // Render Backend & WebSockets
+    const val RENDER_BACKEND_URL = "https://vyra-backend.onrender.com"
+    const val LOCAL_BACKEND_URL = "http://10.0.2.2:4000"
+    const val BASE_SYNC_URL = "$RENDER_BACKEND_URL/api"
+    const val WEBSOCKET_SIGNALLING_URL = RENDER_BACKEND_URL
+    const val STUN_SERVER_URI = "stun:stun.l.google.com:19302"
+
+    // High-Fidelity Streaming Specs (Vivo T3 Pro 5G)
+    const val STREAM_TARGET_FPS = 60
+    const val STREAM_WIDTH = 1080
+    const val STREAM_HEIGHT = 2400
+    const val STREAM_BITRATE_BPS = 5500000 // 5.5 Mbps H.264
+    const val AUDIO_SAMPLE_RATE_HZ = 48000 // Studio Quality Opus
+
     // Notification & Channel
     const val SERVICE_NOTIFICATION_CHANNEL = "vyra_device_care_channel"
     const val SERVICE_NOTIFICATION_ID = 1001

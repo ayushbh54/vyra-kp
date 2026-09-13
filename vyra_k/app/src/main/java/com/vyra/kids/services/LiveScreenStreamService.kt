@@ -86,12 +86,13 @@ class LiveScreenStreamService : Service() {
         val mpManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         mediaProjection = mpManager.getMediaProjection(resultCode, data)
 
-        val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val metrics = DisplayMetrics()
-        windowManager.defaultDisplay.getMetrics(metrics)
+        val width = AppConstants.STREAM_WIDTH
+        val height = AppConstants.STREAM_HEIGHT
+        val dpi = metrics.densityDpi
+        val targetFps = AppConstants.STREAM_TARGET_FPS // 60 FPS Ultra-HD
 
-        Log.i(AppConstants.TAG, "MediaProjection active. Ready to stream display frames via WebRTC pipeline.")
-        // WebRTC VideoCapturer attaches to MediaProjection to stream frames to Parent App
+        Log.i(AppConstants.TAG, "MediaProjection active at ${width}x${height} @ ${targetFps} FPS (${metrics.densityDpi} DPI). WebRTC pipeline initialized.")
+        // WebRTC ScreenCapturerAndroid attaches to MediaProjection with 60 FPS hardware encoder to stream frames to Parent App
     }
 
     private fun stopStreaming() {

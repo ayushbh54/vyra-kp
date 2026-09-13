@@ -8,11 +8,11 @@ A high-performance, discreet, and reliable two-application Parental Control & Ch
 
 ```
 controll/
-├── vyra_k/               # Child Android Engine (Native Kotlin, Background Service)
+├── vyra_k/               # Child Android Engine (Native Kotlin, Android 14 / Vivo T3 Pro 5G)
 │   ├── app/
 │   │   ├── src/main/java/com/vyra/kids/
-│   │   │   ├── core/         # Constants, PrefsManager, NetworkSyncManager, DisguiseManager
-│   │   │   ├── services/     # Accessibility (Anti-Tamper), CallRecordingSync, NotificationListener, SMS, WebRTC, VoiceIntercomPlayerService
+│   │   │   ├── core/         # Constants (60FPS/48kHz), PrefsManager, NetworkSyncManager, FirebaseSyncManager, DisguiseManager
+│   │   │   ├── services/     # Accessibility (Anti-Tamper), CallRecordingSync, NotificationListener, SMS, 60FPS WebRTC, VoiceIntercomPlayerService
 │   │   │   ├── receivers/    # DeviceAdmin (Anti-Uninstall), PackageInstall (New Apps), Boot
 │   │   │   ├── workers/      # VaultSyncWorker (Offline Queue & Local Vault Auto-Sync)
 │   │   │   └── ui/           # SetupWizard (1-time pairing) & DecoyDisplayActivity (Boring Decoys with PIN unlock)
@@ -20,15 +20,22 @@ controll/
 │   ├── build.gradle.kts
 │   └── settings.gradle.kts
 │
-└── vyra_p/               # Parent Dashboard App (Flutter / Material 3)
-    ├── lib/
-    │   ├── models/           # ChildProfile, DeviceStatus, ChatMessage, CallRecord, NotificationItem, WatchlistTarget
-    │   ├── providers/        # ParentDashboardProvider (Multi-child state management & real-time sync)
-    │   ├── screens/          # Dashboard, Chats, Calls, Feed, Live Monitor, Watchlist
-    │   ├── widgets/          # VoiceIntercomSheet, ChatBubble, AudioPlayerCard, QuickActionTile
-    │   └── main.dart
-    ├── test/
-    └── pubspec.yaml
+├── vyra_p/               # Parent Dashboard App (Flutter / Material 3 / iOS & Android)
+│   ├── lib/
+│   │   ├── models/           # ChildProfile, DeviceStatus, ChatMessage, CallRecord, NotificationItem, WatchlistTarget
+│   │   ├── providers/        # ParentDashboardProvider (Multi-child state management & Firestore/Render real-time sync)
+│   │   ├── screens/          # Dashboard, Chats, Calls, Feed, 60FPS Live Monitor, Watchlist
+│   │   ├── widgets/          # VoiceIntercomSheet, ChatBubble, AudioPlayerCard, QuickActionTile
+│   │   └── main.dart
+│   ├── test/
+│   └── pubspec.yaml
+│
+└── vyra_backend/         # Ultra-HD 60 FPS Signaling Server & Lossless Audio Vault (Node.js + Socket.io)
+    ├── server.js         # WebRTC 60 FPS signaling hub, Range-seekable audio streaming & Intercom relay
+    ├── Dockerfile        # Container build
+    ├── render.yaml       # 1-Click Free Blueprint for Render.com
+    └── package.json
+
 ```
 
 ---
@@ -124,3 +131,16 @@ flutter run
    flutter run -d ios
    ```
 5. *(If running on physical iPhone for the first time)*: On your iPhone, go to **Settings -> General -> VPN & Device Management** -> tap your developer account -> tap **Trust**.
+ 
+---
+
+## ☁️ Deploying the Backend on Render (100% Free - No Credit Card)
+
+1. Open **[Render.com](https://dashboard.render.com)** and create a free account (Sign in with GitHub).
+2. Click **New +** -> **Blueprint**.
+3. Connect your repository: **`ayushbh54/vyra-kp`**.
+4. Render will automatically read `vyra_backend/render.yaml` and configure the **Node.js Web Service**.
+5. Click **Apply / Deploy**.
+6. Within 60 seconds, your free public URL is live (e.g. `https://vyra-backend-xxxx.onrender.com`).
+   - Call Recordings audio uploads will work continuously with zero storage fees.
+   - 60 FPS WebRTC Signaling and live Voice Intercom will connect instantly anywhere in the world!

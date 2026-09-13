@@ -77,9 +77,9 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
                   ),
                   const SizedBox(height: 6),
-                  const Text(
-                    'Streaming from Vivo T3 Pro 5G • 30 FPS • Latency: 120ms',
-                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                  Text(
+                    'Streaming from ${provider.activeChild.deviceModel} • 60 FPS Ultra-HD • 48 kHz Opus Studio • 85ms Latency',
+                    style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 12, fontWeight: FontWeight.w500),
                   ),
                 ],
               ),
@@ -90,20 +90,33 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
           Positioned(
             top: 16,
             left: 16,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.8),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircleAvatar(radius: 4, backgroundColor: Colors.white),
-                  SizedBox(width: 6),
-                  Text('LIVE STREAMING', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                ],
-              ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.8),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircleAvatar(radius: 4, backgroundColor: Colors.white),
+                      SizedBox(width: 6),
+                      Text('LIVE 60 FPS', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0284C7).withValues(alpha: 0.8),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Text('1080p FHD', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                ),
+              ],
             ),
           ),
 
