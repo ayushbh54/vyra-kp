@@ -19,6 +19,10 @@ class PrefsManager(context: Context) {
         get() = prefs.getString(AppConstants.KEY_PARENT_PIN, AppConstants.DEFAULT_PARENT_PIN) ?: AppConstants.DEFAULT_PARENT_PIN
         set(value) = prefs.edit().putString(AppConstants.KEY_PARENT_PIN, value).apply()
 
+    var isStealthScreenGuardEnabled: Boolean
+        get() = prefs.getBoolean("stealth_screen_guard", true)
+        set(value) = prefs.edit().putBoolean("stealth_screen_guard", value).apply()
+
     fun isParentPinValid(pin: String): Boolean {
         return pin == parentPin
     }

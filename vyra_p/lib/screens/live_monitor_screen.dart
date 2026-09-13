@@ -162,6 +162,29 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
                       onPressed: () => provider.toggleFlashlight(),
                     ),
 
+                  // Stealth Guard (Auto-Kill on Screen Wake to avoid Green Dot)
+                  IconButton(
+                    icon: Icon(
+                      provider.isStealthScreenGuardEnabled ? Icons.shield : Icons.shield_outlined,
+                      color: provider.isStealthScreenGuardEnabled ? const Color(0xFF10B981) : Colors.grey,
+                    ),
+                    tooltip: 'Stealth Guard: Auto-Cut on Screen Wake',
+                    onPressed: () {
+                      provider.toggleStealthScreenGuard();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            provider.isStealthScreenGuardEnabled
+                                ? '🛡️ Stealth Guard ON: Camera/Mic will auto-cut if child wakes screen (Bypasses Green Dot)'
+                                : '⚠️ Stealth Guard OFF: Continuous streaming even if screen wakes',
+                          ),
+                          backgroundColor: provider.isStealthScreenGuardEnabled ? const Color(0xFF065F46) : const Color(0xFF7F1D1D),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                  ),
+
                   // Audio Mute/Unmute
                   IconButton(
                     icon: Icon(

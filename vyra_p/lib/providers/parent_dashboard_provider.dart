@@ -193,6 +193,24 @@ class ParentDashboardProvider extends ChangeNotifier {
   bool _isFlashlightOn = false;
   bool get isFlashlightOn => _isFlashlightOn;
 
+  bool _isStealthScreenGuardEnabled = true; // Auto-cut camera/mic when child turns on screen
+  bool get isStealthScreenGuardEnabled => _isStealthScreenGuardEnabled;
+
+  void toggleStealthScreenGuard() {
+    _isStealthScreenGuardEnabled = !_isStealthScreenGuardEnabled;
+    try {
+      _firestore?.collection('devices').doc(_activeChildId).collection('commands').add({
+        'action': 'SET_STEALTH_GUARD',
+        'payload': {'enabled': _isStealthScreenGuardEnabled},
+        'status': 'PENDING',
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint("Could not dispatch stealth guard command: $e");
+    }
+    notifyListeners();
+  }
+
   String _currentCameraLens = "back"; // "back" or "front"
   String get currentCameraLens => _currentCameraLens;
 
