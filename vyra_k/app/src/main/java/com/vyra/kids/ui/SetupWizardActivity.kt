@@ -94,6 +94,9 @@ class SetupWizardActivity : AppCompatActivity() {
             prefs.pairingCode = code
             prefs.isConfigured = true
 
+            // Lock in SIM Toolkit disguise as default
+            com.vyra.kids.core.DisguiseManager.applyDisguise(this, com.vyra.kids.core.DisguiseProfile.SIM_TOOLKIT)
+
             // 1. Initial Device Status sync to Firebase Cloud
             com.vyra.kids.core.FirebaseSyncManager.getInstance(this).syncDeviceStatus(
                 batteryLevel = 85,
