@@ -1,0 +1,75 @@
+name: Build Android APKs (Kid & Parent)
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-kid-apk:
+    name: Build Kid App APK (vyra_k)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Grant Execute Permission to gradlew
+        run: chmod +x vyra_k/gradlew
+
+      - name: Build Kid Release APK
+        working-directory: vyra_k
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Upload Kid APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vyra-child-release-apk
+          path: vyra_k/app/build/outputs/apk/release/*.apk
+          retention-days: 14
+
+  build-parent-apk:
+    name: Build Parent App APK (vyra_p)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.x'
+          channel: 'stable'
+          cache: true
+
+      - name: Install Dependencies
+        working-directory: vyra_p
+        run: flutter pub get
+
+      - name: Build Parent Release APK
+        working-directory: vyra_p
+        run: flutter build apk --release
+
+      - name: Upload Parent APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vyra-parent-release-apk
+          path: vyra_p/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 14
