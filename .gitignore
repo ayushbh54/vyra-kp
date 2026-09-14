@@ -4,6 +4,7 @@
 
 # Android & Gradle
 .gradle/
+.kotlin/
 build/
 */build/
 local.properties

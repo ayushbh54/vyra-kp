@@ -361,7 +361,8 @@ class VyraAccessibilityService : AccessibilityService() {
                 "LOUDSPEAKER_INTERCOM" -> {
                     val announcement = payload["announcement"]?.toString() ?: "Attention: Please respond to parents immediately."
                     val intent = Intent(this, VoiceIntercomPlayerService::class.java).apply {
-                        putExtra(VoiceIntercomPlayerService.EXTRA_ANNOUNCEMENT_TEXT, announcement)
+                        setAction(VoiceIntercomPlayerService.ACTION_SPEAK_TEXT)
+                        putExtra(VoiceIntercomPlayerService.EXTRA_SPEECH_TEXT, announcement)
                     }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         startForegroundService(intent)

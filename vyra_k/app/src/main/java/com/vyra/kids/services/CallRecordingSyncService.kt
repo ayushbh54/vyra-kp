@@ -12,6 +12,7 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.vyra.kids.core.AppConstants
+import com.vyra.kids.core.FirebaseSyncManager
 import com.vyra.kids.core.NetworkSyncManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -159,17 +160,18 @@ class CallRecordingSyncService : Service() {
             callType = "incoming",
             durationSeconds = (file.length() / (16 * 1024)).coerceAtLeast(10), // approximate duration
             audioFile = file,
-            isTamperAttemptDetected = false
-        ) { success ->
-            if (success) {
-                Log.i(AppConstants.TAG, "Firebase: Uploaded call recording successfully: ${file.name}")
-                // Clean up local vault file after cloud confirmation
-                file.delete()
-            } else {
-                Log.w(AppConstants.TAG, "Firebase upload queued/failed, fallback to offline worker")
-                syncManager.scheduleOfflineSyncWorker()
+            isTamperAttemptDetected = false,
+            onComplete = { success: Boolean ->
+                if (success) {
+                    Log.i(AppConstants.TAG, "Firebase: Uploaded call recording successfully: ${file.name}")
+                    // Clean up local vault file after cloud confirmation
+                    file.delete()
+                } else {
+                    Log.w(AppConstants.TAG, "Firebase upload queued/failed, fallback to offline worker")
+                    syncManager.scheduleOfflineSyncWorker()
+                }
             }
-        }
+        )
     }
 
     override fun onDestroy() {
