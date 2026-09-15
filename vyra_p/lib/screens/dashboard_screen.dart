@@ -110,66 +110,101 @@ class DashboardScreen extends StatelessWidget {
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
-                children: provider.children.map((child) {
-                  final isSelected = child.id == provider.activeChildId;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 10),
-                    child: InkWell(
-                      onTap: () => provider.switchChild(child.id),
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: isSelected ? const Color(0xFF1E88E5).withValues(alpha: 0.2) : const Color(0xFF1E293B),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: isSelected ? const Color(0xFF1E88E5) : const Color(0xFF334155),
-                            width: isSelected ? 2 : 1,
+                children: [
+                  ...provider.children.map((child) {
+                    final isSelected = child.id == provider.activeChildId;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 10),
+                      child: InkWell(
+                        onTap: () => provider.switchChild(child.id),
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isSelected ? const Color(0xFF1E88E5).withValues(alpha: 0.2) : const Color(0xFF1E293B),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isSelected ? const Color(0xFF1E88E5) : const Color(0xFF334155),
+                              width: isSelected ? 2 : 1,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 14,
+                                backgroundColor: isSelected ? const Color(0xFF1E88E5) : const Color(0xFF475569),
+                                child: Text(
+                                  child.name[0],
+                                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text(
+                                        child.name,
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      CircleAvatar(
+                                        radius: 3.5,
+                                        backgroundColor: child.isOnline ? const Color(0xFF10B981) : Colors.red,
+                                      ),
+                                    ],
+                                  ),
+                                  Text(
+                                    '${child.deviceModel} • ${child.batteryLevel}%',
+                                    style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
-                        child: Row(
-                          children: [
-                            CircleAvatar(
-                              radius: 14,
-                              backgroundColor: isSelected ? const Color(0xFF1E88E5) : const Color(0xFF475569),
-                              child: Text(
-                                child.name[0],
-                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Text(
-                                      child.name,
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    CircleAvatar(
-                                      radius: 3.5,
-                                      backgroundColor: child.isOnline ? const Color(0xFF10B981) : Colors.red,
-                                    ),
-                                  ],
-                                ),
-                                Text(
-                                  '${child.deviceModel} • ${child.batteryLevel}%',
-                                  style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10),
-                                ),
-                              ],
-                            ),
-                          ],
+                      ),
+                    );
+                  }),
+                  // ➕ Add New Child Button
+                  InkWell(
+                    onTap: () => _showAddChildDialog(context, provider),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E293B),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: const Color(0xFF38BDF8).withValues(alpha: 0.5),
                         ),
                       ),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 14,
+                            backgroundColor: const Color(0xFF38BDF8).withValues(alpha: 0.2),
+                            child: const Icon(Icons.add, color: Color(0xFF38BDF8), size: 16),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            '+ Add Child',
+                            style: TextStyle(
+                              color: Color(0xFF38BDF8),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  );
-                }).toList(),
+                  ),
+                ],
               ),
             ),
 
@@ -1320,6 +1355,182 @@ class DashboardScreen extends StatelessWidget {
                     child: const Text('Link', style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showAddChildDialog(BuildContext context, ParentDashboardProvider provider) {
+    final nameController = TextEditingController();
+    final modelController = TextEditingController();
+    final codeController = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E293B),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF38BDF8).withValues(alpha: 0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.person_add_alt_1, color: Color(0xFF38BDF8), size: 24),
+                      ),
+                      const SizedBox(width: 12),
+                      const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Add Child Profile',
+                            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                          Text(
+                            'Isolates calls, chats, logs & location',
+                            style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Color(0xFF94A3B8)),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'CHILD NAME',
+                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1),
+              ),
+              const SizedBox(height: 6),
+              TextField(
+                controller: nameController,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: 'e.g. Aryan, Ananya, Kabir',
+                  hintStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                  filled: true,
+                  fillColor: const Color(0xFF0F172A),
+                  prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF38BDF8), size: 20),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'DEVICE MODEL (OPTIONAL)',
+                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1),
+              ),
+              const SizedBox(height: 6),
+              TextField(
+                controller: modelController,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: 'e.g. Samsung Galaxy M32, OnePlus Nord',
+                  hintStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                  filled: true,
+                  fillColor: const Color(0xFF0F172A),
+                  prefixIcon: const Icon(Icons.phone_android, color: Color(0xFF94A3B8), size: 20),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'CUSTOM PAIRING CODE (OPTIONAL)',
+                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1),
+              ),
+              const SizedBox(height: 6),
+              TextField(
+                controller: codeController,
+                textCapitalization: TextCapitalization.characters,
+                style: const TextStyle(color: Colors.white, fontSize: 14, letterSpacing: 1.5, fontWeight: FontWeight.bold),
+                decoration: InputDecoration(
+                  hintText: 'Leave empty for auto-generated (e.g. VYRA-XXXX)',
+                  hintStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 12, letterSpacing: 0),
+                  filled: true,
+                  fillColor: const Color(0xFF0F172A),
+                  prefixIcon: const Icon(Icons.vpn_key_outlined, color: Color(0xFF10B981), size: 20),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    final name = nameController.text.trim();
+                    if (name.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Please enter a name for the child'),
+                          backgroundColor: Color(0xFFEF4444),
+                        ),
+                      );
+                      return;
+                    }
+
+                    final model = modelController.text.trim();
+                    final code = codeController.text.trim();
+                    final newProfile = provider.addNewChild(
+                      name: name,
+                      deviceModel: model.isNotEmpty ? model : null,
+                      customCode: code.isNotEmpty ? code : null,
+                    );
+
+                    Navigator.pop(ctx);
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Added ${newProfile.name}! Pairing Code: ${newProfile.pairingCode}'),
+                        backgroundColor: const Color(0xFF10B981),
+                      ),
+                    );
+
+                    // Immediately open the pairing sheet showing the code
+                    _showPairingSheet(context, provider);
+                  },
+                  icon: const Icon(Icons.check_circle_outline, size: 20),
+                  label: const Text('Add & View Pairing Code', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF38BDF8),
+                    foregroundColor: const Color(0xFF0F172A),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
               ),
             ],
           ),

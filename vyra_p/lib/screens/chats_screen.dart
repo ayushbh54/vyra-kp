@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../providers/parent_dashboard_provider.dart';
 import '../models/chat_message.dart';
-import '../widgets/chat_bubble.dart';
+import '../models/chat_conversation.dart';
+import 'chat_conversation_detail_screen.dart';
 
 class ChatsScreen extends StatefulWidget {
   const ChatsScreen({super.key});
@@ -24,9 +26,31 @@ class _ChatsScreenState extends State<ChatsScreen> {
       final matchesApp = msg.appType == selectedApp;
       final matchesSearch = _searchQuery.isEmpty ||
           msg.messageText.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          msg.contactName.toLowerCase().contains(_searchQuery.toLowerCase());
+          msg.contactName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          msg.contactIdentifier.toLowerCase().contains(_searchQuery.toLowerCase());
       return matchesApp && matchesSearch;
     }).toList();
+
+    // Group messages by contact thread (like WhatsApp / Telegram inbox)
+    final Map<String, List<ChatMessage>> grouped = {};
+    for (final msg in filteredMessages) {
+      final key = msg.contactIdentifier.isNotEmpty ? msg.contactIdentifier : msg.contactName;
+      grouped.putIfAbsent(key, () => []).add(msg);
+    }
+
+    final conversations = grouped.entries.map((entry) {
+      final msgs = entry.value;
+      msgs.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      return ChatConversation(
+        contactIdentifier: entry.key,
+        contactName: msgs.first.contactName,
+        appType: msgs.first.appType,
+        messages: msgs,
+        isWatchlistTarget: msgs.any((m) => m.isWatchlistTarget),
+      );
+    }).toList();
+
+    conversations.sort((a, b) => b.lastMessage.timestamp.compareTo(a.lastMessage.timestamp));
 
     final totalAppArchived = provider.allArchivedChatMessages
         .where((m) => m.appType == selectedApp)
@@ -183,13 +207,13 @@ class _ChatsScreenState extends State<ChatsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Showing: ${selectedRange.label} (${filteredMessages.length} messages)',
+                      'Showing: ${selectedRange.label} (${conversations.length} contacts • ${filteredMessages.length} msgs)',
                       style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
                     ),
                     Text(
                       totalAppArchived > filteredMessages.length
                           ? '${totalAppArchived - filteredMessages.length} older messages available in deep vault'
-                          : 'All captured records displayed',
+                          : 'Tap any contact to view full chat history',
                       style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10),
                     ),
                   ],
@@ -211,33 +235,50 @@ class _ChatsScreenState extends State<ChatsScreen> {
             ),
           ),
 
-          // Chat Feed
+          // Contact Conversation Threads (WhatsApp/Telegram-style Inbox)
           Expanded(
-            child: filteredMessages.isEmpty
+            child: conversations.isEmpty
                 ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.chat_bubble_outline, color: Color(0xFF64748B), size: 40),
+                        const Icon(Icons.chat_bubble_outline, color: Color(0xFF64748B), size: 44),
                         const SizedBox(height: 12),
                         Text(
-                          'No messages found within ${selectedRange.label}.',
-                          style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                          'No conversations found in ${selectedApp.displayName} within ${selectedRange.label}.',
+                          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
                         ),
-                        const SizedBox(height: 8),
-                        TextButton(
+                        const SizedBox(height: 10),
+                        ElevatedButton.icon(
                           onPressed: () => provider.setSelectedChatRange(ChatDateRange.allTime),
-                          child: const Text('Switch to "All Time" View', style: TextStyle(color: Color(0xFF38BDF8), fontSize: 12)),
+                          icon: const Icon(Icons.all_inclusive, size: 16),
+                          label: const Text('Switch to "All Time" View', style: TextStyle(fontSize: 12)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF1E88E5),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
                         ),
                       ],
                     ),
                   )
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    itemCount: filteredMessages.length,
+                : ListView.separated(
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                    itemCount: conversations.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
-                      final msg = filteredMessages[index];
-                      return ChatBubble(message: msg);
+                      final conv = conversations[index];
+                      return _ConversationThreadCard(
+                        conversation: conv,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ChatConversationDetailScreen(conversation: conv),
+                            ),
+                          );
+                        },
+                      );
                     },
                   ),
           ),
@@ -401,6 +442,240 @@ class _DayChoiceChip extends StatelessWidget {
             color: isSelected ? Colors.white : const Color(0xFF94A3B8),
             fontSize: 11,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ConversationThreadCard extends StatelessWidget {
+  final ChatConversation conversation;
+  final VoidCallback onTap;
+
+  const _ConversationThreadCard({
+    required this.conversation,
+    required this.onTap,
+  });
+
+  Color _getAppColor(AppType app) {
+    switch (app) {
+      case AppType.whatsApp:
+        return const Color(0xFF25D366);
+      case AppType.telegram:
+        return const Color(0xFF2AABEE);
+      case AppType.instagram:
+        return const Color(0xFFE1306C);
+      case AppType.snapchat:
+        return const Color(0xFFFFFC00);
+      case AppType.sms:
+        return const Color(0xFF38BDF8);
+    }
+  }
+
+  String _formatTime(DateTime time) {
+    final now = DateTime.now();
+    if (time.year == now.year && time.month == now.month && time.day == now.day) {
+      return DateFormat('hh:mm a').format(time);
+    } else if (now.difference(time).inDays < 7) {
+      return DateFormat('EEE').format(time);
+    } else {
+      return DateFormat('dd/MM').format(time);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lastMsg = conversation.lastMessage;
+    final appColor = _getAppColor(conversation.appType);
+    final isWatchlist = conversation.isWatchlistTarget;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isWatchlist
+              ? Colors.redAccent.withValues(alpha: 0.6)
+              : const Color(0xFF334155),
+          width: isWatchlist ? 1.5 : 1,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                // Avatar / DP with App Icon badge
+                Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: 24,
+                      backgroundColor: isWatchlist
+                          ? Colors.redAccent.withValues(alpha: 0.2)
+                          : appColor.withValues(alpha: 0.18),
+                      child: Text(
+                        conversation.contactName.isNotEmpty
+                            ? conversation.contactName[0].toUpperCase()
+                            : '?',
+                        style: TextStyle(
+                          color: isWatchlist ? Colors.redAccent : appColor,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(2.5),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF0F172A),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          conversation.appType.iconAsset,
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 12),
+
+                // Name & Last Message snippet
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              conversation.contactName,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (isWatchlist) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: Colors.redAccent.withValues(alpha: 0.25),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'WATCHLIST',
+                                style: TextStyle(
+                                  color: Colors.redAccent,
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      // Subtitle / preview
+                      if (lastMsg.isDeletedBackup)
+                        Row(
+                          children: [
+                            const Icon(Icons.history_toggle_off, size: 13, color: Color(0xFFFB7185)),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                '[Deleted]: ${lastMsg.messageText}',
+                                style: const TextStyle(
+                                  color: Color(0xFFFB7185),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        )
+                      else if (!lastMsg.isIncoming)
+                        Row(
+                          children: [
+                            const Icon(Icons.done_all, size: 14, color: Color(0xFF38BDF8)),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                'You: ${lastMsg.messageText}',
+                                style: const TextStyle(
+                                  color: Color(0xFF94A3B8),
+                                  fontSize: 12,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        )
+                      else
+                        Text(
+                          lastMsg.messageText,
+                          style: const TextStyle(
+                            color: Color(0xFF94A3B8),
+                            fontSize: 12,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+
+                // Trailing: Time + Message count pill + Chevron
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      _formatTime(lastMsg.timestamp),
+                      style: const TextStyle(color: Color(0xFF64748B), fontSize: 11),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0F172A),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFF334155)),
+                          ),
+                          child: Text(
+                            '${conversation.totalMessages}',
+                            style: TextStyle(
+                              color: appColor,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.chevron_right, color: Color(0xFF64748B), size: 16),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
