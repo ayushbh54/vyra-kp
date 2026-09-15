@@ -10,5 +10,3 @@ services:
         value: production
       - key: PORT
         value: 10000
-      - key: GEMINI_API_KEY
-        value: AQ.Ab8RN6KrozoZpHmkW4uR_HJW4Ao921VkUkhpAtJbeNV8hjQ8Hw
