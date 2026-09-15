@@ -23,6 +23,7 @@ class ParentDashboardProvider extends ChangeNotifier {
   final List<ChildProfile> _children = [
     const ChildProfile(
       id: "child_1",
+      pairingCode: "VYRA-8921",
       name: "Aryan",
       deviceModel: "Vivo T3 Pro 5G",
       batteryLevel: 84,
@@ -32,6 +33,7 @@ class ParentDashboardProvider extends ChangeNotifier {
     ),
     const ChildProfile(
       id: "child_2",
+      pairingCode: "VYRA-4310",
       name: "Ananya",
       deviceModel: "Samsung Galaxy M34",
       batteryLevel: 62,
@@ -45,11 +47,38 @@ class ParentDashboardProvider extends ChangeNotifier {
   String _activeChildId = "child_1";
   String get activeChildId => _activeChildId;
 
+  String get activePairingCode => activeChild.pairingCode;
+
   ChildProfile get activeChild =>
       _children.firstWhere((c) => c.id == _activeChildId, orElse: () => _children.first);
 
   void switchChild(String childId) {
     _activeChildId = childId;
+    _initFirebaseListeners();
+    notifyListeners();
+  }
+
+  void linkChildWithCode(String code, {String? name}) {
+    final cleanCode = code.trim().toUpperCase();
+    if (cleanCode.isEmpty) return;
+
+    final existingIdx = _children.indexWhere((c) => c.id == cleanCode || c.pairingCode == cleanCode);
+    if (existingIdx != -1) {
+      _activeChildId = _children[existingIdx].id;
+    } else {
+      final newChild = ChildProfile(
+        id: cleanCode,
+        pairingCode: cleanCode,
+        name: name ?? "Child Device ($cleanCode)",
+        deviceModel: "Android Phone",
+        batteryLevel: 100,
+        isOnline: true,
+        locationAddress: "Connected via $cleanCode",
+        selectedDisguise: "SIM Toolkit",
+      );
+      _children.add(newChild);
+      _activeChildId = cleanCode;
+    }
     _initFirebaseListeners();
     notifyListeners();
   }
@@ -62,10 +91,12 @@ class ParentDashboardProvider extends ChangeNotifier {
       _chatsSub?.cancel();
       _notifsSub?.cancel();
 
+      final targetDocId = activePairingCode.isNotEmpty ? activePairingCode : _activeChildId;
+
       // 1. Listen to active child device telemetry
       _deviceSub = _firestore
           ?.collection('devices')
-          .doc(_activeChildId)
+          .doc(targetDocId)
           .snapshots()
           .listen((snapshot) {
         if (snapshot.exists && snapshot.data() != null) {
@@ -89,7 +120,7 @@ class ParentDashboardProvider extends ChangeNotifier {
       // 2. Listen to call records
       _callsSub = _firestore
           ?.collection('calls')
-          .doc(_activeChildId)
+          .doc(targetDocId)
           .collection('records')
           .orderBy('timestamp', descending: true)
           .snapshots()
@@ -124,7 +155,7 @@ class ParentDashboardProvider extends ChangeNotifier {
       // 3. Listen to chats
       _chatsSub = _firestore
           ?.collection('chats')
-          .doc(_activeChildId)
+          .doc(targetDocId)
           .collection('messages')
           .orderBy('timestamp', descending: true)
           .snapshots()

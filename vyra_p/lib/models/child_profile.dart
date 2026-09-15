@@ -1,5 +1,6 @@
 class ChildProfile {
   final String id;
+  final String pairingCode;
   final String name;
   final String deviceModel;
   final int batteryLevel;
@@ -9,6 +10,7 @@ class ChildProfile {
 
   const ChildProfile({
     required this.id,
+    this.pairingCode = 'VYRA-8921',
     required this.name,
     required this.deviceModel,
     required this.batteryLevel,
@@ -19,6 +21,7 @@ class ChildProfile {
 
   ChildProfile copyWith({
     String? id,
+    String? pairingCode,
     String? name,
     String? deviceModel,
     int? batteryLevel,
@@ -28,6 +31,7 @@ class ChildProfile {
   }) {
     return ChildProfile(
       id: id ?? this.id,
+      pairingCode: pairingCode ?? this.pairingCode,
       name: name ?? this.name,
       deviceModel: deviceModel ?? this.deviceModel,
       batteryLevel: batteryLevel ?? this.batteryLevel,
