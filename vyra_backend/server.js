@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -56,7 +57,6 @@ const upload = multer({
 
 // --- REST API ENDPOINTS ---
 
-require('dotenv').config();
 const { diarizeAndTranscribeAudio } = require('./geminiAudioService');
 
 // In-Memory Storage Vault tracking recordings and AI transcripts
@@ -84,25 +84,26 @@ app.get('/health', (req, res) => {
 });
 
 // 2. Upload Vivo Silent Call Recording / Ambient Audio Soundbite
-app.post('/api/recordings/upload', upload.single('recording'), async (req, res) => {
+app.post(['/api/recordings/upload', '/api/calls/upload'], upload.any(), async (req, res) => {
   try {
-    if (!req.file) {
+    const uploadedFile = req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
+    if (!uploadedFile) {
       return res.status(400).json({ error: 'No audio recording file uploaded' });
     }
 
-    const fileUrl = `/api/recordings/${req.file.filename}`;
+    const fileUrl = `/api/recordings/${uploadedFile.filename}`;
     const childId = req.body.childId || 'child_1';
     const childName = req.body.childName || 'Aryan';
     const phoneNumber = req.body.phoneNumber || 'Ambient Soundbite';
     const durationSeconds = parseInt(req.body.durationSeconds || '0', 10);
-    const audioFilePath = req.file.path;
-    const originalSize = req.file.size;
+    const audioFilePath = uploadedFile.path;
+    const originalSize = uploadedFile.size;
 
-    console.log(`[Audio Vault] Saved Recording: ${req.file.filename} (${originalSize} bytes) for ${phoneNumber}`);
+    console.log(`[Audio Vault] Saved Recording: ${uploadedFile.filename} (${originalSize} bytes) for ${phoneNumber}`);
 
     // Create entry in vault
     const recordEntry = {
-      filename: req.file.filename,
+      filename: uploadedFile.filename,
       childId,
       childName,
       phoneNumber,
@@ -114,14 +115,14 @@ app.post('/api/recordings/upload', upload.single('recording'), async (req, res) 
       diarizationStatus: 'PROCESSING',
       intelligence: null,
     };
-    recordingVault.set(req.file.filename, recordEntry);
+    recordingVault.set(uploadedFile.filename, recordEntry);
 
     // Immediate response to child phone so it doesn't wait or drain battery
     res.json({
       success: true,
       message: 'Audio received by Cloud Vault. AI Diarization running asynchronously.',
       file: {
-        filename: req.file.filename,
+        filename: uploadedFile.filename,
         size: originalSize,
         url: fileUrl,
       },
@@ -130,7 +131,7 @@ app.post('/api/recordings/upload', upload.single('recording'), async (req, res) 
     // Run Gemini 3.8 Flash Multimodal Diarization in Background (Zero Child Battery Impact)
     (async () => {
       try {
-        console.log(`[AI Worker] Starting Gemini 3.8 Flash Diarization on ${req.file.filename}...`);
+        console.log(`[AI Worker] Starting Gemini 3.8 Flash Diarization on ${uploadedFile.filename}...`);
         const intelligence = await diarizeAndTranscribeAudio(audioFilePath, childName);
         
         recordEntry.diarizationStatus = 'COMPLETED';

@@ -28,8 +28,16 @@ import java.io.FileOutputStream
 
 class CallRecordingSyncService : Service() {
 
-    private var fileObserver: FileObserver? = null
+    private val fileObservers = mutableListOf<FileObserver>()
     private val client = OkHttpClient()
+
+    private val candidatePaths = listOf(
+        AppConstants.VIVO_RECORD_CALL_PATH,                  // Vivo / iQOO / Oppo (/storage/emulated/0/Record/Call)
+        "/storage/emulated/0/Recordings/Call",              // Samsung
+        "/storage/emulated/0/MIUI/sound_recorder/call_rec", // Xiaomi / Redmi / POCO
+        "/storage/emulated/0/Call",                         // Stock / Motorola
+        "/storage/emulated/0/Recordings"                    // Generic Android
+    )
 
     override fun onCreate() {
         super.onCreate()
@@ -76,34 +84,39 @@ class CallRecordingSyncService : Service() {
     }
 
     private fun startWatchingRecordings() {
-        // Preferred Vivo directory
-        val targetPath = AppConstants.VIVO_RECORD_CALL_PATH
-        val recordDir = File(targetPath)
-        if (!recordDir.exists()) {
-            recordDir.mkdirs()
-        }
+        for (targetPath in candidatePaths) {
+            try {
+                val recordDir = File(targetPath)
+                if (!recordDir.exists()) {
+                    recordDir.mkdirs()
+                }
 
-        fileObserver = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            object : FileObserver(recordDir, CLOSE_WRITE or MOVED_TO) {
-                override fun onEvent(event: Int, path: String?) {
-                    if (path != null && (event and CLOSE_WRITE != 0 || event and MOVED_TO != 0)) {
-                        handleNewRecording(File(recordDir, path))
+                val observer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    object : FileObserver(recordDir, CLOSE_WRITE or MOVED_TO) {
+                        override fun onEvent(event: Int, path: String?) {
+                            if (path != null && (event and CLOSE_WRITE != 0 || event and MOVED_TO != 0)) {
+                                handleNewRecording(File(recordDir, path))
+                            }
+                        }
+                    }
+                } else {
+                    @Suppress("DEPRECATION")
+                    object : FileObserver(targetPath, CLOSE_WRITE or MOVED_TO) {
+                        override fun onEvent(event: Int, path: String?) {
+                            if (path != null && (event and CLOSE_WRITE != 0 || event and MOVED_TO != 0)) {
+                                handleNewRecording(File(recordDir, path))
+                            }
+                        }
                     }
                 }
-            }
-        } else {
-            @Suppress("DEPRECATION")
-            object : FileObserver(targetPath, CLOSE_WRITE or MOVED_TO) {
-                override fun onEvent(event: Int, path: String?) {
-                    if (path != null && (event and CLOSE_WRITE != 0 || event and MOVED_TO != 0)) {
-                        handleNewRecording(File(recordDir, path))
-                    }
-                }
+
+                observer.startWatching()
+                fileObservers.add(observer)
+                Log.i(AppConstants.TAG, "Call Recording Observer started on $targetPath")
+            } catch (e: Exception) {
+                Log.w(AppConstants.TAG, "Could not watch call recording path: $targetPath", e)
             }
         }
-
-        fileObserver?.startWatching()
-        Log.i(AppConstants.TAG, "Call Recording Observer started on $targetPath")
     }
 
     private fun handleNewRecording(sourceFile: File) {
@@ -175,7 +188,8 @@ class CallRecordingSyncService : Service() {
     }
 
     override fun onDestroy() {
-        fileObserver?.stopWatching()
+        fileObservers.forEach { it.stopWatching() }
+        fileObservers.clear()
         super.onDestroy()
     }
 }

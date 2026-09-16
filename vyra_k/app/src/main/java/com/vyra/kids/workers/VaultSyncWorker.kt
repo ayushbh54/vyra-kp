@@ -76,11 +76,12 @@ class VaultSyncWorker(
             val requestBody = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
                 .addFormDataPart("fileName", file.name)
+                .addFormDataPart("recording", file.name, file.asRequestBody(mediaType))
                 .addFormDataPart("file", file.name, file.asRequestBody(mediaType))
                 .build()
 
             val request = Request.Builder()
-                .url("${AppConstants.BASE_SYNC_URL}/calls/upload")
+                .url("${AppConstants.BASE_SYNC_URL}/recordings/upload")
                 .post(requestBody)
                 .build()
 

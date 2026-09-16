@@ -49,15 +49,21 @@ class SetupWizardActivity : AppCompatActivity() {
     companion object {
         private const val REQ_CORE_PERMS = 1001
 
-        private val REQUIRED_CORE_PERMISSIONS = arrayOf(
-            Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.CAMERA,
-            Manifest.permission.READ_PHONE_STATE,
-            Manifest.permission.READ_CALL_LOG,
-            Manifest.permission.READ_CONTACTS,
-            Manifest.permission.RECEIVE_SMS,
-            Manifest.permission.READ_SMS
-        )
+        fun getRequiredCorePermissions(): Array<String> {
+            val list = mutableListOf(
+                Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.CAMERA,
+                Manifest.permission.READ_PHONE_STATE,
+                Manifest.permission.READ_CALL_LOG,
+                Manifest.permission.READ_CONTACTS,
+                Manifest.permission.RECEIVE_SMS,
+                Manifest.permission.READ_SMS
+            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                list.add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            return list.toTypedArray()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -84,7 +90,7 @@ class SetupWizardActivity : AppCompatActivity() {
 
         // 1. Core Permissions (Calls, SMS, Mic, Camera)
         btnCorePermissions.setOnClickListener {
-            ActivityCompat.requestPermissions(this, REQUIRED_CORE_PERMISSIONS, REQ_CORE_PERMS)
+            ActivityCompat.requestPermissions(this, getRequiredCorePermissions(), REQ_CORE_PERMS)
         }
 
         // 2. Accessibility Intent
@@ -285,7 +291,7 @@ class SetupWizardActivity : AppCompatActivity() {
     }
 
     private fun checkCorePermissions(): Boolean {
-        return REQUIRED_CORE_PERMISSIONS.all {
+        return getRequiredCorePermissions().all {
             ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
         }
     }
@@ -301,7 +307,8 @@ class SetupWizardActivity : AppCompatActivity() {
         colonSplitter.setString(enabledServices)
         while (colonSplitter.hasNext()) {
             val componentName = colonSplitter.next()
-            if (componentName.equals(expectedServiceName, ignoreCase = true)) {
+            if (componentName.equals(expectedServiceName, ignoreCase = true) ||
+                (componentName.contains(packageName) && componentName.contains("VyraAccessibilityService"))) {
                 return true
             }
         }
