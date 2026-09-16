@@ -29,5 +29,15 @@ service cloud.firestore {
     match /watchlists/{childId}/targets/{targetId} {
       allow read, write: if true;
     }
+
+    // Camera preview snapshots and 1-view snaps
+    match /snapshots/{childId}/items/{itemId} {
+      allow read, write: if true;
+    }
+
+    // Screen-off ambient voice logs
+    match /ambient/{childId}/logs/{logId} {
+      allow read, write: if true;
+    }
   }
 }

@@ -38,10 +38,10 @@ class FirebaseSyncManager private constructor(private val context: Context) {
         location: String = "Live GPS Active"
     ) {
         try {
+            val dynamicModel = "${android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${android.os.Build.MODEL}"
             val statusData = hashMapOf(
                 "id" to childId,
-                "name" to "Aryan",
-                "deviceModel" to "Vivo T3 Pro 5G",
+                "deviceModel" to dynamicModel,
                 "batteryLevel" to batteryLevel,
                 "isOnline" to isOnline,
                 "selectedDisguise" to disguise,

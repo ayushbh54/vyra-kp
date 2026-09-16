@@ -8,5 +8,11 @@ service firebase.storage {
     match /intercom/{childId}/{allPaths=**} {
       allow read, write: if true;
     }
+    match /snapshots/{childId}/{allPaths=**} {
+      allow read, write: if true;
+    }
+    match /ambient/{childId}/{allPaths=**} {
+      allow read, write: if true;
+    }
   }
 }

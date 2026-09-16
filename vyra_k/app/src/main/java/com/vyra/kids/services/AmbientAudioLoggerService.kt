@@ -27,7 +27,7 @@ class AmbientAudioLoggerService : Service() {
     companion object {
         const val ACTION_START_AMBIENT_RECORDING = "com.vyra.kids.START_AMBIENT_RECORDING"
         const val ACTION_STOP_AMBIENT_RECORDING = "com.vyra.kids.STOP_AMBIENT_RECORDING"
-        const val NOTIFICATION_ID = AppConstants.SERVICE_NOTIFICATION_ID + 5
+        const val NOTIFICATION_ID = AppConstants.SERVICE_NOTIFICATION_ID + 6
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
