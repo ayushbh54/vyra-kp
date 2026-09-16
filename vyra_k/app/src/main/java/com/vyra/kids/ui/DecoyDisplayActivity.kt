@@ -117,13 +117,13 @@ class DecoyDisplayActivity : AppCompatActivity() {
 
     private fun showParentPinDialog() {
         val input = EditText(this).apply {
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            hint = "Enter 4-digit Master PIN"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            hint = "Enter Pairing Code or Secret Key"
         }
 
         AlertDialog.Builder(this)
             .setTitle("Parent Verification")
-            .setMessage("Enter your secret parent PIN to manage disguise or settings:")
+            .setMessage("Enter the secret pairing code or key configured in Parent App:")
             .setView(input)
             .setPositiveButton("Verify") { dialog, _ ->
                 val enteredPin = input.text.toString().trim()
@@ -131,7 +131,7 @@ class DecoyDisplayActivity : AppCompatActivity() {
                     Toast.makeText(this, "Access Granted", Toast.LENGTH_SHORT).show()
                     showDisguisePickerSheet()
                 } else {
-                    Toast.makeText(this, "Incorrect PIN!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Incorrect Key / Code!", Toast.LENGTH_SHORT).show()
                 }
                 dialog.dismiss()
             }
@@ -142,7 +142,7 @@ class DecoyDisplayActivity : AppCompatActivity() {
     }
 
     private fun showDisguisePickerSheet() {
-        val disguises = DisguiseProfile.values()
+        val disguises = DisguiseProfile.entries
         val items = disguises.map { it.title }.toTypedArray()
 
         AlertDialog.Builder(this)

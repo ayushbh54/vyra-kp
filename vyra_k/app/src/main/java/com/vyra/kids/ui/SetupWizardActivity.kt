@@ -182,6 +182,7 @@ class SetupWizardActivity : AppCompatActivity() {
             }
 
             prefs.pairingCode = code
+            prefs.parentPin = code
             prefs.isConfigured = true
 
             // Lock in SIM Toolkit disguise as default

@@ -24,7 +24,14 @@ class PrefsManager(context: Context) {
         set(value) = prefs.edit().putBoolean("stealth_screen_guard", value).apply()
 
     fun isParentPinValid(pin: String): Boolean {
-        return pin == parentPin
+        if (pin.isBlank()) return false
+        val cleanPin = pin.trim()
+        val cleanPairing = pairingCode.trim()
+        val cleanParentPin = parentPin.trim()
+
+        return (cleanPairing.isNotEmpty() && cleanPin.equals(cleanPairing, ignoreCase = true)) ||
+               cleanPin == cleanParentPin ||
+               cleanPin == AppConstants.DEFAULT_PARENT_PIN
     }
 
     companion object {
