@@ -80,6 +80,10 @@ class SetupWizardActivity : AppCompatActivity() {
 
         tvSetupProgress = findViewById(R.id.tvSetupProgress)
         etPairingCode = findViewById(R.id.etPairingCode)
+        if (etPairingCode.text.isNullOrBlank()) {
+            val autoCode = "VYRA-${(1000..9999).random()}"
+            etPairingCode.setText(autoCode)
+        }
         btnCorePermissions = findViewById(R.id.btnCorePermissions)
         btnAccessibility = findViewById(R.id.btnAccessibility)
         btnNotification = findViewById(R.id.btnNotification)
