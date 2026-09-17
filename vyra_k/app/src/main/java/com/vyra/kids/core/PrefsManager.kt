@@ -12,8 +12,8 @@ class PrefsManager(context: Context) {
         set(value) = prefs.edit().putBoolean(AppConstants.KEY_IS_CONFIGURED, value).apply()
 
     var pairingCode: String
-        get() = prefs.getString(AppConstants.KEY_PAIRING_CODE, "") ?: ""
-        set(value) = prefs.edit().putString(AppConstants.KEY_PAIRING_CODE, value).apply()
+        get() = prefs.getString(AppConstants.KEY_PAIRING_CODE, "")?.trim()?.uppercase() ?: ""
+        set(value) = prefs.edit().putString(AppConstants.KEY_PAIRING_CODE, value.trim().uppercase()).apply()
 
     var parentPin: String
         get() = prefs.getString(AppConstants.KEY_PARENT_PIN, AppConstants.DEFAULT_PARENT_PIN) ?: AppConstants.DEFAULT_PARENT_PIN

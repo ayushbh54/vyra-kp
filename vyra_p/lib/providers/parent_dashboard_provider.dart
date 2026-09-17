@@ -1205,11 +1205,34 @@ class ParentDashboardProvider extends ChangeNotifier {
   void toggleRemoteCamera() {
     _isRemoteCameraActive = !_isRemoteCameraActive;
     if (_isRemoteCameraActive) _isLiveScreenActive = false;
+    try {
+      _firestore?.collection('devices').doc(_activeTargetDocId).collection('commands').add({
+        'action': _isRemoteCameraActive ? 'START_CAMERA_STREAM' : 'STOP_CAMERA_STREAM',
+        'payload': {'lens': _currentCameraLens},
+        'status': 'PENDING',
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      debugPrint("Dispatched ${_isRemoteCameraActive ? 'START_CAMERA_STREAM' : 'STOP_CAMERA_STREAM'} to child");
+    } catch (e) {
+      debugPrint("Could not dispatch camera command: $e");
+    }
     notifyListeners();
   }
 
   void switchCameraLens() {
     _currentCameraLens = (_currentCameraLens == "back") ? "front" : "back";
+    if (_isRemoteCameraActive) {
+      try {
+        _firestore?.collection('devices').doc(_activeTargetDocId).collection('commands').add({
+          'action': 'SWITCH_CAMERA_LENS',
+          'payload': {'lens': _currentCameraLens},
+          'status': 'PENDING',
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        debugPrint("Could not dispatch lens switch: $e");
+      }
+    }
     notifyListeners();
   }
 

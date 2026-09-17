@@ -179,7 +179,7 @@ class SetupWizardActivity : AppCompatActivity() {
 
         // 7. Complete Setup & Vanish
         btnCompleteSetup.setOnClickListener {
-            val code = etPairingCode.text.toString().trim()
+            val code = etPairingCode.text.toString().trim().uppercase()
             if (code.isBlank()) {
                 Toast.makeText(this, "Please enter your parent pairing code", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener

