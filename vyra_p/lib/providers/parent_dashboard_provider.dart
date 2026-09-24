@@ -41,7 +41,7 @@ class ParentDashboardProvider extends ChangeNotifier {
                   batteryLevel: 0,
                   isOnline: false,
                   locationAddress: 'Link a child device to begin',
-                  selectedDisguise: 'SIM Toolkit',
+                  selectedDisguise: 'System Toolkit',
                 ));
 
   void switchChild(String childId) {
@@ -69,7 +69,7 @@ class ParentDashboardProvider extends ChangeNotifier {
       batteryLevel: 100,
       isOnline: true,
       locationAddress: "Waiting for device setup...",
-      selectedDisguise: "SIM Toolkit",
+      selectedDisguise: "System Toolkit",
     );
     _children.add(newChild);
     _childCallRecords[newId] = [];
@@ -107,7 +107,7 @@ class ParentDashboardProvider extends ChangeNotifier {
         batteryLevel: 100,
         isOnline: true,
         locationAddress: "Connected via $cleanCode",
-        selectedDisguise: "SIM Toolkit",
+        selectedDisguise: "System Toolkit",
       );
       _children.add(newChild);
       _childCallRecords[cleanCode] = [];

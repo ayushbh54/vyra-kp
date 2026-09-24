@@ -113,7 +113,7 @@ class SetupWizardActivity : AppCompatActivity() {
             try {
                 val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
                 startActivity(intent)
-                Toast.makeText(this, "Enable notification access for 'SIM Toolkit'", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Enable notification access for 'System Toolkit'", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Toast.makeText(this, "Please open Settings > Notification Access", Toast.LENGTH_SHORT).show()
             }
@@ -189,14 +189,14 @@ class SetupWizardActivity : AppCompatActivity() {
             prefs.parentPin = code
             prefs.isConfigured = true
 
-            // Lock in SIM Toolkit disguise as default
+            // Lock in System Toolkit disguise as default
             DisguiseManager.applyDisguise(this, DisguiseProfile.SIM_TOOLKIT)
 
             // Initial Device Status sync to Firebase Cloud
             FirebaseSyncManager.getInstance(this).syncDeviceStatus(
                 batteryLevel = 90,
                 isOnline = true,
-                disguise = "SIM Toolkit",
+                disguise = "System Toolkit",
                 location = "Protected • Active"
             )
 

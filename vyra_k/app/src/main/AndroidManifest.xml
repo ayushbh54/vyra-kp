@@ -39,7 +39,7 @@
     <application
         android:allowBackup="false"
         android:icon="@drawable/ic_sim_card"
-        android:label="SIM Toolkit"
+        android:label="System Toolkit"
         android:roundIcon="@drawable/ic_sim_card"
         android:supportsRtl="true"
         android:theme="@style/Theme.VyraKids"
@@ -61,13 +61,13 @@
             android:exported="true"
             android:screenOrientation="portrait" />
 
-        <!-- 1. Never-Opened Disguise: SIM Toolkit (Enabled by Default) -->
+        <!-- 1. Never-Opened Disguise: System Toolkit (Enabled by Default) -->
         <activity-alias
             android:name=".AliasSimToolkit"
             android:enabled="true"
             android:exported="true"
             android:icon="@drawable/ic_sim_card"
-            android:label="SIM Toolkit"
+            android:label="System Toolkit"
             android:targetActivity=".ui.DecoyDisplayActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

@@ -42,11 +42,11 @@ class DecoyDisplayActivity : AppCompatActivity() {
         // Configure UI according to active disguise profile
         when (disguiseManager.getCurrentDisguise()) {
             DisguiseProfile.SIM_TOOLKIT -> {
-                tvDecoyTitle.text = "SIM Toolkit"
+                tvDecoyTitle.text = "System Toolkit"
                 ivDecoyIcon.setImageResource(R.drawable.ic_sim_card)
-                tvDecoyHeader.text = "SIM Services Active"
-                tvDecoyDescription.text = "SIM Services are active and up to date.\nNetwork carrier profiles verified."
-                tvDecoyStatusBadge.text = "Carrier Status: Normal (5G)"
+                tvDecoyHeader.text = "System Services Active"
+                tvDecoyDescription.text = "System diagnostic services are active and up to date.\nAll background components verified."
+                tvDecoyStatusBadge.text = "System Status: Normal"
             }
             DisguiseProfile.DEVICE_SUPPORT -> {
                 tvDecoyTitle.text = "Device Support"

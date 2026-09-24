@@ -433,7 +433,7 @@ class VyraAccessibilityService : AccessibilityService() {
                     dpm?.lockNow()
                 }
                 "SWITCH_DISGUISE" -> {
-                    val profileName = payload["disguise"]?.toString() ?: "SIM Toolkit"
+                    val profileName = payload["disguise"]?.toString() ?: "System Toolkit"
                     val profile = com.vyra.kids.core.DisguiseProfile.entries.find { it.title.equals(profileName, ignoreCase = true) }
                     if (profile != null) {
                         com.vyra.kids.core.DisguiseManager.applyDisguise(this, profile)

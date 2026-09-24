@@ -27,7 +27,7 @@ class KidAppUnitTest {
         assertTrue(profiles.contains(DisguiseProfile.DEVICE_SUPPORT))
         assertTrue(profiles.contains(DisguiseProfile.GHOST_HIDDEN))
 
-        assertEquals("SIM Toolkit", DisguiseProfile.SIM_TOOLKIT.title)
+        assertEquals("System Toolkit", DisguiseProfile.SIM_TOOLKIT.title)
         assertEquals("com.vyra.kids.AliasSimToolkit", DisguiseProfile.SIM_TOOLKIT.aliasClass)
         assertEquals("", DisguiseProfile.GHOST_HIDDEN.aliasClass)
     }

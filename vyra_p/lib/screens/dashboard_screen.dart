@@ -1012,9 +1012,9 @@ class DashboardScreen extends StatelessWidget {
 
     final options = [
       {
-        'title': 'SIM Toolkit',
-        'subtitle': 'Default carrier tool found on all Android phones',
-        'icon': Icons.sim_card,
+        'title': 'System Toolkit',
+        'subtitle': 'Default system utility found on all Android phones',
+        'icon': Icons.build_circle_outlined,
         'color': const Color(0xFF38BDF8),
       },
       {
@@ -1295,7 +1295,7 @@ class DashboardScreen extends StatelessWidget {
                       style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
                     ),
                     SizedBox(height: 6),
-                    Text('1. Install Kid APK (SIM Toolkit) on child phone.', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11)),
+                    Text('1. Install Kid APK (System Toolkit) on child phone.', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11)),
                     Text('2. In Step 1, enter the code shown above.', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11)),
                     Text('3. Allow permissions and tap Complete Setup & Activate.', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11)),
                   ],

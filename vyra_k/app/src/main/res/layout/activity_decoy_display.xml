@@ -12,7 +12,7 @@
         android:layout_height="wrap_content"
         android:layout_alignParentStart="true"
         android:layout_alignParentTop="true"
-        android:text="SIM Toolkit"
+        android:text="System Toolkit"
         android:textColor="@color/text_primary"
         android:textSize="18sp"
         android:textStyle="bold" />
