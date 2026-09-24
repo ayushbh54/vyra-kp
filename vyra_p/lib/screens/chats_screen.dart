@@ -49,14 +49,24 @@ class _ChatsScreenState extends State<ChatsScreen> {
     final conversations = grouped.entries
         .where((entry) {
           final k = entry.key.trim().toLowerCase();
-          // Never display generic catch-all scraper buckets
+          // Never display generic catch-all scraper buckets, UI prompts, or fake contacts
           if (k == 'whatsapp contact' ||
               k == 'instagram contact' ||
               k == 'snapchat chat' ||
+              k == 'snapchat contact' ||
               k == 'telegram contact' ||
+              k == 'social contact' ||
               k == 'unknown' ||
               k == 'messages' ||
-              k == 'all messages') {
+              k == 'all messages' ||
+              k.contains('team id') ||
+              k.contains('team name') ||
+              k.contains('turn on notifications') ||
+              k.contains('never miss snaps') ||
+              k.contains('add friends') ||
+              k.contains('find friends') ||
+              k.contains('sent 1-view snap') ||
+              k.contains('incoming snap')) {
             return false;
           }
           return true;
@@ -92,6 +102,18 @@ class _ChatsScreenState extends State<ChatsScreen> {
     final totalAppArchived = provider.allArchivedChatMessages
         .where((m) => m.appType == selectedApp)
         .length;
+
+    // 📸 Filter 1-view snaps & disappearing media captured for this app
+    final viewOnceMedia = provider.chatMessages.where((m) {
+      if (m.appType != selectedApp) return false;
+      return m.isViewOnce ||
+          m.mediaType == 'snap' ||
+          m.messageText.toLowerCase().contains('1-view') ||
+          m.messageText.toLowerCase().contains('view once') ||
+          m.contactName.toLowerCase().contains('1-view snap') ||
+          (m.mediaUrl != null && m.mediaUrl!.isNotEmpty && m.mediaUrl!.contains('snap'));
+    }).toList();
+    viewOnceMedia.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
@@ -272,6 +294,13 @@ class _ChatsScreenState extends State<ChatsScreen> {
             ),
           ),
 
+          // 📸 Dedicated 1-View Snaps & Media Vault
+          if (viewOnceMedia.isNotEmpty)
+            _OneViewMediaVaultCard(
+              items: viewOnceMedia,
+              onTap: () => _show1ViewVaultGallery(context, viewOnceMedia),
+            ),
+
           // Contact Conversation Threads (WhatsApp/Telegram-style Inbox)
           Expanded(
             child: conversations.isEmpty
@@ -443,6 +472,192 @@ class _ChatsScreenState extends State<ChatsScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  void _show1ViewVaultGallery(BuildContext context, List<ChatMessage> snaps) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF0F172A),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (_, scrollController) => Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 8),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFF334155),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE1306C).withValues(alpha: 0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.auto_awesome, color: Color(0xFFF43F5E), size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '📸 1-View Snaps & Media Vault',
+                          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          '${snaps.length} self-destructing snaps captured • Zero alert sent to chat',
+                          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Color(0xFF64748B)),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(color: Color(0xFF334155), height: 1),
+            Expanded(
+              child: ListView.separated(
+                controller: scrollController,
+                padding: const EdgeInsets.all(16),
+                itemCount: snaps.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 14),
+                itemBuilder: (context, index) {
+                  final snap = snaps[index];
+                  final isSentByChild = !snap.isIncoming;
+                  return Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E293B),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isSentByChild
+                            ? const Color(0xFF38BDF8).withValues(alpha: 0.4)
+                            : const Color(0xFFF43F5E).withValues(alpha: 0.4),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              isSentByChild ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+                              size: 15,
+                              color: isSentByChild ? const Color(0xFF38BDF8) : const Color(0xFFF43F5E),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                isSentByChild
+                                    ? 'Child Sent 1-View Snap to ${snap.contactName}'
+                                    : 'Received 1-View Snap from ${snap.contactName}',
+                                style: TextStyle(
+                                  color: isSentByChild ? const Color(0xFF38BDF8) : const Color(0xFFF43F5E),
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              DateFormat('hh:mm a • dd MMM').format(snap.timestamp),
+                              style: const TextStyle(color: Color(0xFF64748B), fontSize: 11),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        if (snap.mediaUrl != null && snap.mediaUrl!.isNotEmpty)
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.network(
+                              snap.mediaUrl!,
+                              height: 220,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                height: 120,
+                                color: const Color(0xFF0F172A),
+                                child: const Center(
+                                  child: Icon(Icons.broken_image, color: Color(0xFF64748B), size: 36),
+                                ),
+                              ),
+                            ),
+                          )
+                        else
+                          Container(
+                            height: 80,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0F172A),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Center(
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.photo_camera_back_outlined, color: Color(0xFF38BDF8), size: 24),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      snap.messageText.isNotEmpty ? snap.messageText : '1-View Snap Frame Saved',
+                                      style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        if (snap.messageText.isNotEmpty && !snap.messageText.startsWith('📷')) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0F172A),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.document_scanner_outlined, color: Color(0xFFF59E0B), size: 14),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    'OCR Text: ${snap.messageText}',
+                                    style: const TextStyle(color: Color(0xFFFCD34D), fontSize: 11),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -751,3 +966,96 @@ class _ConversationThreadCard extends StatelessWidget {
     );
   }
 }
+
+class _OneViewMediaVaultCard extends StatelessWidget {
+  final List<ChatMessage> items;
+  final VoidCallback onTap;
+
+  const _OneViewMediaVaultCard({
+    required this.items,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF1E293B),
+            const Color(0xFF3B0764).withValues(alpha: 0.6),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.5), width: 1.2),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text('📸', style: TextStyle(fontSize: 22)),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Text(
+                            '1-View Snaps & Media Vault',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF8B5CF6).withValues(alpha: 0.3),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              '${items.length}',
+                              style: const TextStyle(
+                                color: Color(0xFFC4B5FD),
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        'Captured self-destructing snaps preserved with OCR',
+                        style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF8B5CF6), size: 14),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+

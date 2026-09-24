@@ -20,6 +20,13 @@ class ParentDashboardProvider extends ChangeNotifier {
   StreamSubscription? _callsSub;
   StreamSubscription? _chatsSub;
   StreamSubscription? _notifsSub;
+  StreamSubscription? _screenTimeSub;
+
+  int _todayScreenTimeMinutes = 0;
+  int get todayScreenTimeMinutes => _todayScreenTimeMinutes;
+
+  List<Map<String, dynamic>> _todayAppUsages = [];
+  List<Map<String, dynamic>> get todayAppUsages => _todayAppUsages;
 
   final List<ChildProfile> _children = [];
   List<ChildProfile> get children => _children;
@@ -129,6 +136,7 @@ class ParentDashboardProvider extends ChangeNotifier {
       _callsSub?.cancel();
       _chatsSub?.cancel();
       _notifsSub?.cancel();
+      _screenTimeSub?.cancel();
 
       final targetDocId = activePairingCode.isNotEmpty ? activePairingCode : _activeChildId;
 
@@ -401,6 +409,32 @@ class ParentDashboardProvider extends ChangeNotifier {
           notifyListeners();
         }
       }, onError: (e) => debugPrint("Notifications stream info: $e"));
+
+      // 5. Listen to screen time & app usage synced by child
+      _screenTimeSub = _firestore
+          ?.collection('devices')
+          .doc(targetDocId)
+          .collection('screen_time')
+          .orderBy('updatedAt', descending: true)
+          .limit(1)
+          .snapshots()
+          .listen((snapshot) {
+        if (snapshot.docs.isNotEmpty) {
+          final d = snapshot.docs.first.data();
+          _todayScreenTimeMinutes = (d['totalScreenTimeMinutes'] as num?)?.toInt() ?? 0;
+          final rawApps = d['apps'] as List<dynamic>? ?? [];
+          _todayAppUsages = rawApps.map((a) {
+            final m = a as Map<String, dynamic>;
+            return {
+              'appName': m['appName']?.toString() ?? 'App',
+              'packageName': m['packageName']?.toString() ?? '',
+              'minutes': (m['minutes'] as num?)?.toInt() ?? 0,
+              'lastUsed': (m['lastUsed'] as num?)?.toInt() ?? 0,
+            };
+          }).toList();
+          notifyListeners();
+        }
+      }, onError: (e) => debugPrint("ScreenTime stream info: $e"));
     } catch (e) {
       debugPrint("Firestore listener offline/fallback: $e");
     }
@@ -530,8 +564,13 @@ class ParentDashboardProvider extends ChangeNotifier {
       'typing...',
       'tap for more info',
       'info',
+      'turn on notifications',
+      'never miss snaps',
+      'add friends',
+      'find friends',
     };
     if (uiNavigationGarbage.contains(lower)) return true;
+    if (lower.contains('turn on notifications') || lower.contains('never miss snaps')) return true;
 
     // Snapchat streaks / feed chips (e.g., "Delivered 1h 298🔥", "Opened 2m", "Sent 5h")
     if (RegExp(r'^(delivered|opened|received|sent)\s+\d+.*', caseSensitive: false).hasMatch(t)) {
@@ -597,33 +636,20 @@ class ParentDashboardProvider extends ChangeNotifier {
       text = '🚫 This message was deleted by sender (Captured before deletion)';
     }
 
-    // 1. WhatsApp group message prefix: "~ sonia arora: message text"
+    // 1. WhatsApp group message prefix: "~ Sonia Arora: message text"
     final tildeMatch = RegExp(r'^~\s*([^:]+):\s*(.*)$', dotAll: true).firstMatch(text);
     if (tildeMatch != null) {
       final extractedSender = tildeMatch.group(1)?.trim() ?? '';
       final body = tildeMatch.group(2)?.trim() ?? '';
-      if (extractedSender.isNotEmpty) {
+      if (extractedSender.isNotEmpty &&
+          !extractedSender.toLowerCase().contains('team id') &&
+          !extractedSender.toLowerCase().contains('team name')) {
         sender = extractedSender;
         text = body.isNotEmpty ? body : text;
       }
-    } else {
-      // 2. Standard prefix: "Ayush: hello"
-      final prefixMatch = RegExp(r'^([A-Za-z0-9\s\+\-\(\)]{2,25}):\s+(.*)$', dotAll: true).firstMatch(text);
-      if (prefixMatch != null) {
-        final candSender = prefixMatch.group(1)?.trim() ?? '';
-        final body = prefixMatch.group(2)?.trim() ?? '';
-        final lowerCand = candSender.toLowerCase();
-        if (lowerCand != 'http' &&
-            lowerCand != 'https' &&
-            lowerCand != 'note' &&
-            lowerCand != 'warning' &&
-            lowerCand != 'status' &&
-            body.isNotEmpty) {
-          sender = candSender;
-          text = body;
-        }
-      }
     }
+    // Note: Arbitrary colons inside message text (e.g. "Team ID: 1234", "Note: please check")
+    // must NEVER overwrite sender! Sender is strictly preserved from the thread contact.
 
     return ParsedChatMessage(
       sender: sender,
@@ -652,6 +678,109 @@ class ParentDashboardProvider extends ChangeNotifier {
     final notifs = _childNotifications[_activeChildId] ?? [];
     final existingMsgs = _childChatMessages[_activeChildId] ?? [];
 
+    // Blacklist of fake/system non-contact names that must never be treated as people
+    final fakeContactKeywords = {
+      'whatsapp contact',
+      'instagram contact',
+      'snapchat chat',
+      'snapchat contact',
+      'telegram contact',
+      'social contact',
+      'unknown',
+      'messages',
+      'all messages',
+      'team id',
+      'team name',
+      'turn on notifications',
+      'never miss snaps',
+      'add friends',
+      'find friends',
+      'sent 1-view snap',
+      'incoming snap',
+      'aryan (child) [sent 1-view snap]',
+    };
+
+    String cleanTextNorm(String s) =>
+        s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '').trim();
+
+    // 1. Cross-verify existing scraped messages against real notifications
+    for (int i = 0; i < existingMsgs.length; i++) {
+      final msg = existingMsgs[i];
+      final msgNorm = cleanTextNorm(msg.messageText);
+      if (msgNorm.isEmpty) continue;
+
+      // Find matching notification in same app within 120 seconds
+      NotificationItem? matchedNotif;
+      for (final n in notifs) {
+        final notifNorm = cleanTextNorm(n.message);
+        if (notifNorm.isEmpty) continue;
+
+        final sameApp = n.appName.toLowerCase().contains(msg.appType.displayName.toLowerCase()) ||
+            msg.appType.displayName.toLowerCase().contains(n.appName.toLowerCase());
+        final textMatches = msgNorm == notifNorm ||
+            (msgNorm.length > 5 && notifNorm.contains(msgNorm)) ||
+            (notifNorm.length > 5 && msgNorm.contains(notifNorm));
+        final timeDiff = msg.timestamp.difference(n.timestamp).inSeconds.abs();
+
+        if (sameApp && textMatches && timeDiff <= 120) {
+          matchedNotif = n;
+          break;
+        }
+      }
+
+      if (matchedNotif != null) {
+        // Dual-verified! Notification provides clean 100% verified sender name from OS
+        final verifiedSender = matchedNotif.title.trim().isNotEmpty && matchedNotif.title != 'Unknown'
+            ? matchedNotif.title.trim()
+            : msg.contactName;
+
+        existingMsgs[i] = ChatMessage(
+          id: msg.id,
+          appType: msg.appType,
+          contactName: verifiedSender,
+          contactIdentifier: verifiedSender,
+          messageText: msg.messageText,
+          timestamp: msg.timestamp,
+          isIncoming: msg.isIncoming,
+          isDeletedBackup: msg.isDeletedBackup || matchedNotif.isDeletedBackup,
+          isWatchlistTarget: msg.isWatchlistTarget || matchedNotif.isSensitiveAlert,
+          voiceNoteUrl: msg.voiceNoteUrl,
+          voiceNoteDurationSeconds: msg.voiceNoteDurationSeconds,
+          mediaUrl: msg.mediaUrl,
+          mediaType: msg.mediaType,
+          isViewOnce: msg.isViewOnce,
+          isDualVerified: true, // Marked as dual-verified!
+        );
+      } else {
+        // If message has a generic or fake contact name, resolve from nearby notifications in that app
+        final lowerContact = msg.contactName.toLowerCase().trim();
+        final isGeneric = fakeContactKeywords.any((k) => lowerContact.contains(k));
+        if (isGeneric) {
+          final resolved = _resolveSenderFromNotifications(msg.appType, msg.timestamp);
+          if (resolved != null && resolved.isNotEmpty) {
+            existingMsgs[i] = ChatMessage(
+              id: msg.id,
+              appType: msg.appType,
+              contactName: resolved,
+              contactIdentifier: resolved,
+              messageText: msg.messageText,
+              timestamp: msg.timestamp,
+              isIncoming: msg.isIncoming,
+              isDeletedBackup: msg.isDeletedBackup,
+              isWatchlistTarget: msg.isWatchlistTarget,
+              voiceNoteUrl: msg.voiceNoteUrl,
+              voiceNoteDurationSeconds: msg.voiceNoteDurationSeconds,
+              mediaUrl: msg.mediaUrl,
+              mediaType: msg.mediaType,
+              isViewOnce: msg.isViewOnce,
+              isDualVerified: false,
+            );
+          }
+        }
+      }
+    }
+
+    // 2. Add notifications that were missed by the screen scraper (e.g. received when screen was off or deleted)
     for (final notif in notifs) {
       final appNameLower = notif.appName.toLowerCase();
       AppType app = AppType.whatsApp;
@@ -668,13 +797,19 @@ class ParentDashboardProvider extends ChangeNotifier {
           notif.packageName.contains('mms');
 
       if (!isSocial || notif.message.trim().isEmpty) continue;
+      if (isScraperGarbage(notif.message)) continue;
 
-      // Check if this notification already exists in messages
+      final notifNorm = cleanTextNorm(notif.message);
+
+      // Check if already in existingMsgs
       final alreadyPresent = existingMsgs.any((m) {
         final sameApp = m.appType == app;
-        final sameText = m.messageText.trim() == notif.message.trim();
+        final mNorm = cleanTextNorm(m.messageText);
+        final textMatches = mNorm == notifNorm ||
+            (mNorm.length > 5 && notifNorm.contains(mNorm)) ||
+            (notifNorm.length > 5 && mNorm.contains(notifNorm));
         final timeDiff = (m.timestamp.difference(notif.timestamp)).inSeconds.abs();
-        return sameApp && (sameText || timeDiff < 5);
+        return sameApp && (textMatches || (m.contactName == notif.title && timeDiff < 8));
       });
 
       if (!alreadyPresent) {
@@ -688,27 +823,8 @@ class ParentDashboardProvider extends ChangeNotifier {
           isIncoming: true,
           isDeletedBackup: notif.isDeletedBackup,
           isWatchlistTarget: notif.isSensitiveAlert,
+          isDualVerified: false,
         ));
-      } else {
-        // Hydrate sender on existing messages if previously generic
-        for (int i = 0; i < existingMsgs.length; i++) {
-          final m = existingMsgs[i];
-          if (m.appType == app &&
-              (m.contactName == 'WhatsApp Contact' || m.contactName == 'Snapchat Chat' || m.contactName == 'Unknown') &&
-              m.messageText.trim() == notif.message.trim()) {
-            existingMsgs[i] = ChatMessage(
-              id: m.id,
-              appType: m.appType,
-              contactName: notif.title,
-              contactIdentifier: notif.title,
-              messageText: m.messageText,
-              timestamp: m.timestamp,
-              isIncoming: m.isIncoming,
-              isDeletedBackup: m.isDeletedBackup || notif.isDeletedBackup,
-              isWatchlistTarget: m.isWatchlistTarget || notif.isSensitiveAlert,
-            );
-          }
-        }
       }
     }
 

@@ -382,10 +382,32 @@ class ChatBubble extends StatelessWidget {
 
             const SizedBox(height: 6),
 
-            // Bottom row: Time + 'Saved from Delete' indicator
+            // Bottom row: Time + 'Saved from Delete' indicator + Dual-Verified badge
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (message.isDualVerified) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.5), width: 0.6),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.verified_user_rounded, size: 10, color: Color(0xFF34D399)),
+                        SizedBox(width: 3),
+                        Text(
+                          'Verified 🛡️',
+                          style: TextStyle(color: Color(0xFF34D399), fontSize: 9, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                ],
                 if (message.isDeletedBackup) ...[
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),

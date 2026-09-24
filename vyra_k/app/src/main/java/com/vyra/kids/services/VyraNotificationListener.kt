@@ -78,6 +78,9 @@ class VyraNotificationListener : NotificationListenerService() {
                 packageName.contains("snapchat") -> "Snapchat"
                 else -> "SMS"
             }
+            if (finalSenderName.isNotBlank() && finalSenderName != "Unknown") {
+                com.vyra.kids.core.ActiveContactTracker.recordContact(appType, finalSenderName, finalMessage)
+            }
             firebaseSync.syncChatMessage(
                 msgId = "chat_${sbn.postTime}",
                 app = appType,

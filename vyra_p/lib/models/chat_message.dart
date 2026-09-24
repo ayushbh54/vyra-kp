@@ -88,6 +88,7 @@ class ChatMessage {
   final String? mediaUrl;
   final String? mediaType; // 'image', 'video', 'snap'
   final bool isViewOnce;
+  final bool isDualVerified;
 
   const ChatMessage({
     required this.id,
@@ -104,6 +105,7 @@ class ChatMessage {
     this.mediaUrl,
     this.mediaType,
     this.isViewOnce = false,
+    this.isDualVerified = false,
   });
 }
 
