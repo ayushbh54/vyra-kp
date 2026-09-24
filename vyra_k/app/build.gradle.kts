@@ -66,5 +66,8 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-storage-ktx")
 
+    // Google ML Kit Text Recognition (OCR for Snapchat disappearing text & snaps)
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
+
     testImplementation("junit:junit:4.13.2")
 }

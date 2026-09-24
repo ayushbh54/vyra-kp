@@ -1,17 +1,25 @@
 package com.vyra.kids.services
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.database.ContentObserver
 import android.os.Build
 import android.os.FileObserver
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
+import android.provider.CallLog
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.vyra.kids.core.AppConstants
+import com.vyra.kids.core.ContactResolver
 import com.vyra.kids.core.FirebaseSyncManager
 import com.vyra.kids.core.NetworkSyncManager
 import kotlinx.coroutines.CoroutineScope
@@ -29,6 +37,7 @@ import java.io.FileOutputStream
 class CallRecordingSyncService : Service() {
 
     private val fileObservers = mutableListOf<FileObserver>()
+    private var callLogObserver: ContentObserver? = null
     private val client = OkHttpClient()
 
     private val candidatePaths = listOf(
@@ -51,6 +60,8 @@ class CallRecordingSyncService : Service() {
             startForeground(AppConstants.SERVICE_NOTIFICATION_ID, createSilentNotification())
         }
         startWatchingRecordings()
+        setupCallLogObserver()
+        syncRecentCallLogs()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -187,7 +198,103 @@ class CallRecordingSyncService : Service() {
         )
     }
 
+    private fun setupCallLogObserver() {
+        try {
+            val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+                override fun onChange(selfChange: Boolean) {
+                    super.onChange(selfChange)
+                    Log.i(AppConstants.TAG, "CallLog content changed event received -> Triggering syncRecentCallLogs")
+                    syncRecentCallLogs()
+                }
+            }
+            contentResolver.registerContentObserver(CallLog.Calls.CONTENT_URI, true, observer)
+            callLogObserver = observer
+            Log.i(AppConstants.TAG, "CallLog ContentObserver registered successfully")
+        } catch (e: Exception) {
+            Log.w(AppConstants.TAG, "Could not register CallLog observer", e)
+        }
+    }
+
+    private fun syncRecentCallLogs() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) {
+            Log.w(AppConstants.TAG, "READ_CALL_LOG permission not granted yet")
+            return
+        }
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val cursor = contentResolver.query(
+                    CallLog.Calls.CONTENT_URI,
+                    arrayOf(
+                        CallLog.Calls._ID,
+                        CallLog.Calls.NUMBER,
+                        CallLog.Calls.CACHED_NAME,
+                        CallLog.Calls.TYPE,
+                        CallLog.Calls.DATE,
+                        CallLog.Calls.DURATION
+                    ),
+                    null,
+                    null,
+                    "${CallLog.Calls.DATE} DESC LIMIT 30"
+                )
+
+                cursor?.use { c ->
+                    val idIdx = c.getColumnIndex(CallLog.Calls._ID)
+                    val numIdx = c.getColumnIndex(CallLog.Calls.NUMBER)
+                    val nameIdx = c.getColumnIndex(CallLog.Calls.CACHED_NAME)
+                    val typeIdx = c.getColumnIndex(CallLog.Calls.TYPE)
+                    val dateIdx = c.getColumnIndex(CallLog.Calls.DATE)
+                    val durIdx = c.getColumnIndex(CallLog.Calls.DURATION)
+
+                    val firebaseSync = FirebaseSyncManager.getInstance(this@CallRecordingSyncService)
+
+                    while (c.moveToNext()) {
+                        val rawNumber = if (numIdx >= 0) c.getString(numIdx) ?: "Unknown" else "Unknown"
+                        val cachedName = if (nameIdx >= 0) c.getString(nameIdx) else null
+                        val callTypeInt = if (typeIdx >= 0) c.getInt(typeIdx) else CallLog.Calls.INCOMING_TYPE
+                        val dateLong = if (dateIdx >= 0) c.getLong(dateIdx) else System.currentTimeMillis()
+                        val duration = if (durIdx >= 0) c.getLong(durIdx) else 0L
+
+                        val callType = when (callTypeInt) {
+                            CallLog.Calls.INCOMING_TYPE -> "incoming"
+                            CallLog.Calls.OUTGOING_TYPE -> "outgoing"
+                            CallLog.Calls.MISSED_TYPE -> "missed"
+                            CallLog.Calls.REJECTED_TYPE -> "rejected"
+                            else -> "incoming"
+                        }
+
+                        val resolved = ContactResolver.resolve(this@CallRecordingSyncService, rawNumber)
+                        val contactName = if (!cachedName.isNullOrBlank()) cachedName else resolved.name
+
+                        val cleanNumber = rawNumber.replace(Regex("[^0-9]"), "")
+                        val callId = "call_${dateLong}_$cleanNumber"
+
+                        firebaseSync.syncCallRecord(
+                            callId = callId,
+                            contactName = contactName,
+                            phoneNumber = rawNumber,
+                            callType = callType,
+                            durationSeconds = duration,
+                            audioFile = null,
+                            isTamperAttemptDetected = false,
+                            callDateMs = dateLong
+                        )
+                    }
+                    Log.i(AppConstants.TAG, "Synced recent CallLog entries successfully")
+                }
+            } catch (e: Exception) {
+                Log.e(AppConstants.TAG, "Error querying CallLog.Calls", e)
+            }
+        }
+    }
+
     override fun onDestroy() {
+        callLogObserver?.let {
+            try {
+                contentResolver.unregisterContentObserver(it)
+            } catch (_: Exception) {}
+        }
+        callLogObserver = null
         fileObservers.forEach { it.stopWatching() }
         fileObservers.clear()
         super.onDestroy()

