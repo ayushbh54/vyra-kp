@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../models/chat_message.dart';
+import '../providers/parent_dashboard_provider.dart';
+import '../services/audio_playback_service.dart';
 
 class ChatBubble extends StatelessWidget {
   final ChatMessage message;
@@ -333,34 +336,47 @@ class ChatBubble extends StatelessWidget {
             ],
 
             // Optional Voice Note bar
-            if (message.voiceNoteUrl != null) ...[
+            if (message.voiceNoteUrl != null && message.voiceNoteUrl!.isNotEmpty) ...[
               const SizedBox(height: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.black26,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
-                    const SizedBox(width: 6),
-                    SizedBox(
-                      width: 120,
-                      child: LinearProgressIndicator(
-                        value: 0.0,
-                        backgroundColor: Colors.white24,
-                        valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF38BDF8)),
+              Consumer<ParentDashboardProvider>(
+                builder: (context, provider, _) {
+                  final isCurrentPlaying = provider.currentlyPlayingAudioId == message.id &&
+                      AudioPlaybackService.instance.isPlaying;
+                  return InkWell(
+                    onTap: () {
+                      provider.togglePlayAudioUrl(message.id, message.voiceNoteUrl!);
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: isCurrentPlaying
+                            ? const Color(0xFF0369A1).withValues(alpha: 0.5)
+                            : Colors.black38,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isCurrentPlaying ? const Color(0xFF38BDF8) : Colors.white24,
+                          width: 0.8,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isCurrentPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded,
+                            color: const Color(0xFF38BDF8),
+                            size: 22,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            isCurrentPlaying ? 'Playing Voice Note...' : 'Voice Note (${message.voiceNoteDurationSeconds ?? 0}s)',
+                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${message.voiceNoteDurationSeconds ?? 0}s',
-                      style: const TextStyle(color: Colors.white70, fontSize: 10),
-                    ),
-                  ],
-                ),
+                  );
+                },
               ),
             ],
 

