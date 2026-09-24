@@ -173,26 +173,69 @@ class ParentDashboardProvider extends ChangeNotifier {
           .snapshots()
           .listen((snapshot) {
         if (snapshot.docs.isNotEmpty) {
-          final realRecords = snapshot.docs.map((doc) {
+          final realRecords = <CallRecord>[];
+          final realAmbient = <AmbientLogItem>[];
+
+          for (final doc in snapshot.docs) {
             final d = doc.data();
             final dt = _parseTimestamp(d['timestamp']);
-            return CallRecord(
-              id: doc.id,
-              contactName: d['contactName'] ?? 'Unknown',
-              phoneNumber: d['phoneNumber'] ?? '',
-              callType: (d['callType'] == 'outgoing') ? CallType.outgoing : CallType.incoming,
-              timestamp: dt,
-              durationSeconds: (d['durationSeconds'] as num?)?.toInt() ?? 0,
-              recordingUrl: d['recordingUrl'],
-              recordingDurationSeconds: (d['durationSeconds'] as num?)?.toInt() ?? 0,
-              isTamperAttemptDetected: d['isTamperAttemptDetected'] as bool? ?? false,
-              isWatchlistTarget: d['isWatchlistTarget'] as bool? ?? false,
-            );
-          }).toList();
+            final cType = (d['callType'] ?? '').toString().toLowerCase();
+
+            if (cType == 'ambient') {
+              realAmbient.add(AmbientLogItem(
+                id: doc.id,
+                timestamp: dt,
+                durationSeconds: (d['durationSeconds'] as num?)?.toInt() ?? 30,
+                audioUrl: d['recordingUrl'],
+                locationContext: "Pocket / Desk Stealth Capture",
+                speechSnippet: d['speechSnippet'] ?? "Screen-off acoustic soundbite captured from child's device.",
+                conversationSummary: d['summary'] ?? "Pocket soundbite recorded automatically while screen was locked.",
+                isFlagged: d['isFlagged'] as bool? ?? false,
+                isPurgedFromCloud: false,
+                speakers: [
+                  SpeakerVoiceProfile(
+                    speakerId: "spk_1",
+                    displayName: "${activeChild.name} & Surroundings",
+                    isChild: true,
+                    pitch: "Natural",
+                    tone: "Conversational",
+                    acousticDescription: "Direct mic input from pocket/room",
+                  ),
+                ],
+                dialogue: [
+                  DialogueTurn(
+                    speakerId: "spk_1",
+                    speakerName: "Ambient Capture",
+                    timestamp: "00:05",
+                    hindiText: "Ambient voice recording available for playback.",
+                    englishText: "Acoustic audio file synced from child device.",
+                    emotion: "Neutral",
+                  ),
+                ],
+              ));
+            } else {
+              realRecords.add(CallRecord(
+                id: doc.id,
+                contactName: d['contactName'] ?? 'Unknown',
+                phoneNumber: d['phoneNumber'] ?? '',
+                callType: (cType == 'outgoing') ? CallType.outgoing : CallType.incoming,
+                timestamp: dt,
+                durationSeconds: (d['durationSeconds'] as num?)?.toInt() ?? 0,
+                recordingUrl: d['recordingUrl'],
+                recordingDurationSeconds: (d['durationSeconds'] as num?)?.toInt() ?? 0,
+                isTamperAttemptDetected: d['isTamperAttemptDetected'] as bool? ?? false,
+                isWatchlistTarget: d['isWatchlistTarget'] as bool? ?? false,
+              ));
+            }
+          }
 
           _childCallRecords.putIfAbsent(_activeChildId, () => []);
           _childCallRecords[_activeChildId]!.clear();
           _childCallRecords[_activeChildId]!.addAll(realRecords);
+
+          _childAmbientLogs.putIfAbsent(_activeChildId, () => []);
+          _childAmbientLogs[_activeChildId]!.clear();
+          _childAmbientLogs[_activeChildId]!.addAll(realAmbient);
           notifyListeners();
         }
       }, onError: (e) => debugPrint("Calls stream info: $e"));

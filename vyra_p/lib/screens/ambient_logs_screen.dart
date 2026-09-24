@@ -178,12 +178,15 @@ class _AmbientLogsScreenState extends State<AmbientLogsScreen> {
             ),
             const SizedBox(height: 14),
 
-            // Soundbite Cards List
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: logs.length,
-              itemBuilder: (context, index) {
+            // Soundbite Cards List or Armed Waiting State
+            if (logs.isEmpty)
+              _buildEmptyArmedState(context, provider)
+            else
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: logs.length,
+                itemBuilder: (context, index) {
                 final item = logs[index];
                 final isPlaying = _playingId == item.id;
                 final isExpanded = _expandedLogIds.contains(item.id);
@@ -675,6 +678,158 @@ class _AmbientLogsScreenState extends State<AmbientLogsScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildEmptyArmedState(BuildContext context, ParentDashboardProvider provider) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0284C7).withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.mic_none_rounded, color: Color(0xFF38BDF8), size: 40),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Pocket Voice Logger Armed & Active',
+            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'To prevent Android\'s Green Dot 🟢 from exposing the monitoring app to ${provider.activeChild.name}, ambient soundbites are automatically captured whenever the child locks their screen or puts their phone in their pocket (Screen-Off).\n\nAs soon as an ambient soundbite is finalized, it will automatically appear here with audio playback and screenplay transcripts.',
+            style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5, height: 1.4),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F172A),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFF334155)),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.shield_rounded, color: Color(0xFF10B981), size: 16),
+                SizedBox(width: 8),
+                Text(
+                  'Anti-Green-Dot Stealth Guard: ENABLED',
+                  style: TextStyle(color: Color(0xFF10B981), fontSize: 11, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/calls');
+                  },
+                  icon: const Icon(Icons.phone_in_talk, size: 16),
+                  label: const Text('View Call Recordings', style: TextStyle(fontSize: 12)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E88E5),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _showVoiceIntercomDialog(context, provider),
+                  icon: const Icon(Icons.campaign_rounded, size: 16, color: Color(0xFF38BDF8)),
+                  label: const Text('Voice Intercom', style: TextStyle(fontSize: 12, color: Color(0xFF38BDF8))),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFF38BDF8)),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showVoiceIntercomDialog(BuildContext context, ParentDashboardProvider provider) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.campaign_rounded, color: Color(0xFF38BDF8)),
+            SizedBox(width: 8),
+            Text('Remote Voice Intercom', style: TextStyle(color: Colors.white, fontSize: 16)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Broadcast an instant voice announcement directly through ${provider.activeChild.name}\'s phone speaker:',
+              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              decoration: InputDecoration(
+                hintText: 'e.g. Aryan, call me back immediately!',
+                hintStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                filled: true,
+                fillColor: const Color(0xFF0F172A),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF94A3B8))),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final text = controller.text.trim();
+              if (text.isNotEmpty) {
+                provider.sendVoiceIntercom(text);
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Intercom broadcast dispatched to ${provider.activeChild.name}'),
+                    backgroundColor: const Color(0xFF10B981),
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0284C7)),
+            child: const Text('Broadcast Voice', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
     );
   }
 }
