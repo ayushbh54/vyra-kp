@@ -85,6 +85,9 @@ class ChatMessage {
   final bool isWatchlistTarget;
   final String? voiceNoteUrl;
   final int? voiceNoteDurationSeconds;
+  final String? mediaUrl;
+  final String? mediaType; // 'image', 'video', 'snap'
+  final bool isViewOnce;
 
   const ChatMessage({
     required this.id,
@@ -98,5 +101,20 @@ class ChatMessage {
     this.isWatchlistTarget = false,
     this.voiceNoteUrl,
     this.voiceNoteDurationSeconds,
+    this.mediaUrl,
+    this.mediaType,
+    this.isViewOnce = false,
+  });
+}
+
+class ParsedChatMessage {
+  final String sender;
+  final String cleanText;
+  final bool isDeleted;
+
+  const ParsedChatMessage({
+    required this.sender,
+    required this.cleanText,
+    required this.isDeleted,
   });
 }

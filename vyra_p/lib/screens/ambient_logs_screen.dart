@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../providers/parent_dashboard_provider.dart';
 import '../models/ambient_log_item.dart';
+import 'calls_screen.dart';
 
 class AmbientLogsScreen extends StatefulWidget {
   const AmbientLogsScreen({super.key});
@@ -13,7 +14,7 @@ class AmbientLogsScreen extends StatefulWidget {
 
 class _AmbientLogsScreenState extends State<AmbientLogsScreen> {
   String? _playingId;
-  final Set<String> _expandedLogIds = {'ambient_1'}; // Expand the first one by default
+  final Set<String> _expandedLogIds = {};
 
   @override
   Widget build(BuildContext context) {
@@ -453,7 +454,7 @@ class _AmbientLogsScreenState extends State<AmbientLogsScreen> {
                               if (isExpanded) ...[
                                 const SizedBox(height: 12),
                                 ...item.dialogue.map((turn) {
-                                  final isChild = turn.speakerName.contains('Aryan');
+                                  final isChild = item.speakers.any((s) => s.isChild && turn.speakerId == s.speakerId);
                                   return Container(
                                     margin: const EdgeInsets.only(bottom: 8),
                                     padding: const EdgeInsets.all(10),
@@ -738,7 +739,7 @@ class _AmbientLogsScreenState extends State<AmbientLogsScreen> {
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: () {
-                    Navigator.pushNamed(context, '/calls');
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const CallsScreen()));
                   },
                   icon: const Icon(Icons.phone_in_talk, size: 16),
                   label: const Text('View Call Recordings', style: TextStyle(fontSize: 12)),
