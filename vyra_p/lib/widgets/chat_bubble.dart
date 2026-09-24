@@ -109,13 +109,17 @@ class ChatBubble extends StatelessWidget {
               ),
             ],
 
-            // Sender name & tags
+            // Sender & Direction tags
             if (isIncoming) ...[
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  const Icon(Icons.person_outline_rounded, size: 11, color: Color(0xFF38BDF8)),
+                  const SizedBox(width: 4),
                   Text(
-                    message.contactName,
+                    (message.contactName == 'WhatsApp Contact' || message.contactName == 'Instagram Contact' || message.contactName == 'Snapchat Chat')
+                        ? 'Received Message'
+                        : message.contactName,
                     style: TextStyle(
                       color: message.isWatchlistTarget
                           ? Colors.redAccent
@@ -138,6 +142,23 @@ class ChatBubble extends StatelessWidget {
                       ),
                     ),
                   ],
+                ],
+              ),
+              const SizedBox(height: 4),
+            ] else ...[
+              const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.check_circle_outline_rounded, size: 11, color: Color(0xFFBAE6FD)),
+                  SizedBox(width: 4),
+                  Text(
+                    'Sent by Aryan (Child)',
+                    style: TextStyle(
+                      color: Color(0xFFBAE6FD),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 10.5,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 4),

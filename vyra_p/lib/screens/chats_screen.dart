@@ -37,7 +37,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
     final Map<String, List<ChatMessage>> grouped = {};
     for (final msg in validMessages) {
       String key = msg.contactIdentifier.isNotEmpty ? msg.contactIdentifier : msg.contactName;
-      if (key == 'WhatsApp Contact' || key == 'Snapchat Chat' || key == 'Unknown') {
+      if (key == 'WhatsApp Contact' || key == 'Snapchat Chat' || key == 'Unknown' || key == 'Instagram Contact') {
         final parsed = ParentDashboardProvider.parseMessageContent(key, msg.messageText, msg.isDeletedBackup);
         if (parsed.sender != key) {
           key = parsed.sender;
@@ -46,7 +46,22 @@ class _ChatsScreenState extends State<ChatsScreen> {
       grouped.putIfAbsent(key, () => []).add(msg);
     }
 
-    final conversations = grouped.entries.map((entry) {
+    final conversations = grouped.entries
+        .where((entry) {
+          final k = entry.key.trim().toLowerCase();
+          // Never display generic catch-all scraper buckets
+          if (k == 'whatsapp contact' ||
+              k == 'instagram contact' ||
+              k == 'snapchat chat' ||
+              k == 'telegram contact' ||
+              k == 'unknown' ||
+              k == 'messages' ||
+              k == 'all messages') {
+            return false;
+          }
+          return true;
+        })
+        .map((entry) {
       final msgs = entry.value;
       msgs.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
@@ -55,6 +70,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
       for (final m in msgs) {
         if (m.contactName.isNotEmpty &&
             m.contactName != 'WhatsApp Contact' &&
+            m.contactName != 'Instagram Contact' &&
             m.contactName != 'Snapchat Chat' &&
             m.contactName != 'Unknown') {
           bestContactName = m.contactName;

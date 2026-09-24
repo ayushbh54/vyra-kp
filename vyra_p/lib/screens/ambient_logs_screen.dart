@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../providers/parent_dashboard_provider.dart';
 import '../models/ambient_log_item.dart';
+import '../services/audio_playback_service.dart';
 import 'calls_screen.dart';
 
 class AmbientLogsScreen extends StatefulWidget {
@@ -13,8 +14,23 @@ class AmbientLogsScreen extends StatefulWidget {
 }
 
 class _AmbientLogsScreenState extends State<AmbientLogsScreen> {
-  String? _playingId;
   final Set<String> _expandedLogIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    AudioPlaybackService.instance.addListener(_onAudioStateChanged);
+  }
+
+  @override
+  void dispose() {
+    AudioPlaybackService.instance.removeListener(_onAudioStateChanged);
+    super.dispose();
+  }
+
+  void _onAudioStateChanged() {
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -189,7 +205,8 @@ class _AmbientLogsScreenState extends State<AmbientLogsScreen> {
                 itemCount: logs.length,
                 itemBuilder: (context, index) {
                 final item = logs[index];
-                final isPlaying = _playingId == item.id;
+                final audioService = AudioPlaybackService.instance;
+                final isPlaying = audioService.isPlaying && audioService.currentMediaId == item.id;
                 final isExpanded = _expandedLogIds.contains(item.id);
                 final timeStr = DateFormat('hh:mm a').format(item.timestamp);
 
@@ -544,19 +561,20 @@ class _AmbientLogsScreenState extends State<AmbientLogsScreen> {
                         child: Row(
                           children: [
                             InkWell(
-                              onTap: () {
-                                if (item.isPurgedFromCloud) {
+                              onTap: () async {
+                                if (item.audioUrl == null || item.audioUrl!.isEmpty) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content: Text('Raw audio was purged from cloud to prevent storage overflow. The full screenplay script is saved!'),
+                                      content: Text('Raw audio is stored on child device. Cloud upload pending or bandwidth-saved.'),
                                       backgroundColor: Color(0xFF0284C7),
                                       duration: Duration(seconds: 3),
                                     ),
                                   );
                                 } else {
-                                  setState(() {
-                                    _playingId = isPlaying ? null : item.id;
-                                  });
+                                  await audioService.play(
+                                    mediaId: item.id,
+                                    url: item.audioUrl,
+                                  );
                                 }
                               },
                               child: Container(
@@ -564,12 +582,12 @@ class _AmbientLogsScreenState extends State<AmbientLogsScreen> {
                                 height: 32,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  color: item.isPurgedFromCloud
+                                  color: (item.audioUrl == null || item.audioUrl!.isEmpty)
                                       ? const Color(0xFF334155)
                                       : (isPlaying ? const Color(0xFF10B981) : const Color(0xFF0284C7)),
                                 ),
                                 child: Icon(
-                                  item.isPurgedFromCloud
+                                  (item.audioUrl == null || item.audioUrl!.isEmpty)
                                       ? Icons.description_rounded
                                       : (isPlaying ? Icons.pause : Icons.play_arrow),
                                   color: Colors.white,
@@ -580,17 +598,19 @@ class _AmbientLogsScreenState extends State<AmbientLogsScreen> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
-                                item.isPurgedFromCloud
-                                    ? 'Audio Purged (Storage Saved) • Script Retained'
-                                    : (isPlaying ? 'Playing studio audio...' : 'Tap to play audio'),
+                                (item.audioUrl == null || item.audioUrl!.isEmpty)
+                                    ? 'Audio on Child Device • Full Script Retained'
+                                    : (isPlaying ? 'Playing live audio recording...' : 'Tap to play audio'),
                                 style: TextStyle(
-                                  color: item.isPurgedFromCloud ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
+                                  color: (item.audioUrl == null || item.audioUrl!.isEmpty)
+                                      ? const Color(0xFF10B981)
+                                      : (isPlaying ? const Color(0xFF38BDF8) : const Color(0xFF94A3B8)),
                                   fontSize: 11,
-                                  fontWeight: item.isPurgedFromCloud ? FontWeight.w600 : FontWeight.normal,
+                                  fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
                                 ),
                               ),
                             ),
-                            if (!item.isPurgedFromCloud)
+                            if (item.audioUrl != null && item.audioUrl!.isNotEmpty)
                               TextButton.icon(
                                 onPressed: () => provider.purgeCloudAudio(item.id),
                                 icon: const Icon(Icons.delete_sweep_rounded, color: Colors.orangeAccent, size: 14),

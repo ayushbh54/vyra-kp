@@ -77,6 +77,7 @@ class _ChatConversationDetailScreenState extends State<ChatConversationDetailScr
       final matchByIdentifier = key == widget.conversation.contactIdentifier;
       final matchByName = m.contactName.isNotEmpty &&
           m.contactName != 'WhatsApp Contact' &&
+          m.contactName != 'Instagram Contact' &&
           m.contactName != 'Snapchat Chat' &&
           m.contactName.toLowerCase() == widget.conversation.contactName.toLowerCase();
       return (matchByIdentifier || matchByName) && m.appType == widget.conversation.appType;
