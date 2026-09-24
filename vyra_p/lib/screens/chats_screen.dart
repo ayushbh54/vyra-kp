@@ -22,7 +22,9 @@ class _ChatsScreenState extends State<ChatsScreen> {
     final selectedApp = provider.selectedChatApp;
     final selectedRange = provider.selectedChatRange;
 
-    final filteredMessages = provider.chatMessages.where((msg) {
+    // Filter out scraper noise / junk nodes
+    final validMessages = provider.chatMessages.where((msg) {
+      if (ParentDashboardProvider.isScraperGarbage(msg.messageText)) return false;
       final matchesApp = msg.appType == selectedApp;
       final matchesSearch = _searchQuery.isEmpty ||
           msg.messageText.toLowerCase().contains(_searchQuery.toLowerCase()) ||
@@ -33,17 +35,36 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
     // Group messages by contact thread (like WhatsApp / Telegram inbox)
     final Map<String, List<ChatMessage>> grouped = {};
-    for (final msg in filteredMessages) {
-      final key = msg.contactIdentifier.isNotEmpty ? msg.contactIdentifier : msg.contactName;
+    for (final msg in validMessages) {
+      String key = msg.contactIdentifier.isNotEmpty ? msg.contactIdentifier : msg.contactName;
+      if (key == 'WhatsApp Contact' || key == 'Snapchat Chat' || key == 'Unknown') {
+        final parsed = ParentDashboardProvider.parseMessageContent(key, msg.messageText, msg.isDeletedBackup);
+        if (parsed.sender != key) {
+          key = parsed.sender;
+        }
+      }
       grouped.putIfAbsent(key, () => []).add(msg);
     }
 
     final conversations = grouped.entries.map((entry) {
       final msgs = entry.value;
       msgs.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+      // Resolve best human-readable name in this thread
+      String bestContactName = entry.key;
+      for (final m in msgs) {
+        if (m.contactName.isNotEmpty &&
+            m.contactName != 'WhatsApp Contact' &&
+            m.contactName != 'Snapchat Chat' &&
+            m.contactName != 'Unknown') {
+          bestContactName = m.contactName;
+          break;
+        }
+      }
+
       return ChatConversation(
         contactIdentifier: entry.key,
-        contactName: msgs.first.contactName,
+        contactName: bestContactName,
         appType: msgs.first.appType,
         messages: msgs,
         isWatchlistTarget: msgs.any((m) => m.isWatchlistTarget),
@@ -207,12 +228,12 @@ class _ChatsScreenState extends State<ChatsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Showing: ${selectedRange.label} (${conversations.length} contacts • ${filteredMessages.length} msgs)',
+                      'Showing: ${selectedRange.label} (${conversations.length} contacts • ${validMessages.length} msgs)',
                       style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
                     ),
                     Text(
-                      totalAppArchived > filteredMessages.length
-                          ? '${totalAppArchived - filteredMessages.length} older messages available in deep vault'
+                      totalAppArchived > validMessages.length
+                          ? '${totalAppArchived - validMessages.length} older messages available in deep vault'
                           : 'Tap any contact to view full chat history',
                       style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10),
                     ),
@@ -486,9 +507,15 @@ class _ConversationThreadCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<ParentDashboardProvider>();
     final lastMsg = conversation.lastMessage;
     final appColor = _getAppColor(conversation.appType);
     final isWatchlist = conversation.isWatchlistTarget;
+    final relatedCalls = provider.getCallRecordsForContact(
+      conversation.contactName,
+      conversation.contactIdentifier,
+    );
+    final relatedCallsCount = relatedCalls.length;
 
     return Container(
       decoration: BoxDecoration(
@@ -652,6 +679,32 @@ class _ConversationThreadCard extends StatelessWidget {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        if (relatedCallsCount > 0) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0xFF059669).withValues(alpha: 0.5)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.phone_in_talk, size: 10, color: Color(0xFF34D399)),
+                                const SizedBox(width: 3),
+                                Text(
+                                  '$relatedCallsCount',
+                                  style: const TextStyle(
+                                    color: Color(0xFF34D399),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                        ],
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                           decoration: BoxDecoration(

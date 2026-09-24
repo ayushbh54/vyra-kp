@@ -206,8 +206,14 @@ class ParentDashboardProvider extends ChangeNotifier {
           .snapshots()
           .listen((snapshot) {
         if (snapshot.docs.isNotEmpty) {
-          final realMsgs = snapshot.docs.map((doc) {
+          final realMsgs = <ChatMessage>[];
+          for (final doc in snapshot.docs) {
             final d = doc.data();
+            final rawText = (d['text'] ?? '').toString();
+
+            // Filter out UI scraper noise (resource IDs, navigation controls, timestamps)
+            if (isScraperGarbage(rawText)) continue;
+
             final dt = _parseTimestamp(d['timestamp']);
             AppType app = AppType.whatsApp;
             final appStr = (d['app'] ?? '').toString().toLowerCase();
@@ -216,31 +222,314 @@ class ParentDashboardProvider extends ChangeNotifier {
             if (appStr.contains('snap')) app = AppType.snapchat;
             if (appStr.contains('sms')) app = AppType.sms;
 
+            final parsed = parseMessageContent(
+              (d['sender'] ?? 'Unknown').toString(),
+              rawText,
+              d['isDeletedBySender'] as bool? ?? false,
+            );
+
+            String finalSender = parsed.sender;
+            String finalText = parsed.cleanText;
+            bool finalDeleted = parsed.isDeleted;
+
+            // If sender is still generic like "WhatsApp Contact" or "Snapchat Chat",
+            // resolve from recent notifications around that timestamp
+            if (finalSender == 'WhatsApp Contact' || finalSender == 'Snapchat Chat' || finalSender == 'Unknown') {
+              final resolved = _resolveSenderFromNotifications(app, dt);
+              if (resolved != null && resolved.isNotEmpty) {
+                finalSender = resolved;
+              }
+            }
+
             final isIncoming = (d['isIncoming'] as bool?) ??
                 (d['direction'] != 'OUTGOING' && d['isUser'] != true);
 
-            return ChatMessage(
+            realMsgs.add(ChatMessage(
               id: doc.id,
               appType: app,
-              contactName: d['sender'] ?? 'Unknown',
-              contactIdentifier: d['sender'] ?? '',
-              messageText: d['text'] ?? '',
+              contactName: finalSender,
+              contactIdentifier: finalSender,
+              messageText: finalText,
               timestamp: dt,
               isIncoming: isIncoming,
-              isDeletedBackup: d['isDeletedBySender'] as bool? ?? false,
+              isDeletedBackup: finalDeleted,
               isWatchlistTarget: d['isWatchlistTarget'] as bool? ?? false,
-            );
-          }).toList();
+            ));
+          }
 
           _childChatMessages.putIfAbsent(_activeChildId, () => []);
           _childChatMessages[_activeChildId]!.clear();
           _childChatMessages[_activeChildId]!.addAll(realMsgs);
+          _mergeNotificationsIntoActiveChats();
           notifyListeners();
         }
       }, onError: (e) => debugPrint("Chats stream info: $e"));
+
+      // 4. Listen to real-time notification stream (provides exact contact names and deleted backups)
+      _notifsSub = _firestore
+          ?.collection('notifications')
+          .doc(targetDocId)
+          .collection('items')
+          .orderBy('timestamp', descending: true)
+          .snapshots()
+          .listen((snapshot) {
+        if (snapshot.docs.isNotEmpty) {
+          final realNotifs = snapshot.docs.map((doc) {
+            final d = doc.data();
+            final dt = _parseTimestamp(d['timestamp']);
+            return NotificationItem(
+              id: doc.id,
+              packageName: d['packageName'] ?? '',
+              appName: d['appName'] ?? 'App',
+              title: d['title'] ?? 'Unknown',
+              message: (d['text'] ?? d['message'] ?? '').toString(),
+              timestamp: dt,
+              isDeletedBackup: d['isDeletedBackup'] as bool? ?? false,
+              isSensitiveAlert: d['isImportant'] as bool? ?? false,
+            );
+          }).toList();
+
+          _childNotifications.putIfAbsent(_activeChildId, () => []);
+          _childNotifications[_activeChildId]!.clear();
+          _childNotifications[_activeChildId]!.addAll(realNotifs);
+          _mergeNotificationsIntoActiveChats();
+          notifyListeners();
+        }
+      }, onError: (e) => debugPrint("Notifications stream info: $e"));
     } catch (e) {
       debugPrint("Firestore listener offline/fallback: $e");
     }
+  }
+
+  static bool isScraperGarbage(String text) {
+    final t = text.trim();
+    if (t.length < 2) return true;
+
+    // View / Resource IDs (e.g. 2131232237)
+    if (RegExp(r'^\d{6,}$').hasMatch(t)) return true;
+
+    final lower = t.toLowerCase();
+    const garbageIds = {
+      'feed_plus_badge_icon',
+      'avatar_container',
+      'action_bar_root',
+      'icon_placeholder',
+      'status_bar_latest_event_content',
+      'action_bar',
+      'navigation_bar_item_labels_group',
+      'action_mode_close_button',
+    };
+    if (garbageIds.contains(lower)) return true;
+
+    // Standalone timestamps (e.g., 3:37 PM, 12:45 AM, 15:30, 24/09/2026, Today, Yesterday)
+    if (RegExp(r'^\d{1,2}:\d{2}\s*(?:AM|PM|am|pm)?$').hasMatch(t)) return true;
+    if (RegExp(r'^\d{1,2}/\d{1,2}/\d{2,4}$').hasMatch(t)) return true;
+    if (lower == 'today' || lower == 'yesterday') return true;
+
+    // Static UI action bar buttons and navigation placeholders that get scraped
+    const uiNavigationGarbage = {
+      'ask meta ai or search',
+      'search',
+      'search...',
+      'phone',
+      'video call',
+      'voice call',
+      'camera',
+      'more options',
+      'back',
+      'type a message',
+      'message',
+      'message...',
+      'send',
+      'stickers',
+      'emoji',
+      'attach',
+      'disappearing messages',
+      'chat',
+      'chats',
+      'calls',
+      'updates',
+      'communities',
+      'status',
+      'spotlight',
+      'stories',
+      'tap to chat',
+      'tap to view',
+      'tap to load',
+      'new snap',
+      'unviewed story',
+      'view story',
+      'add friend',
+      'create group',
+    };
+    if (uiNavigationGarbage.contains(lower)) return true;
+
+    // Snapchat streaks / feed chips (e.g., "Delivered 1h 298🔥", "Opened 2m", "Sent 5h")
+    if (RegExp(r'^(delivered|opened|received|sent)\s+\d+.*', caseSensitive: false).hasMatch(t)) {
+      return true;
+    }
+    if (RegExp(r'^\d+🔥$').hasMatch(t)) return true;
+
+    return false;
+  }
+
+  static ParsedChatMessage parseMessageContent(
+    String rawSender,
+    String rawText,
+    bool rawDeleted,
+  ) {
+    String text = rawText.trim();
+    String sender = rawSender.trim();
+    bool isDeleted = rawDeleted;
+
+    // Detect WhatsApp/Telegram Deleted for Everyone
+    final lowerText = text.toLowerCase();
+    if (lowerText.contains('this message was deleted') ||
+        lowerText.contains('you deleted this message') ||
+        lowerText.contains('message deleted by sender')) {
+      isDeleted = true;
+      text = '🚫 This message was deleted by sender (Captured before deletion)';
+    }
+
+    // 1. WhatsApp group message prefix: "~ sonia arora: message text"
+    final tildeMatch = RegExp(r'^~\s*([^:]+):\s*(.*)$', dotAll: true).firstMatch(text);
+    if (tildeMatch != null) {
+      final extractedSender = tildeMatch.group(1)?.trim() ?? '';
+      final body = tildeMatch.group(2)?.trim() ?? '';
+      if (extractedSender.isNotEmpty) {
+        sender = extractedSender;
+        text = body.isNotEmpty ? body : text;
+      }
+    } else {
+      // 2. Standard prefix: "Ayush: hello"
+      final prefixMatch = RegExp(r'^([A-Za-z0-9\s\+\-\(\)]{2,25}):\s+(.*)$', dotAll: true).firstMatch(text);
+      if (prefixMatch != null) {
+        final candSender = prefixMatch.group(1)?.trim() ?? '';
+        final body = prefixMatch.group(2)?.trim() ?? '';
+        final lowerCand = candSender.toLowerCase();
+        if (lowerCand != 'http' &&
+            lowerCand != 'https' &&
+            lowerCand != 'note' &&
+            lowerCand != 'warning' &&
+            lowerCand != 'status' &&
+            body.isNotEmpty) {
+          sender = candSender;
+          text = body;
+        }
+      }
+    }
+
+    return ParsedChatMessage(
+      sender: sender,
+      cleanText: text,
+      isDeleted: isDeleted,
+    );
+  }
+
+  String? _resolveSenderFromNotifications(AppType app, DateTime dt) {
+    final notifs = _childNotifications[_activeChildId] ?? [];
+    if (notifs.isEmpty) return null;
+
+    final targetAppStr = app.displayName.toLowerCase();
+    for (final n in notifs) {
+      if (n.appName.toLowerCase().contains(targetAppStr) || targetAppStr.contains(n.appName.toLowerCase())) {
+        final diff = dt.difference(n.timestamp).inMinutes.abs();
+        if (diff <= 5 && n.title.isNotEmpty && n.title != 'Unknown') {
+          return n.title;
+        }
+      }
+    }
+    return null;
+  }
+
+  void _mergeNotificationsIntoActiveChats() {
+    final notifs = _childNotifications[_activeChildId] ?? [];
+    final existingMsgs = _childChatMessages[_activeChildId] ?? [];
+
+    for (final notif in notifs) {
+      final appNameLower = notif.appName.toLowerCase();
+      AppType app = AppType.whatsApp;
+      if (appNameLower.contains('insta')) app = AppType.instagram;
+      if (appNameLower.contains('tele')) app = AppType.telegram;
+      if (appNameLower.contains('snap')) app = AppType.snapchat;
+      if (appNameLower.contains('sms')) app = AppType.sms;
+
+      final isSocial = appNameLower.contains('what') ||
+          appNameLower.contains('insta') ||
+          appNameLower.contains('tele') ||
+          appNameLower.contains('snap') ||
+          appNameLower.contains('sms') ||
+          notif.packageName.contains('mms');
+
+      if (!isSocial || notif.message.trim().isEmpty) continue;
+
+      // Check if this notification already exists in messages
+      final alreadyPresent = existingMsgs.any((m) {
+        final sameApp = m.appType == app;
+        final sameText = m.messageText.trim() == notif.message.trim();
+        final timeDiff = (m.timestamp.difference(notif.timestamp)).inSeconds.abs();
+        return sameApp && (sameText || timeDiff < 5);
+      });
+
+      if (!alreadyPresent) {
+        existingMsgs.add(ChatMessage(
+          id: 'notif_mirror_${notif.id}',
+          appType: app,
+          contactName: notif.title.isNotEmpty ? notif.title : 'Unknown',
+          contactIdentifier: notif.title,
+          messageText: notif.message,
+          timestamp: notif.timestamp,
+          isIncoming: true,
+          isDeletedBackup: notif.isDeletedBackup,
+          isWatchlistTarget: notif.isSensitiveAlert,
+        ));
+      } else {
+        // Hydrate sender on existing messages if previously generic
+        for (int i = 0; i < existingMsgs.length; i++) {
+          final m = existingMsgs[i];
+          if (m.appType == app &&
+              (m.contactName == 'WhatsApp Contact' || m.contactName == 'Snapchat Chat' || m.contactName == 'Unknown') &&
+              m.messageText.trim() == notif.message.trim()) {
+            existingMsgs[i] = ChatMessage(
+              id: m.id,
+              appType: m.appType,
+              contactName: notif.title,
+              contactIdentifier: notif.title,
+              messageText: m.messageText,
+              timestamp: m.timestamp,
+              isIncoming: m.isIncoming,
+              isDeletedBackup: m.isDeletedBackup || notif.isDeletedBackup,
+              isWatchlistTarget: m.isWatchlistTarget || notif.isSensitiveAlert,
+            );
+          }
+        }
+      }
+    }
+
+    // Sort descending by timestamp
+    existingMsgs.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+  }
+
+  List<CallRecord> getCallRecordsForContact(String contactName, String contactIdentifier) {
+    final cleanName = contactName.toLowerCase().trim();
+    final simplifiedName = cleanName.replaceAll(RegExp(r'\[.*?\]'), '').trim();
+    final digits = contactIdentifier.replaceAll(RegExp(r'\D'), '');
+
+    final allCalls = callRecords;
+    return allCalls.where((call) {
+      final callName = call.contactName.toLowerCase().trim();
+      final callDigits = call.phoneNumber.replaceAll(RegExp(r'\D'), '');
+
+      if (digits.length >= 7 && callDigits.isNotEmpty && (digits.contains(callDigits) || callDigits.contains(digits))) {
+        return true;
+      }
+      if (simplifiedName.length > 2 && callName.isNotEmpty) {
+        if (callName.contains(simplifiedName) || simplifiedName.contains(callName)) {
+          return true;
+        }
+      }
+      return false;
+    }).toList();
   }
 
   String get _activeTargetDocId => activePairingCode.isNotEmpty ? activePairingCode : _activeChildId;
