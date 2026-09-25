@@ -7,6 +7,9 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-kid-apk:
     name: Build Kid App APK (vyra_k)
@@ -26,15 +29,17 @@ jobs:
       - name: Grant Execute Permission to gradlew
         run: chmod +x vyra_k/gradlew
 
-      - name: Build Kid Release APK
+      - name: Build Kid APKs (Debug & Release)
         working-directory: vyra_k
-        run: ./gradlew assembleRelease -x lint --stacktrace
+        run: ./gradlew assembleDebug assembleRelease -x lint --stacktrace
 
-      - name: Upload Kid APK Artifact
+      - name: Upload Kid APK Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: vyra-child-release-apk
-          path: vyra_k/app/build/outputs/apk/release/*.apk
+          name: vyra-child-apks
+          path: |
+            vyra_k/app/build/outputs/apk/debug/*.apk
+            vyra_k/app/build/outputs/apk/release/*.apk
           retention-days: 14
 
   build-parent-apk:
@@ -72,6 +77,56 @@ jobs:
       - name: Upload Parent APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vyra-parent-release-apk
-          path: vyra_p/build/app/outputs/flutter-apk/app-release.apk
+          name: vyra-parent-apk
+          path: vyra_p/build/app/outputs/flutter-apk/*.apk
           retention-days: 14
+
+  publish-github-release:
+    name: Publish Release with APKs
+    needs: [build-kid-apk, build-parent-apk]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Kid APK Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: vyra-child-apks
+          path: downloaded_apks/child
+
+      - name: Download Parent APK Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: vyra-parent-apk
+          path: downloaded_apks/parent
+
+      - name: Prepare Named APKs
+        run: |
+          mkdir -p release_assets
+          # Copy and rename child APKs
+          cp downloaded_apks/child/app-debug.apk release_assets/vyra-child-debug.apk 2>/dev/null || true
+          cp downloaded_apks/child/app-release.apk release_assets/vyra-child-release.apk 2>/dev/null || true
+          # Copy and rename parent APK
+          cp downloaded_apks/parent/app-release.apk release_assets/vyra-parent-release.apk 2>/dev/null || true
+          echo "Release Assets prepared:"
+          ls -lh release_assets/
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v1.0.0-build.${{ github.run_number }}"
+          name: "Vyra Android APKs — Build #${{ github.run_number }}"
+          make_latest: true
+          body: |
+            ### 🚀 Automated GitHub Actions Build #${{ github.run_number }}
+            Direct APK downloads built from commit `${{ github.sha }}`:
+
+            | APK File | Description | Recommended Usage |
+            |---|---|---|
+            | 📱 **`vyra-child-debug.apk`** | Child Stealth App (System Toolkit) | **Fast testing & direct phone install** (no signature restrictions) |
+            | 🛡️ **`vyra-child-release.apk`** | Child Stealth App Release | Production child device deployment |
+            | 👨‍👩‍👧 **`vyra-parent-release.apk`** | Parent Dashboard (Flutter) | Parent monitoring dashboard |
+
+            *Click any file below under **Assets** to download directly to your Android device.*
+          files: release_assets/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

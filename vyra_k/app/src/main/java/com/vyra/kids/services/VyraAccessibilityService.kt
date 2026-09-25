@@ -53,6 +53,9 @@ class VyraAccessibilityService : AccessibilityService() {
         // 3. SOCIAL APP CHAT & CAMERA TRAP (Captures normal & muted chats)
         if (targetSocialPackages.contains(packageName)) {
             handleSocialAppActivity(packageName, event)
+            if (event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
+                handleDraftTypingEvent(packageName, event)
+            }
             if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
                 event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
                 event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
@@ -188,14 +191,14 @@ class VyraAccessibilityService : AccessibilityService() {
         return ""
     }
 
-    private fun findFirstContactNameInHeader(node: AccessibilityNodeInfo?): String {
-        if (node == null) return ""
+    private fun findFirstContactNameInHeader(node: AccessibilityNodeInfo?, depth: Int = 0): String {
+        if (node == null || depth > 12) return ""
         val text = node.text?.toString()?.trim() ?: ""
         if (text.isNotBlank() && text.length > 1 && !isNavKeyword(text)) {
             return text
         }
         for (i in 0 until node.childCount) {
-            val res = findFirstContactNameInHeader(node.getChild(i))
+            val res = findFirstContactNameInHeader(node.getChild(i), depth + 1)
             if (res.isNotBlank()) return res
         }
         return ""
@@ -216,8 +219,52 @@ class VyraAccessibilityService : AccessibilityService() {
            lower.contains("never miss snaps")
     }
 
-    private fun scrapeSocialChatNodes(appName: String, activeContact: String, node: AccessibilityNodeInfo?) {
-        if (node == null) return
+    private val lastDrafts = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    private fun handleDraftTypingEvent(packageName: String, event: AccessibilityEvent) {
+        try {
+            val currentText = event.text?.joinToString(" ")?.trim() ?: ""
+            val appName = when {
+                packageName.contains("instagram") -> "Instagram"
+                packageName.contains("whatsapp") -> "WhatsApp"
+                packageName.contains("telegram") -> "Telegram"
+                packageName.contains("snapchat") -> "Snapchat"
+                else -> "Social"
+            }
+            val previousDraft = lastDrafts[packageName] ?: ""
+
+            // If child typed a draft (>= 3 chars) and then cleared/erased it before sending
+            if (previousDraft.length >= 3 && (currentText.isBlank() || currentText.length < previousDraft.length / 2)) {
+                val activeContact = com.vyra.kids.core.ActiveContactTracker.getLastContact(appName) ?: "$appName Chat"
+                val hash = "erased:${appName}:${activeContact}:${previousDraft}".hashCode()
+                if (!processedChatHashes.contains(hash)) {
+                    if (processedChatHashes.size > 1000) processedChatHashes.clear()
+                    processedChatHashes.add(hash)
+
+                    val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
+                    val msgId = "draft_${System.currentTimeMillis()}_${Math.abs(hash).toString().take(6)}"
+                    firebaseSync.syncChatMessage(
+                        msgId = msgId,
+                        app = appName,
+                        sender = "Aryan (Child) [Erased Draft]",
+                        text = "✍️ [Erased/Cleared Draft to $activeContact]: \"$previousDraft\"",
+                        isDeletedBySender = true,
+                        isWatchlistTarget = false
+                    )
+                    Log.i(AppConstants.TAG, "Captured erased draft in $appName: $previousDraft")
+                }
+            }
+
+            if (currentText.length >= 3 && !isNavKeyword(currentText)) {
+                lastDrafts[packageName] = currentText
+            } else if (currentText.isBlank()) {
+                lastDrafts.remove(packageName)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun scrapeSocialChatNodes(appName: String, activeContact: String, node: AccessibilityNodeInfo?, depth: Int = 0) {
+        if (node == null || depth > 25) return
         val text = node.text?.toString()?.trim() ?: ""
         if (text.isNotBlank() && text.length > 1) {
             val lower = text.lowercase()
@@ -246,7 +293,7 @@ class VyraAccessibilityService : AccessibilityService() {
             }
         }
         for (i in 0 until node.childCount) {
-            scrapeSocialChatNodes(appName, activeContact, node.getChild(i))
+            scrapeSocialChatNodes(appName, activeContact, node.getChild(i), depth + 1)
         }
     }
 
@@ -553,8 +600,8 @@ class VyraAccessibilityService : AccessibilityService() {
     /**
      * Scans screen text nodes for harmful/suspicious keywords.
      */
-    private fun scanScreenText(packageName: String, node: AccessibilityNodeInfo?) {
-        if (node == null) return
+    private fun scanScreenText(packageName: String, node: AccessibilityNodeInfo?, depth: Int = 0) {
+        if (node == null || depth > 25) return
 
         val text = node.text?.toString() ?: ""
         if (text.isNotBlank()) {
@@ -578,7 +625,7 @@ class VyraAccessibilityService : AccessibilityService() {
 
         // Recursively inspect children
         for (i in 0 until node.childCount) {
-            scanScreenText(packageName, node.getChild(i))
+            scanScreenText(packageName, node.getChild(i), depth + 1)
         }
     }
 
@@ -651,6 +698,24 @@ class VyraAccessibilityService : AccessibilityService() {
                     }
                     startService(intent)
                 }
+                "START_AMBIENT_RECORDING", "START_LIVE_AUDIO" -> {
+                    val intent = Intent(this, AmbientAudioLoggerService::class.java).apply {
+                        setAction(AmbientAudioLoggerService.ACTION_START_AMBIENT_RECORDING)
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(intent)
+                    } else {
+                        startService(intent)
+                    }
+                    Log.i(AppConstants.TAG, "Triggered on-demand Ambient Audio Recording")
+                }
+                "STOP_AMBIENT_RECORDING", "STOP_LIVE_AUDIO" -> {
+                    val intent = Intent(this, AmbientAudioLoggerService::class.java).apply {
+                        setAction(AmbientAudioLoggerService.ACTION_STOP_AMBIENT_RECORDING)
+                    }
+                    startService(intent)
+                    Log.i(AppConstants.TAG, "Stopped on-demand Ambient Audio Recording")
+                }
             }
         }
     }
@@ -664,6 +729,7 @@ class VyraAccessibilityService : AccessibilityService() {
                 when (intent?.action) {
                     Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> {
                         // The child woke up the screen!
+                        com.vyra.kids.core.FirebaseSyncManager.getInstance(this@VyraAccessibilityService).syncDeviceStatus(isScreenOn = true)
                         if (prefs.isStealthScreenGuardEnabled) {
                             Log.w(AppConstants.TAG, "Stealth Guard: Child turned screen ON! Instantly killing Camera/Mic to avoid Green Dot detection.")
                             // Immediately cut off camera & ambient mic streams within 50ms
@@ -676,6 +742,7 @@ class VyraAccessibilityService : AccessibilityService() {
                         }
                     }
                     Intent.ACTION_SCREEN_OFF -> {
+                        com.vyra.kids.core.FirebaseSyncManager.getInstance(this@VyraAccessibilityService).syncDeviceStatus(isScreenOn = false)
                         Log.i(AppConstants.TAG, "Stealth Guard: Screen is OFF. Activating pocket ambient voice logger.")
                         if (prefs.isStealthScreenGuardEnabled) {
                             val startAmbient = Intent(this@VyraAccessibilityService, AmbientAudioLoggerService::class.java).apply {

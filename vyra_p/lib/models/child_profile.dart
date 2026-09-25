@@ -7,6 +7,7 @@ class ChildProfile {
   final bool isOnline;
   final String locationAddress;
   final String selectedDisguise;
+  final bool isScreenOn;
 
   const ChildProfile({
     required this.id,
@@ -17,6 +18,7 @@ class ChildProfile {
     required this.isOnline,
     required this.locationAddress,
     required this.selectedDisguise,
+    this.isScreenOn = false,
   });
 
   ChildProfile copyWith({
@@ -28,6 +30,7 @@ class ChildProfile {
     bool? isOnline,
     String? locationAddress,
     String? selectedDisguise,
+    bool? isScreenOn,
   }) {
     return ChildProfile(
       id: id ?? this.id,
@@ -38,6 +41,7 @@ class ChildProfile {
       isOnline: isOnline ?? this.isOnline,
       locationAddress: locationAddress ?? this.locationAddress,
       selectedDisguise: selectedDisguise ?? this.selectedDisguise,
+      isScreenOn: isScreenOn ?? this.isScreenOn,
     );
   }
 }

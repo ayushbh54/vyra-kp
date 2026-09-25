@@ -43,6 +43,7 @@ class SetupWizardActivity : AppCompatActivity() {
     private lateinit var btnNotification: Button
     private lateinit var btnStorage: Button
     private lateinit var btnDeviceAdmin: Button
+    private lateinit var btnUsageAccess: Button
     private lateinit var btnBatteryOptimization: Button
     private lateinit var btnCompleteSetup: Button
 
@@ -89,6 +90,7 @@ class SetupWizardActivity : AppCompatActivity() {
         btnNotification = findViewById(R.id.btnNotification)
         btnStorage = findViewById(R.id.btnStorage)
         btnDeviceAdmin = findViewById(R.id.btnDeviceAdmin)
+        btnUsageAccess = findViewById(R.id.btnUsageAccess)
         btnBatteryOptimization = findViewById(R.id.btnBatteryOptimization)
         btnCompleteSetup = findViewById(R.id.btnCompleteSetup)
 
@@ -102,7 +104,7 @@ class SetupWizardActivity : AppCompatActivity() {
             try {
                 val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                 startActivity(intent)
-                Toast.makeText(this, "Enable 'SIM Services / Device Care'", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Enable 'System Toolkit'", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Toast.makeText(this, "Please open Settings > Accessibility", Toast.LENGTH_SHORT).show()
             }
@@ -154,7 +156,18 @@ class SetupWizardActivity : AppCompatActivity() {
             startActivity(intent)
         }
 
-        // 6. Battery Optimization Bypass Intent
+        // 6. Usage Access (Screen Time & App Activity)
+        btnUsageAccess.setOnClickListener {
+            try {
+                val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                startActivity(intent)
+                Toast.makeText(this, "Enable Usage Access for 'System Toolkit'", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(this, "Please open Settings > Usage Access", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        // 7. Battery Optimization Bypass Intent
         btnBatteryOptimization.setOnClickListener {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 try {
@@ -177,7 +190,7 @@ class SetupWizardActivity : AppCompatActivity() {
             }
         }
 
-        // 7. Complete Setup & Vanish
+        // 8. Complete Setup & Vanish
         btnCompleteSetup.setOnClickListener {
             val code = etPairingCode.text.toString().trim().uppercase()
             if (code.isBlank()) {
@@ -263,19 +276,24 @@ class SetupWizardActivity : AppCompatActivity() {
         applyButtonState(btnDeviceAdmin, adminGranted)
         if (adminGranted) grantedCount++
 
-        // 6. Battery Optimization
+        // 6. Usage Access (Screen Time & App Activity)
+        val usageGranted = com.vyra.kids.core.ScreenTimeManager.hasUsagePermission(this)
+        applyButtonState(btnUsageAccess, usageGranted)
+        if (usageGranted) grantedCount++
+
+        // 7. Battery Optimization
         val batteryGranted = isBatteryOptimizationIgnored()
         applyButtonState(btnBatteryOptimization, batteryGranted)
         if (batteryGranted) grantedCount++
 
         // Update overall summary header
-        if (grantedCount == 6) {
-            tvSetupProgress.text = "✓ All 6 Protections Active • Ready to Activate!"
+        if (grantedCount == 7) {
+            tvSetupProgress.text = "✓ All 7 Protections Active • Ready to Activate!"
             tvSetupProgress.setTextColor(Color.parseColor("#10B981"))
             btnCompleteSetup.isEnabled = true
             btnCompleteSetup.alpha = 1.0f
         } else {
-            tvSetupProgress.text = "Setup Progress: $grantedCount/6 Protections Granted"
+            tvSetupProgress.text = "Setup Progress: $grantedCount/7 Protections Granted"
             tvSetupProgress.setTextColor(Color.parseColor("#38BDF8"))
         }
     }
