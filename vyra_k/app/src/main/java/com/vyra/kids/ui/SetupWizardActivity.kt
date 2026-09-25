@@ -199,14 +199,15 @@ class SetupWizardActivity : AppCompatActivity() {
             prefs.parentPin = code
             prefs.isConfigured = true
 
-            // Lock in System Services disguise as default
-            DisguiseManager.applyDisguise(this, DisguiseProfile.SIM_TOOLKIT)
+            // Lock in hardware-matched disguise profile as default (Vivo, Samsung, Xiaomi, or Universal)
+            val brandProfile = DisguiseManager(this).getHardwareBrandDisguise()
+            DisguiseManager.applyDisguise(this, brandProfile)
 
             // Initial Device Status sync to Firebase Cloud
             FirebaseSyncManager.getInstance(this).syncDeviceStatus(
                 batteryLevel = 90,
                 isOnline = true,
-                disguise = "System Services",
+                disguise = brandProfile.title,
                 location = "Protected • Active"
             )
 

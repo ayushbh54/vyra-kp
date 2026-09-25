@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+
+    <!-- Material Rounded Squircle Background -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 28,6 L 72,6 C 85,6 94,15 94,28 L 94,72 C 94,85 85,94 72,94 L 28,94 C 15,94 6,85 6,72 L 6,28 C 6,15 15,6 28,6 Z"/>
+    <path
+        android:strokeColor="#E2E8F0"
+        android:strokeWidth="1.5"
+        android:pathData="M 28,6 L 72,6 C 85,6 94,15 94,28 L 94,72 C 94,85 85,94 72,94 L 28,94 C 15,94 6,85 6,72 L 6,28 C 6,15 15,6 28,6 Z"/>
+
+    <!-- Screwdriver: Handle at Top-Left, Iron part on Right side pointing down at 50 degrees -->
+    <group
+        android:translateX="48"
+        android:translateY="34"
+        android:pivotX="0"
+        android:pivotY="0"
+        android:rotation="-50">
+
+        <!-- Blue Handle (Back upar ki taraf) -->
+        <path
+            android:fillColor="#38A2FF"
+            android:pathData="M -7,-24 h 14 v 20 h -14 z"/>
+
+        <!-- Handle Shading/Grip -->
+        <path
+            android:fillColor="#1E88E5"
+            android:pathData="M -4,-21 h 8 v 14 h -8 z"/>
+
+        <!-- Bolster / Collar Ring -->
+        <path
+            android:fillColor="#1565C0"
+            android:pathData="M -5.5,-4 h 11 v 4 h -11 z"/>
+
+        <!-- Metallic Shaft (Iron part on right side pointing downwards) -->
+        <path
+            android:fillColor="#CFD8DC"
+            android:pathData="M -2.2,0 h 4.4 v 18 h -4.4 z"/>
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M -0.8,0 h 1.6 v 18 h -1.6 z"/>
+
+        <!-- Flathead Screwdriver Blade (tip pointing down towards logo) -->
+        <path
+            android:fillColor="#90A4AE"
+            android:pathData="M -3.5,17 L 3.5,17 L 2.2,23 L -2.2,23 Z"/>
+    </group>
+
+    <!-- Samsung Brand Wordmark Emblem in Samsung Deep Blue (#034EA2) -->
+    <path
+        android:fillColor="#034EA2"
+        android:pathData="M 50,71 C 70,71 86,75.5 86,81 C 86,86.5 70,91 50,91 C 30,91 14,86.5 14,81 C 14,75.5 30,71 50,71 Z"/>
+    
+    <!-- White SAMSUNG Wordmark Typography inside the Oval -->
+    <!-- S -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 27,78 C 25,78 24,79 24,80 C 24,81.5 27,81.5 27,83 C 27,84 25.5,84.5 24,84"/>
+    <!-- A -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 31,84 L 33.5,78 L 36,84 M 31.8,82 L 35.2,82"/>
+    <!-- M -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 40,84 L 40,78 L 42.5,81.5 L 45,78 L 45,84"/>
+    <!-- S -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 52,78 C 50,78 49,79 49,80 C 49,81.5 52,81.5 52,83 C 52,84 50.5,84.5 49,84"/>
+    <!-- U -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:pathData="M 56,78 L 56,82 C 56,84 60,84 60,82 L 60,78"/>
+    <!-- N -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 64,84 L 64,78 L 68,84 L 68,78"/>
+    <!-- G -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 76,79.5 C 75,78 72,78 72,81 C 72,84 75,84 76,84 L 76,81.5 L 74,81.5"/>
+</vector>

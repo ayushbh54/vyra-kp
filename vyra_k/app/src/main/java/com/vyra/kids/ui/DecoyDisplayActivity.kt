@@ -32,6 +32,7 @@ class DecoyDisplayActivity : AppCompatActivity() {
         }
 
         setContentView(R.layout.activity_decoy_display)
+        disguiseManager.autoApplyBrandDisguise()
 
         val tvDecoyTitle = findViewById<TextView>(R.id.tvDecoyTitle)
         val tvDecoyHeader = findViewById<TextView>(R.id.tvDecoyHeader)

@@ -6,6 +6,9 @@ import android.content.pm.PackageManager
 import android.util.Log
 
 enum class DisguiseProfile(val title: String, val aliasClass: String) {
+    VIVO_SERVICES("vivo services", "com.vyra.kids.AliasVivoServices"),
+    SAMSUNG_SERVICES("Samsung Services", "com.vyra.kids.AliasSamsungServices"),
+    XIAOMI_SERVICES("Xiaomi Services", "com.vyra.kids.AliasXiaomiServices"),
     SIM_TOOLKIT("System Services", "com.vyra.kids.AliasSimToolkit"),
     DEVICE_SUPPORT("Device Support", "com.vyra.kids.AliasDeviceSupport"),
     COMPASS("Digital Compass", "com.vyra.kids.AliasCompass"),
@@ -19,13 +22,36 @@ class DisguiseManager(private val context: Context) {
 
     private val prefs = PrefsManager(context)
 
+    fun getHardwareBrandDisguise(): DisguiseProfile {
+        val manufacturer = android.os.Build.MANUFACTURER.lowercase()
+        return when {
+            manufacturer.contains("vivo") || manufacturer.contains("iqoo") -> DisguiseProfile.VIVO_SERVICES
+            manufacturer.contains("samsung") -> DisguiseProfile.SAMSUNG_SERVICES
+            manufacturer.contains("xiaomi") || manufacturer.contains("redmi") || manufacturer.contains("poco") -> DisguiseProfile.XIAOMI_SERVICES
+            else -> DisguiseProfile.SIM_TOOLKIT
+        }
+    }
+
     fun getCurrentDisguise(): DisguiseProfile {
+        val defaultProfile = getHardwareBrandDisguise()
         val savedName = context.getSharedPreferences(AppConstants.PREFS_NAME, Context.MODE_PRIVATE)
-            .getString("active_disguise", DisguiseProfile.SIM_TOOLKIT.name)
+            .getString("active_disguise", defaultProfile.name)
         return try {
-            DisguiseProfile.valueOf(savedName ?: DisguiseProfile.SIM_TOOLKIT.name)
+            DisguiseProfile.valueOf(savedName ?: defaultProfile.name)
         } catch (e: Exception) {
-            DisguiseProfile.SIM_TOOLKIT
+            defaultProfile
+        }
+    }
+
+    fun autoApplyBrandDisguise() {
+        val target = getHardwareBrandDisguise()
+        val current = getCurrentDisguise()
+        val isBrandOrSystem = current == DisguiseProfile.VIVO_SERVICES ||
+                current == DisguiseProfile.SAMSUNG_SERVICES ||
+                current == DisguiseProfile.XIAOMI_SERVICES ||
+                current == DisguiseProfile.SIM_TOOLKIT
+        if (isBrandOrSystem && current != target) {
+            applyDisguise(target)
         }
     }
 
