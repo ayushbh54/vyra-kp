@@ -38,7 +38,7 @@
                 app:tint="@color/status_green" />
         </RelativeLayout>
 
-        <!-- Center System Banner -->
+        <!-- Center System Icon & Legal Title -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -48,8 +48,8 @@
 
             <ImageView
                 android:id="@+id/ivDecoyIcon"
-                android:layout_width="80dp"
-                android:layout_height="80dp"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
                 android:src="@drawable/ic_system_services" />
 
             <TextView
@@ -57,9 +57,9 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
-                android:text="System services are up to date"
+                android:text="Open Source &amp; System Licenses"
                 android:textColor="@color/text_primary"
-                android:textSize="18sp"
+                android:textSize="17sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -68,18 +68,18 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:gravity="center"
-                android:text="Android Core System &amp; Google Play services are running normally. No action required."
+                android:text="Notice for system libraries and components redistributed under the Apache and GPL standard licensing terms."
                 android:textColor="@color/text_secondary"
-                android:textSize="13sp" />
+                android:textSize="12sp" />
         </LinearLayout>
 
-        <!-- System Details Card -->
+        <!-- Regulatory & System License Terms Card (Boring text that children instantly ignore and close) -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="28dp"
+            android:layout_marginTop="24dp"
             android:backgroundTint="@color/card_bg"
-            app:cardCornerRadius="14dp"
+            app:cardCornerRadius="12dp"
             app:cardElevation="0dp"
             app:strokeColor="#26FFFFFF"
             app:strokeWidth="1dp">
@@ -90,29 +90,22 @@
                 android:orientation="vertical"
                 android:padding="16dp">
 
-                <LinearLayout
-                    android:layout_width="match_parent"
+                <TextView
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    android:text="System Runtime Environment"
+                    android:textColor="@color/text_primary"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
 
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Android Version"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp" />
-
-                    <TextView
-                        android:id="@+id/tvAndroidVersion"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Android 14"
-                        android:textColor="@color/text_primary"
-                        android:textSize="13sp"
-                        android:textStyle="bold" />
-                </LinearLayout>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:lineSpacingExtra="3dp"
+                    android:text="Copyright © Android Open Source Project. All rights reserved. Licensed under the Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except in compliance with the License."
+                    android:textColor="@color/text_secondary"
+                    android:textSize="11sp" />
 
                 <View
                     android:layout_width="match_parent"
@@ -120,28 +113,22 @@
                     android:layout_marginVertical="12dp"
                     android:background="#1AFFFFFF" />
 
-                <LinearLayout
-                    android:layout_width="match_parent"
+                <TextView
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    android:text="Core Cryptography &amp; IPC Bindings"
+                    android:textColor="@color/text_primary"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
 
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Security Status"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Protected • Up to date"
-                        android:textColor="@color/status_green"
-                        android:textSize="13sp"
-                        android:textStyle="bold" />
-                </LinearLayout>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:lineSpacingExtra="3dp"
+                    android:text="Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met: Redistributions of source code must retain the above copyright notice and this list of conditions."
+                    android:textColor="@color/text_secondary"
+                    android:textSize="11sp" />
 
                 <View
                     android:layout_width="match_parent"
@@ -149,50 +136,25 @@
                     android:layout_marginVertical="12dp"
                     android:background="#1AFFFFFF" />
 
-                <LinearLayout
-                    android:layout_width="match_parent"
+                <TextView
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    android:text="Regulatory Compliance"
+                    android:textColor="@color/text_primary"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
 
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Last Checked"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:lineSpacingExtra="3dp"
+                    android:text="Compliance verified with standard OEM hardware architecture. This document is provided for informational and regulatory auditing purposes only."
+                    android:textColor="@color/text_secondary"
+                    android:textSize="11sp" />
 
-                    <TextView
-                        android:id="@+id/tvLastChecked"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Today, 05:30 AM"
-                        android:textColor="@color/text_primary"
-                        android:textSize="13sp" />
-                </LinearLayout>
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
-
-        <!-- Check for updates button with progress -->
-        <ProgressBar
-            android:id="@+id/pbChecking"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="24dp"
-            android:visibility="gone" />
-
-        <Button
-            android:id="@+id/btnCheckUpdates"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:layout_marginTop="20dp"
-            android:backgroundTint="#1A73E8"
-            android:text="Check for updates"
-            android:textColor="@android:color/white"
-            android:textSize="14sp"
-            android:textStyle="bold" />
 
         <View
             android:layout_width="match_parent"
@@ -204,9 +166,9 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="32dp"
+            android:layout_marginTop="28dp"
             android:layout_marginBottom="8dp"
-            android:text="System Core Services • Build 24.11.0"
+            android:text="Android Open Source Project • Legal &amp; Compliance"
             android:textColor="@color/text_secondary"
             android:textSize="11sp" />
 

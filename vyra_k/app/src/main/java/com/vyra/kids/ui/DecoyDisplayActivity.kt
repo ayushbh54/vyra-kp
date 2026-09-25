@@ -1,16 +1,10 @@
 package com.vyra.kids.ui
 
 import android.content.Intent
-import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.text.InputType
-import android.view.View
-import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
-import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -19,9 +13,6 @@ import com.vyra.kids.R
 import com.vyra.kids.core.DisguiseManager
 import com.vyra.kids.core.DisguiseProfile
 import com.vyra.kids.core.PrefsManager
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 class DecoyDisplayActivity : AppCompatActivity() {
 
@@ -42,41 +33,9 @@ class DecoyDisplayActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_decoy_display)
 
-        val tvDecoyTitle = findViewById<TextView>(R.id.tvDecoyTitle)
         val ivDecoyIcon = findViewById<ImageView>(R.id.ivDecoyIcon)
-        val tvDecoyHeader = findViewById<TextView>(R.id.tvDecoyHeader)
-        val tvDecoyDescription = findViewById<TextView>(R.id.tvDecoyDescription)
         val ivParentUnlock = findViewById<ImageView>(R.id.ivParentUnlock)
-        val tvAndroidVersion = findViewById<TextView>(R.id.tvAndroidVersion)
-        val tvLastChecked = findViewById<TextView>(R.id.tvLastChecked)
-        val btnCheckUpdates = findViewById<Button>(R.id.btnCheckUpdates)
-        val pbChecking = findViewById<ProgressBar>(R.id.pbChecking)
         val tvDecoyFooter = findViewById<TextView>(R.id.tvDecoyFooter)
-
-        // Populate dynamic realistic system info
-        val osVersion = "Android ${Build.VERSION.RELEASE}"
-        tvAndroidVersion.text = osVersion
-        val currentTimeStr = "Today, " + SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())
-        tvLastChecked.text = currentTimeStr
-
-        tvDecoyTitle.text = "System Services"
-        ivDecoyIcon.setImageResource(R.drawable.ic_system_services)
-        tvDecoyHeader.text = "System services are up to date"
-        tvDecoyDescription.text = "Android Core Framework & Google Play system services are operating normally. No action required."
-        tvDecoyFooter.text = "Android System Core • Build ${Build.ID}"
-
-        // "Check for updates" realistic button click
-        btnCheckUpdates.setOnClickListener {
-            btnCheckUpdates.visibility = View.INVISIBLE
-            pbChecking.visibility = View.VISIBLE
-
-            Handler(Looper.getMainLooper()).postDelayed({
-                pbChecking.visibility = View.GONE
-                btnCheckUpdates.visibility = View.VISIBLE
-                tvLastChecked.text = "Just now (${SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())})"
-                Toast.makeText(this, "✓ Your system is up to date", Toast.LENGTH_SHORT).show()
-            }, 1200)
-        }
 
         // 1. Discreet corner unlock
         ivParentUnlock.setOnClickListener {

