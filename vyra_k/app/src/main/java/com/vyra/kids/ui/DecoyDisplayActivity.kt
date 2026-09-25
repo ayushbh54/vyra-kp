@@ -33,7 +33,8 @@ class DecoyDisplayActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_decoy_display)
 
-        val ivDecoyIcon = findViewById<ImageView>(R.id.ivDecoyIcon)
+        val tvDecoyTitle = findViewById<TextView>(R.id.tvDecoyTitle)
+        val tvDecoyHeader = findViewById<TextView>(R.id.tvDecoyHeader)
         val ivParentUnlock = findViewById<ImageView>(R.id.ivParentUnlock)
         val tvDecoyFooter = findViewById<TextView>(R.id.tvDecoyFooter)
         val tvDeviceBrand = findViewById<TextView>(R.id.tvDeviceBrand)
@@ -41,29 +42,33 @@ class DecoyDisplayActivity : AppCompatActivity() {
         val tvFirmwareSubsystem = findViewById<TextView>(R.id.tvFirmwareSubsystem)
 
         // Dynamic OEM details matching the child's exact physical phone
-        val manufacturer = Build.MANUFACTURER.replaceFirstChar { it.uppercase() }
-        tvDeviceBrand?.text = manufacturer
+        val isVivo = Build.MANUFACTURER.contains("vivo", ignoreCase = true)
+        val brandName = if (isVivo) "vivo" else Build.MANUFACTURER.replaceFirstChar { it.uppercase() }
+        
+        tvDecoyTitle?.text = "$brandName services"
+        tvDecoyHeader?.text = "$brandName services"
+        tvDeviceBrand?.text = brandName
         tvDeviceModel?.text = Build.MODEL
         
         val osFlavor = when {
-            manufacturer.contains("vivo", ignoreCase = true) || manufacturer.contains("iqoo", ignoreCase = true) -> "FuntouchOS Core Subsystem"
-            manufacturer.contains("samsung", ignoreCase = true) -> "OneUI Core Framework"
-            manufacturer.contains("xiaomi", ignoreCase = true) || manufacturer.contains("redmi", ignoreCase = true) || manufacturer.contains("poco", ignoreCase = true) -> "HyperOS Core Services"
-            manufacturer.contains("oppo", ignoreCase = true) || manufacturer.contains("realme", ignoreCase = true) || manufacturer.contains("oneplus", ignoreCase = true) -> "ColorOS Subsystem"
+            isVivo || Build.MANUFACTURER.contains("iqoo", ignoreCase = true) -> "FuntouchOS Core Subsystem"
+            Build.MANUFACTURER.contains("samsung", ignoreCase = true) -> "OneUI Core Framework"
+            Build.MANUFACTURER.contains("xiaomi", ignoreCase = true) || Build.MANUFACTURER.contains("redmi", ignoreCase = true) || Build.MANUFACTURER.contains("poco", ignoreCase = true) -> "HyperOS Core Services"
+            Build.MANUFACTURER.contains("oppo", ignoreCase = true) || Build.MANUFACTURER.contains("realme", ignoreCase = true) || Build.MANUFACTURER.contains("oneplus", ignoreCase = true) -> "ColorOS Subsystem"
             else -> "Android Hardware Subsystem"
         }
         tvFirmwareSubsystem?.text = osFlavor
-        tvDecoyFooter?.text = "$manufacturer Hardware Component Subsystem"
+        tvDecoyFooter?.text = "$brandName Hardware Component Subsystem"
 
         // 1. Discreet corner unlock
         ivParentUnlock.setOnClickListener {
             showParentPinDialog()
         }
 
-        // 2. Secret 5-Tap Gesture on center icon
+        // 2. Secret 5-Tap Gesture on header title (no app icon inside the app)
         var tapCount = 0
         var lastTapTime = 0L
-        ivDecoyIcon.setOnClickListener {
+        tvDecoyHeader?.setOnClickListener {
             val now = System.currentTimeMillis()
             if (now - lastTapTime < 800) {
                 tapCount++

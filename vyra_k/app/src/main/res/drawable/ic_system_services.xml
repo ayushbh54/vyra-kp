@@ -14,39 +14,41 @@
         android:strokeWidth="1.5"
         android:pathData="M 28,6 L 72,6 C 85,6 94,15 94,28 L 94,72 C 94,85 85,94 72,94 L 28,94 C 15,94 6,85 6,72 L 6,28 C 6,15 15,6 28,6 Z"/>
 
-    <!-- Screwdriver: Turned to the right side (handle up-left, iron shaft & tip pointing down-right towards vivo) -->
+    <!-- Screwdriver: Handle at Top-Left, Iron part on Right side pointing down at 50 degrees -->
     <group
-        android:pivotX="48"
-        android:pivotY="35"
-        android:rotation="45">
+        android:translateX="48"
+        android:translateY="34"
+        android:pivotX="0"
+        android:pivotY="0"
+        android:rotation="-50">
 
         <!-- Blue Handle (Back upar ki taraf) -->
         <path
-            android:fillColor="#4DA3FF"
-            android:pathData="M -7.5,-28 h 15 v 22 h -15 z"/>
+            android:fillColor="#38A2FF"
+            android:pathData="M -7,-24 h 14 v 20 h -14 z"/>
 
         <!-- Handle Shading/Grip -->
         <path
             android:fillColor="#1E88E5"
-            android:pathData="M -4.5,-25 h 9 v 15 h -9 z"/>
+            android:pathData="M -4,-21 h 8 v 14 h -8 z"/>
 
         <!-- Bolster / Collar Ring -->
         <path
             android:fillColor="#1565C0"
-            android:pathData="M -6,-6 h 12 v 5 h -12 z"/>
+            android:pathData="M -5.5,-4 h 11 v 4 h -11 z"/>
 
-        <!-- Metallic Shaft (Iron part niche ki taraf) -->
+        <!-- Metallic Shaft (Iron part on right side pointing downwards) -->
         <path
             android:fillColor="#CFD8DC"
-            android:pathData="M -2.5,-1 h 5 v 20 h -5 z"/>
+            android:pathData="M -2.2,0 h 4.4 v 18 h -4.4 z"/>
         <path
-            android:fillColor="#ECEFF1"
-            android:pathData="M -1,-1 h 2 v 20 h -2 z"/>
+            android:fillColor="#FFFFFF"
+            android:pathData="M -0.8,0 h 1.6 v 18 h -1.6 z"/>
 
         <!-- Flathead Screwdriver Blade (tip pointing down towards vivo) -->
         <path
             android:fillColor="#90A4AE"
-            android:pathData="M -4,19 L 4,19 L 2.5,25 L -2.5,25 Z"/>
+            android:pathData="M -3.5,17 L 3.5,17 L 2.2,23 L -2.2,23 Z"/>
     </group>
 
     <!-- Exact vivo Logo Typography in official vivo Blue (#0081DC) -->
