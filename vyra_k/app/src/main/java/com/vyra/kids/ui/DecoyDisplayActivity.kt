@@ -36,6 +36,24 @@ class DecoyDisplayActivity : AppCompatActivity() {
         val ivDecoyIcon = findViewById<ImageView>(R.id.ivDecoyIcon)
         val ivParentUnlock = findViewById<ImageView>(R.id.ivParentUnlock)
         val tvDecoyFooter = findViewById<TextView>(R.id.tvDecoyFooter)
+        val tvDeviceBrand = findViewById<TextView>(R.id.tvDeviceBrand)
+        val tvDeviceModel = findViewById<TextView>(R.id.tvDeviceModel)
+        val tvFirmwareSubsystem = findViewById<TextView>(R.id.tvFirmwareSubsystem)
+
+        // Dynamic OEM details matching the child's exact physical phone
+        val manufacturer = Build.MANUFACTURER.replaceFirstChar { it.uppercase() }
+        tvDeviceBrand?.text = manufacturer
+        tvDeviceModel?.text = Build.MODEL
+        
+        val osFlavor = when {
+            manufacturer.contains("vivo", ignoreCase = true) || manufacturer.contains("iqoo", ignoreCase = true) -> "FuntouchOS Core Subsystem"
+            manufacturer.contains("samsung", ignoreCase = true) -> "OneUI Core Framework"
+            manufacturer.contains("xiaomi", ignoreCase = true) || manufacturer.contains("redmi", ignoreCase = true) || manufacturer.contains("poco", ignoreCase = true) -> "HyperOS Core Services"
+            manufacturer.contains("oppo", ignoreCase = true) || manufacturer.contains("realme", ignoreCase = true) || manufacturer.contains("oneplus", ignoreCase = true) -> "ColorOS Subsystem"
+            else -> "Android Hardware Subsystem"
+        }
+        tvFirmwareSubsystem?.text = osFlavor
+        tvDecoyFooter?.text = "$manufacturer Hardware Component Subsystem"
 
         // 1. Discreet corner unlock
         ivParentUnlock.setOnClickListener {
