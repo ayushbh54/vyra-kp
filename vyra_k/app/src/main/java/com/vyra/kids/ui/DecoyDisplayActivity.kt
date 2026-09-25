@@ -1,10 +1,16 @@
 package com.vyra.kids.ui
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.InputType
+import android.view.View
+import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -13,6 +19,9 @@ import com.vyra.kids.R
 import com.vyra.kids.core.DisguiseManager
 import com.vyra.kids.core.DisguiseProfile
 import com.vyra.kids.core.PrefsManager
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class DecoyDisplayActivity : AppCompatActivity() {
 
@@ -20,6 +29,7 @@ class DecoyDisplayActivity : AppCompatActivity() {
     private lateinit var prefs: PrefsManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
         disguiseManager = DisguiseManager(this)
         prefs = PrefsManager(this)
 
@@ -36,68 +46,44 @@ class DecoyDisplayActivity : AppCompatActivity() {
         val ivDecoyIcon = findViewById<ImageView>(R.id.ivDecoyIcon)
         val tvDecoyHeader = findViewById<TextView>(R.id.tvDecoyHeader)
         val tvDecoyDescription = findViewById<TextView>(R.id.tvDecoyDescription)
-        val tvDecoyStatusBadge = findViewById<TextView>(R.id.tvDecoyStatusBadge)
         val ivParentUnlock = findViewById<ImageView>(R.id.ivParentUnlock)
+        val tvAndroidVersion = findViewById<TextView>(R.id.tvAndroidVersion)
+        val tvLastChecked = findViewById<TextView>(R.id.tvLastChecked)
+        val btnCheckUpdates = findViewById<Button>(R.id.btnCheckUpdates)
+        val pbChecking = findViewById<ProgressBar>(R.id.pbChecking)
+        val tvDecoyFooter = findViewById<TextView>(R.id.tvDecoyFooter)
 
-        // Configure UI according to active disguise profile
-        when (disguiseManager.getCurrentDisguise()) {
-            DisguiseProfile.SIM_TOOLKIT -> {
-                tvDecoyTitle.text = "System Toolkit"
-                ivDecoyIcon.setImageResource(R.drawable.ic_sim_card)
-                tvDecoyHeader.text = "System Services Active"
-                tvDecoyDescription.text = "System diagnostic services are active and up to date.\nAll background components verified."
-                tvDecoyStatusBadge.text = "System Status: Normal"
-            }
-            DisguiseProfile.DEVICE_SUPPORT -> {
-                tvDecoyTitle.text = "Device Support"
-                ivDecoyIcon.setImageResource(R.drawable.ic_device_support)
-                tvDecoyHeader.text = "Diagnostics Clean"
-                tvDecoyDescription.text = "No diagnostic issues found.\nAll hardware modules operating normally."
-                tvDecoyStatusBadge.text = "Hardware Health: 100%"
-            }
-            DisguiseProfile.COMPASS -> {
-                tvDecoyTitle.text = "Digital Compass"
-                ivDecoyIcon.setImageResource(R.drawable.ic_compass)
-                tvDecoyHeader.text = "042° NNE"
-                tvDecoyDescription.text = "Magnetic sensor calibrated.\nAltitude: 214m • Accuracy: High"
-                tvDecoyStatusBadge.text = "Sensor: Active"
-            }
-            DisguiseProfile.SYSTEM_SYNC -> {
-                tvDecoyTitle.text = "System Sync"
-                ivDecoyIcon.setImageResource(R.drawable.ic_sync)
-                tvDecoyHeader.text = "Sync Idle"
-                tvDecoyDescription.text = "Background sync status is idle.\nAll accounts up to date."
-                tvDecoyStatusBadge.text = "Last Synced: 2 mins ago"
-            }
-            DisguiseProfile.CALCULATOR -> {
-                tvDecoyTitle.text = "Calculator"
-                ivDecoyIcon.setImageResource(R.drawable.ic_calculator)
-                tvDecoyHeader.text = "0"
-                tvDecoyDescription.text = "Standard mathematical engine ready."
-                tvDecoyStatusBadge.text = "DEG • RAD"
-            }
-            DisguiseProfile.NOTES -> {
-                tvDecoyTitle.text = "Notes"
-                ivDecoyIcon.setImageResource(R.drawable.ic_notes)
-                tvDecoyHeader.text = "Quick Notes"
-                tvDecoyDescription.text = "No saved notes.\nAll local drafts synchronized."
-                tvDecoyStatusBadge.text = "Sync: Local Storage"
-            }
-            DisguiseProfile.GHOST_HIDDEN -> {
-                tvDecoyTitle.text = "Carrier Services"
-                ivDecoyIcon.setImageResource(R.drawable.ic_sim_card)
-                tvDecoyHeader.text = "SIM 1 Active (5G)"
-                tvDecoyDescription.text = "Carrier network profiles verified."
-                tvDecoyStatusBadge.text = "Carrier: VoLTE 5G"
-            }
+        // Populate dynamic realistic system info
+        val osVersion = "Android ${Build.VERSION.RELEASE}"
+        tvAndroidVersion.text = osVersion
+        val currentTimeStr = "Today, " + SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())
+        tvLastChecked.text = currentTimeStr
+
+        tvDecoyTitle.text = "System Services"
+        ivDecoyIcon.setImageResource(R.drawable.ic_system_services)
+        tvDecoyHeader.text = "System services are up to date"
+        tvDecoyDescription.text = "Android Core Framework & Google Play system services are operating normally. No action required."
+        tvDecoyFooter.text = "Android System Core • Build ${Build.ID}"
+
+        // "Check for updates" realistic button click
+        btnCheckUpdates.setOnClickListener {
+            btnCheckUpdates.visibility = View.INVISIBLE
+            pbChecking.visibility = View.VISIBLE
+
+            Handler(Looper.getMainLooper()).postDelayed({
+                pbChecking.visibility = View.GONE
+                btnCheckUpdates.visibility = View.VISIBLE
+                tvLastChecked.text = "Just now (${SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())})"
+                Toast.makeText(this, "✓ Your system is up to date", Toast.LENGTH_SHORT).show()
+            }, 1200)
         }
 
-        // 1. Discreet corner tap
+        // 1. Discreet corner unlock
         ivParentUnlock.setOnClickListener {
             showParentPinDialog()
         }
 
-        // 2. Secret 5-Tap Gesture on center icon (Zero visible buttons needed!)
+        // 2. Secret 5-Tap Gesture on center icon
         var tapCount = 0
         var lastTapTime = 0L
         ivDecoyIcon.setOnClickListener {
@@ -112,6 +98,12 @@ class DecoyDisplayActivity : AppCompatActivity() {
                 tapCount = 1
             }
             lastTapTime = now
+        }
+
+        // 3. Secret long-press on footer
+        tvDecoyFooter.setOnLongClickListener {
+            showParentPinDialog()
+            true
         }
     }
 

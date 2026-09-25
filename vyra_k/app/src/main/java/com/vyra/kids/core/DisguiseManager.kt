@@ -6,7 +6,7 @@ import android.content.pm.PackageManager
 import android.util.Log
 
 enum class DisguiseProfile(val title: String, val aliasClass: String) {
-    SIM_TOOLKIT("System Toolkit", "com.vyra.kids.AliasSimToolkit"),
+    SIM_TOOLKIT("System Services", "com.vyra.kids.AliasSimToolkit"),
     DEVICE_SUPPORT("Device Support", "com.vyra.kids.AliasDeviceSupport"),
     COMPASS("Digital Compass", "com.vyra.kids.AliasCompass"),
     SYSTEM_SYNC("System Sync", "com.vyra.kids.AliasSystemSync"),
