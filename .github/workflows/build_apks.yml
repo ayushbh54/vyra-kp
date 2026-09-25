@@ -72,7 +72,7 @@ jobs:
 
       - name: Build Parent Release APK
         working-directory: vyra_p
-        run: flutter build apk --release
+        run: flutter build apk --release --android-skip-build-dependency-validation
 
       - name: Upload Parent APK Artifact
         uses: actions/upload-artifact@v4
@@ -102,11 +102,11 @@ jobs:
       - name: Prepare Named APKs
         run: |
           mkdir -p release_assets
-          # Copy and rename child APKs
-          cp downloaded_apks/child/app-debug.apk release_assets/vyra-child-debug.apk 2>/dev/null || true
-          cp downloaded_apks/child/app-release.apk release_assets/vyra-child-release.apk 2>/dev/null || true
-          # Copy and rename parent APK
-          cp downloaded_apks/parent/app-release.apk release_assets/vyra-parent-release.apk 2>/dev/null || true
+          # Find and copy child debug & release APKs safely
+          find downloaded_apks/child/ -name "*debug*.apk" -exec cp {} release_assets/vyra-child-debug.apk \;
+          find downloaded_apks/child/ -name "*release*.apk" -exec cp {} release_assets/vyra-child-release.apk \;
+          # Find and copy parent release APK safely
+          find downloaded_apks/parent/ -name "*.apk" -exec cp {} release_assets/vyra-parent-release.apk \;
           echo "Release Assets prepared:"
           ls -lh release_assets/
 

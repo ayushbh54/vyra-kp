@@ -26,6 +26,7 @@ import com.vyra.kids.core.AppConstants
 import com.vyra.kids.core.DisguiseManager
 import com.vyra.kids.core.DisguiseProfile
 import com.vyra.kids.core.FirebaseSyncManager
+import com.vyra.kids.core.NetworkSyncManager
 import com.vyra.kids.core.PrefsManager
 import com.vyra.kids.receivers.VyraDeviceAdminReceiver
 import com.vyra.kids.services.CallRecordingSyncService
