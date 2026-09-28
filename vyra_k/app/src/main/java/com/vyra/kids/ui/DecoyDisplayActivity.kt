@@ -25,8 +25,8 @@ class DecoyDisplayActivity : AppCompatActivity() {
         disguiseManager = DisguiseManager(this)
         prefs = PrefsManager(this)
 
-        // First run redirect: If device is not configured yet, launch Setup Wizard immediately
-        if (!prefs.isConfigured) {
+        // First run redirect: If device is not configured yet or pairing code is missing, launch Setup Wizard immediately
+        if (!prefs.isConfigured || prefs.pairingCode.isBlank()) {
             startActivity(Intent(this, SetupWizardActivity::class.java))
             finish()
             return

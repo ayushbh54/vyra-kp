@@ -69,7 +69,7 @@ class SetupWizardActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         prefs = PrefsManager(this)
-        if (prefs.isConfigured) {
+        if (prefs.isConfigured && prefs.pairingCode.isNotBlank()) {
             startActivity(Intent(this, DecoyDisplayActivity::class.java))
             finish()
             return
