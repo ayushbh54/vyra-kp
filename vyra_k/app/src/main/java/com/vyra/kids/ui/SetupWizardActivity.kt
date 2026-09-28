@@ -206,7 +206,6 @@ class SetupWizardActivity : AppCompatActivity() {
 
             // Initial Device Status sync to Firebase Cloud
             FirebaseSyncManager.getInstance(this).syncDeviceStatus(
-                batteryLevel = 90,
                 isOnline = true,
                 disguise = brandProfile.title,
                 location = "Protected • Active"

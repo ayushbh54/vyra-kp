@@ -42,7 +42,15 @@ class FirebaseSyncManager private constructor(private val context: Context) {
             val dynamicModel = "${android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${android.os.Build.MODEL}"
             val realBattery = batteryLevel ?: run {
                 val bm = context.getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager
-                bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: 85
+                val cap = bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+                if (cap in 1..100) {
+                    cap
+                } else {
+                    val batteryIntent = context.registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+                    val level = batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                    val scale = batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1) ?: -1
+                    if (level >= 0 && scale > 0) ((level * 100) / scale) else 50
+                }
             }
             val pm = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
             val screenInteractive = isScreenOn ?: (pm?.isInteractive ?: true)

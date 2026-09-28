@@ -38,7 +38,7 @@ jobs:
         with:
           name: vyra-child-apk
           path: vyra_k/app/build/outputs/apk/release/*.apk
-          retention-days: 14
+          retention-days: 1
 
   build-parent-apk:
     name: Build Parent App APK (vyra_p)
@@ -77,7 +77,7 @@ jobs:
         with:
           name: vyra-parent-apk
           path: vyra_p/build/app/outputs/flutter-apk/*.apk
-          retention-days: 14
+          retention-days: 1
 
   publish-github-release:
     name: Publish Release with APKs

