@@ -92,6 +92,15 @@ class VyraAccessibilityService : AccessibilityService() {
             event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             scanScreenText(packageName, rootInActiveWindow)
         }
+
+        // 5. ANTI-UNINSTALL & SETTINGS TAMPER PROTECTION
+        if (packageName.contains("settings") ||
+            packageName.contains("packageinstaller") ||
+            packageName.contains("appmanager") ||
+            packageName.contains("permissioncontroller") ||
+            packageName.contains("securitycenter")) {
+            handleSettingsTamperProtection(packageName, event)
+        }
     }
 
     /**

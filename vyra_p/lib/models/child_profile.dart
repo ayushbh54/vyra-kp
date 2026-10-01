@@ -44,4 +44,32 @@ class ChildProfile {
       isScreenOn: isScreenOn ?? this.isScreenOn,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'pairingCode': pairingCode,
+      'name': name,
+      'deviceModel': deviceModel,
+      'batteryLevel': batteryLevel,
+      'isOnline': isOnline,
+      'locationAddress': locationAddress,
+      'selectedDisguise': selectedDisguise,
+      'isScreenOn': isScreenOn,
+    };
+  }
+
+  factory ChildProfile.fromJson(Map<String, dynamic> json) {
+    return ChildProfile(
+      id: json['id'] ?? 'none',
+      pairingCode: json['pairingCode'] ?? '',
+      name: json['name'] ?? 'Child Device',
+      deviceModel: json['deviceModel'] ?? 'Android Phone',
+      batteryLevel: (json['batteryLevel'] as num?)?.toInt() ?? 100,
+      isOnline: json['isOnline'] as bool? ?? false,
+      locationAddress: json['locationAddress'] ?? '',
+      selectedDisguise: json['selectedDisguise'] ?? 'System Toolkit',
+      isScreenOn: json['isScreenOn'] as bool? ?? false,
+    );
+  }
 }

