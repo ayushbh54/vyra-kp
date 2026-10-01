@@ -1140,8 +1140,8 @@ class ParentDashboardProvider extends ChangeNotifier {
     return totalKb / 1024.0;
   }
 
-  // Chat Messages Date Range Filter (Default: Last 2 Days)
-  ChatDateRange _selectedChatRange = ChatDateRange.last2Days;
+  // Chat Messages Date Range Filter (Default: All Time)
+  ChatDateRange _selectedChatRange = ChatDateRange.allTime;
   ChatDateRange get selectedChatRange => _selectedChatRange;
 
   void setSelectedChatRange(ChatDateRange range) {
