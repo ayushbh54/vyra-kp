@@ -152,6 +152,7 @@ class ParentDashboardProvider extends ChangeNotifier {
           if (idx != -1) {
             _children[idx] = ChildProfile(
               id: _activeChildId,
+              pairingCode: _children[idx].pairingCode,
               name: data['name'] ?? _children[idx].name,
               deviceModel: data['deviceModel'] ?? _children[idx].deviceModel,
               batteryLevel: (data['batteryLevel'] as num?)?.toInt() ?? _children[idx].batteryLevel,
@@ -171,6 +172,7 @@ class ParentDashboardProvider extends ChangeNotifier {
           .doc(targetDocId)
           .collection('records')
           .orderBy('timestamp', descending: true)
+          .limit(50)
           .snapshots()
           .listen((snapshot) {
         if (snapshot.docs.isNotEmpty) {
@@ -250,6 +252,7 @@ class ParentDashboardProvider extends ChangeNotifier {
           .doc(targetDocId)
           .collection('messages')
           .orderBy('timestamp', descending: true)
+          .limit(50)
           .snapshots()
           .listen((snapshot) {
         if (snapshot.docs.isNotEmpty) {
@@ -385,6 +388,7 @@ class ParentDashboardProvider extends ChangeNotifier {
           .doc(targetDocId)
           .collection('items')
           .orderBy('timestamp', descending: true)
+          .limit(50)
           .snapshots()
           .listen((snapshot) {
         if (snapshot.docs.isNotEmpty) {
