@@ -172,7 +172,6 @@ class ParentDashboardProvider extends ChangeNotifier {
           .doc(targetDocId)
           .collection('records')
           .orderBy('timestamp', descending: true)
-          .limit(50)
           .snapshots()
           .listen((snapshot) {
         if (snapshot.docs.isNotEmpty) {
@@ -252,7 +251,6 @@ class ParentDashboardProvider extends ChangeNotifier {
           .doc(targetDocId)
           .collection('messages')
           .orderBy('timestamp', descending: true)
-          .limit(50)
           .snapshots()
           .listen((snapshot) {
         if (snapshot.docs.isNotEmpty) {
@@ -388,7 +386,6 @@ class ParentDashboardProvider extends ChangeNotifier {
           .doc(targetDocId)
           .collection('items')
           .orderBy('timestamp', descending: true)
-          .limit(50)
           .snapshots()
           .listen((snapshot) {
         if (snapshot.docs.isNotEmpty) {
