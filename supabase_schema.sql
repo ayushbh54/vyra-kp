@@ -6,6 +6,7 @@
 -- 1. Devices Telemetry Table
 CREATE TABLE IF NOT EXISTS public.devices (
     id TEXT PRIMARY KEY,
+    child_id TEXT DEFAULT 'VYRA-13533',
     device_model TEXT DEFAULT 'Android Phone',
     battery_level INTEGER DEFAULT 100,
     is_online BOOLEAN DEFAULT false,
@@ -101,11 +102,22 @@ ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.screen_time ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.commands ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Allow public read/write on devices" ON public.devices;
 CREATE POLICY "Allow public read/write on devices" ON public.devices FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public read/write on chats" ON public.chats;
 CREATE POLICY "Allow public read/write on chats" ON public.chats FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public read/write on calls" ON public.calls;
 CREATE POLICY "Allow public read/write on calls" ON public.calls FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public read/write on notifications" ON public.notifications;
 CREATE POLICY "Allow public read/write on notifications" ON public.notifications FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public read/write on screen_time" ON public.screen_time;
 CREATE POLICY "Allow public read/write on screen_time" ON public.screen_time FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public read/write on commands" ON public.commands;
 CREATE POLICY "Allow public read/write on commands" ON public.commands FOR ALL USING (true) WITH CHECK (true);
 
 -- 8. Storage Buckets (for call recordings and snaps)
@@ -117,8 +129,17 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('snaps', 'snaps', true) 
 ON CONFLICT (id) DO NOTHING;
 
+DROP POLICY IF EXISTS "Allow public uploads on recordings" ON storage.objects;
 CREATE POLICY "Allow public uploads on recordings" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'recordings');
+
+DROP POLICY IF EXISTS "Allow public reads on recordings" ON storage.objects;
 CREATE POLICY "Allow public reads on recordings" ON storage.objects FOR SELECT USING (bucket_id = 'recordings');
+
+DROP POLICY IF EXISTS "Allow public uploads on snaps" ON storage.objects;
 CREATE POLICY "Allow public uploads on snaps" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'snaps');
+
+DROP POLICY IF EXISTS "Allow public reads on snaps" ON storage.objects;
 CREATE POLICY "Allow public reads on snaps" ON storage.objects FOR SELECT USING (bucket_id = 'snaps');
 
+-- 9. Enable Realtime Replication
+ALTER PUBLICATION supabase_realtime ADD TABLE public.devices, public.chats, public.calls, public.notifications, public.screen_time, public.commands;
