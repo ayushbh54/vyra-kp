@@ -68,13 +68,57 @@ CREATE TABLE IF NOT EXISTS public.notifications (
 
 CREATE INDEX IF NOT EXISTS idx_notifications_child_timestamp ON public.notifications(child_id, timestamp_ms DESC);
 
--- 5. Enable Row Level Security (RLS) & Allow Anonymous Access for Pairing
+-- 5. Screen Time Usage
+CREATE TABLE IF NOT EXISTS public.screen_time (
+    id TEXT PRIMARY KEY,
+    child_id TEXT NOT NULL,
+    date TEXT NOT NULL,
+    total_screen_time_minutes BIGINT DEFAULT 0,
+    apps JSONB DEFAULT '[]'::jsonb,
+    timestamp_ms BIGINT DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_screen_time_child_date ON public.screen_time(child_id, date);
+
+-- 6. Remote Commands Queue (Parent to Child)
+CREATE TABLE IF NOT EXISTS public.commands (
+    id TEXT PRIMARY KEY,
+    child_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    payload JSONB DEFAULT '{}'::jsonb,
+    status TEXT DEFAULT 'PENDING',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_commands_child_status ON public.commands(child_id, status);
+
+-- 7. Enable Row Level Security (RLS) & Allow Anonymous Access for Pairing
 ALTER TABLE public.devices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.calls ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.screen_time ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.commands ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow public read/write on devices" ON public.devices FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public read/write on chats" ON public.chats FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public read/write on calls" ON public.calls FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public read/write on notifications" ON public.notifications FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public read/write on screen_time" ON public.screen_time FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public read/write on commands" ON public.commands FOR ALL USING (true) WITH CHECK (true);
+
+-- 8. Storage Buckets (for call recordings and snaps)
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('recordings', 'recordings', true) 
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('snaps', 'snaps', true) 
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY "Allow public uploads on recordings" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'recordings');
+CREATE POLICY "Allow public reads on recordings" ON storage.objects FOR SELECT USING (bucket_id = 'recordings');
+CREATE POLICY "Allow public uploads on snaps" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'snaps');
+CREATE POLICY "Allow public reads on snaps" ON storage.objects FOR SELECT USING (bucket_id = 'snaps');
+
