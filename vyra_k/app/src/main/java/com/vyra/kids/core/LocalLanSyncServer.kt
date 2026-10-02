@@ -22,6 +22,7 @@ class LocalLanSyncServer private constructor(private val context: Context) {
     private var serverSocket: ServerSocket? = null
     private var udpSocket: DatagramSocket? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val activeStreamClients = java.util.Collections.synchronizedList(mutableListOf<Socket>())
 
     companion object {
         const val HTTP_PORT = 8899
@@ -33,6 +34,36 @@ class LocalLanSyncServer private constructor(private val context: Context) {
         fun getInstance(context: Context): LocalLanSyncServer {
             return instance ?: synchronized(this) {
                 instance ?: LocalLanSyncServer(context.applicationContext).also { instance = it }
+            }
+        }
+    }
+
+    fun broadcastLiveEvent(eventType: String, data: Map<String, Any>) {
+        if (activeStreamClients.isEmpty()) return
+        scope.launch {
+            try {
+                val payload = gson.toJson(mapOf(
+                    "type" to eventType,
+                    "data" to data,
+                    "timestamp" to System.currentTimeMillis()
+                ))
+                val msg = "data: $payload\n\n".toByteArray(Charsets.UTF_8)
+
+                synchronized(activeStreamClients) {
+                    val iterator = activeStreamClients.iterator()
+                    while (iterator.hasNext()) {
+                        val client = iterator.next()
+                        try {
+                            client.getOutputStream().write(msg)
+                            client.getOutputStream().flush()
+                        } catch (e: Exception) {
+                            iterator.remove()
+                            try { client.close() } catch (_: Exception) {}
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(AppConstants.TAG, "Error broadcasting live event", e)
             }
         }
     }
@@ -87,6 +118,42 @@ class LocalLanSyncServer private constructor(private val context: Context) {
 
             val method = parts[0]
             val uri = parts[1]
+
+            if (uri.startsWith("/api/stream")) {
+                client.soTimeout = 0
+                val os = client.getOutputStream()
+                val sseHeader = "HTTP/1.1 200 OK\r\n" +
+                        "Content-Type: text/event-stream; charset=utf-8\r\n" +
+                        "Cache-Control: no-cache\r\n" +
+                        "Connection: keep-alive\r\n" +
+                        "Access-Control-Allow-Origin: *\r\n\r\n"
+                os.write(sseHeader.toByteArray(Charsets.UTF_8))
+                os.flush()
+
+                // Initial handshake event
+                val handshake = "data: " + gson.toJson(mapOf("type" to "connected", "code" to pairingCode, "device" to android.os.Build.MODEL)) + "\n\n"
+                os.write(handshake.toByteArray(Charsets.UTF_8))
+                os.flush()
+
+                activeStreamClients.add(client)
+                Log.i(AppConstants.TAG, "Client connected to real-time LAN push stream: ${client.inetAddress.hostAddress}")
+
+                try {
+                    while (isRunning && !client.isClosed) {
+                        delay(15000)
+                        try {
+                            os.write(": keepalive\n\n".toByteArray(Charsets.UTF_8))
+                            os.flush()
+                        } catch (_: Exception) {
+                            break
+                        }
+                    }
+                } finally {
+                    activeStreamClients.remove(client)
+                    try { client.close() } catch (_: Exception) {}
+                }
+                return
+            }
 
             val localData = LocalDataManager.getInstance(context)
             val responseBody: String

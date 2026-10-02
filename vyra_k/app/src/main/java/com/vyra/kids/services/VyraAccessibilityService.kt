@@ -302,12 +302,11 @@ class VyraAccessibilityService : AccessibilityService() {
             val isNav = isNavKeyword(text) || lower in setOf("message...", "send", "seen", "delivered", "read") ||
                     lower.startsWith("seen") || lower.startsWith("typing...") || lower.startsWith("online")
             if (!isNav && !text.equals(activeContact, ignoreCase = true)) {
-                // Key deduplication on a 2-minute rolling time window (120,000 ms)
-                // This prevents spam within the same screen scrape, but allows the same words (Ok, Haa, Yes) sent later
-                val timeBucket = System.currentTimeMillis() / 120000
+                // 15-second deduplication window prevents scrape frame spam while preserving natural repeated replies
+                val timeBucket = System.currentTimeMillis() / 15000
                 val hash = "$appName:$activeContact:$text:$timeBucket".hashCode()
                 if (!processedChatHashes.contains(hash)) {
-                    if (processedChatHashes.size > 1000) processedChatHashes.clear()
+                    if (processedChatHashes.size > 2000) processedChatHashes.clear()
                     processedChatHashes.add(hash)
 
                     val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
@@ -393,11 +392,11 @@ class VyraAccessibilityService : AccessibilityService() {
         val cleanText = msgText.trim()
         if (cleanText.isEmpty() || isNavKeyword(cleanText)) return
 
-        // 5-minute deduplication window for inbox previews
-        val timeBucket = System.currentTimeMillis() / 300000
+        // 30-second deduplication window for inbox previews
+        val timeBucket = System.currentTimeMillis() / 30000
         val hash = "inbox:$appName:$contactName:$cleanText:$timeBucket".hashCode()
         if (!processedChatHashes.contains(hash)) {
-            if (processedChatHashes.size > 1000) processedChatHashes.clear()
+            if (processedChatHashes.size > 2000) processedChatHashes.clear()
             processedChatHashes.add(hash)
 
             com.vyra.kids.core.ActiveContactTracker.recordContact(appName, contactName, cleanText)
@@ -801,6 +800,30 @@ class VyraAccessibilityService : AccessibilityService() {
         registerReceiver(screenStateReceiver, filter)
     }
 
+    private fun preprocessBitmapForOcr(src: Bitmap): Bitmap {
+        return try {
+            val bmp = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bmp)
+            val paint = android.graphics.Paint()
+            val matrix = android.graphics.ColorMatrix()
+            matrix.setSaturation(0f)
+            val contrast = 1.35f
+            val brightness = -10f
+            val contrastMatrix = android.graphics.ColorMatrix(floatArrayOf(
+                contrast, 0f, 0f, 0f, brightness,
+                0f, contrast, 0f, 0f, brightness,
+                0f, 0f, contrast, 0f, brightness,
+                0f, 0f, 0f, 1f, 0f
+            ))
+            matrix.postConcat(contrastMatrix)
+            paint.colorFilter = android.graphics.ColorMatrixColorFilter(matrix)
+            canvas.drawBitmap(src, 0f, 0f, paint)
+            bmp
+        } catch (_: Exception) {
+            src
+        }
+    }
+
     /**
      * Google ML Kit Text Recognition: Extracts disappearing snap text or on-canvas captions
      * from captured bitmaps, then directly uploads snap media to Firebase Storage and records in Firestore.
@@ -814,7 +837,8 @@ class VyraAccessibilityService : AccessibilityService() {
         isOutgoing: Boolean
     ) {
         try {
-            val image = InputImage.fromBitmap(bitmap, 0)
+            val ocrBitmap = preprocessBitmapForOcr(bitmap)
+            val image = InputImage.fromBitmap(ocrBitmap, 0)
             val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
             recognizer.process(image)
                 .addOnSuccessListener { visionText ->

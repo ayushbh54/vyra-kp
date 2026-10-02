@@ -732,6 +732,65 @@ class DashboardScreen extends StatelessWidget {
               ),
             ),
 
+            const SizedBox(height: 12),
+
+            // ☁️ Cloud Storage Purge & Free Space Button
+            InkWell(
+              onTap: () => _showCloudPurgeDialog(context, provider),
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.cloud_sync_outlined, color: Color(0xFF10B981), size: 22),
+                    ),
+                    const SizedBox(width: 14),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Supabase Cloud Cleanup (Free Space)',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Purge cloud records • Phone local history remains safe',
+                            style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Row(
+                        children: [
+                          Text('Clean', style: TextStyle(color: Color(0xFF10B981), fontSize: 11, fontWeight: FontWeight.bold)),
+                          SizedBox(width: 4),
+                          Icon(Icons.cleaning_services_outlined, color: Color(0xFF10B981), size: 12),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
             const SizedBox(height: 14),
 
             // 🎙️ Ambient Voice Logs Banner
@@ -1772,6 +1831,54 @@ class DashboardScreen extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  void _showCloudPurgeDialog(BuildContext context, ParentDashboardProvider provider) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Row(
+          children: [
+            Icon(Icons.cleaning_services_rounded, color: Color(0xFF10B981)),
+            SizedBox(width: 10),
+            Text('Free Cloud Space', style: TextStyle(color: Colors.white, fontSize: 16)),
+          ],
+        ),
+        content: const Text(
+          'Do you want to purge older records from Supabase Cloud to free up storage space?\n\n'
+          '✅ All messages and calls currently saved on your phone will remain 100% safe in local storage.',
+          style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF94A3B8))),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final ok = await provider.purgeSupabaseCloudStorage();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(ok
+                        ? '✅ Cloud storage cleared successfully! Local records preserved.'
+                        : '⚠️ Could not reach Supabase cloud. Check internet connection.'),
+                    backgroundColor: ok ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                  ),
+                );
+              }
+            },
+            child: const Text('Clear Cloud Data'),
+          ),
+        ],
+      ),
     );
   }
 }

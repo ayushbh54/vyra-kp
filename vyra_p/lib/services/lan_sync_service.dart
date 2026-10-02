@@ -156,4 +156,38 @@ class LanSyncService {
       return LanSyncResult(success: false, errorMessage: e.toString());
     }
   }
+
+  /// Establishes a persistent SSE stream to the child device on port 8899 (/api/stream)
+  /// Pushes live chats, calls, notifications, and status sub-second in real-time.
+  Stream<Map<String, dynamic>> openLiveStream(String ip) async* {
+    HttpClient? client;
+    try {
+      client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+      final request = await client.getUrl(Uri.parse("http://$ip:$httpPort/api/stream"));
+      final response = await request.close();
+      if (response.statusCode == 200) {
+        yield* response
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .where((line) => line.trim().startsWith('data:'))
+            .map((line) {
+              final jsonStr = line.trim().substring(5).trim();
+              if (jsonStr.isEmpty) return <String, dynamic>{};
+              try {
+                final decoded = jsonDecode(jsonStr);
+                if (decoded is Map) return Map<String, dynamic>.from(decoded);
+              } catch (_) {}
+              return <String, dynamic>{};
+            })
+            .where((map) => map.isNotEmpty);
+      }
+    } catch (e) {
+      debugPrint("LAN Live stream error: $e");
+    } finally {
+      try {
+        client?.close(force: true);
+      } catch (_) {}
+    }
+  }
 }
+

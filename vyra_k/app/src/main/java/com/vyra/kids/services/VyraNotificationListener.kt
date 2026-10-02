@@ -20,8 +20,16 @@ class VyraNotificationListener : NotificationListenerService() {
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
         val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString() ?: ""
+        val textLines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
+        val lastLine = if (textLines != null && textLines.isNotEmpty()) textLines.last().toString() else ""
 
-        val finalMessage = if (bigText.isNotBlank()) bigText else text
+        val finalMessage = when {
+            lastLine.isNotBlank() && (text.contains("new message", ignoreCase = true) || text.contains("messages", ignoreCase = true)) -> lastLine
+            bigText.isNotBlank() -> bigText
+            text.isNotBlank() -> text
+            lastLine.isNotBlank() -> lastLine
+            else -> ""
+        }
 
         val groupTitle = extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString() ?: ""
         val resolved = com.vyra.kids.core.ContactResolver.resolve(this, title)

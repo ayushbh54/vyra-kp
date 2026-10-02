@@ -38,6 +38,7 @@ class ParentDashboardProvider extends ChangeNotifier {
   bool get isLanSyncing => _isLanSyncing;
 
   Timer? _lanDiscoveryTimer;
+  StreamSubscription<Map<String, dynamic>>? _lanLiveStreamSub;
 
   FirebaseFirestore? _firestore;
   StreamSubscription? _deviceSub;
@@ -374,12 +375,153 @@ class ParentDashboardProvider extends ChangeNotifier {
       _isLanSyncing = false;
       _saveLocalPersistence();
       notifyListeners();
+
+      if (_lanLiveStreamSub == null) {
+        _subscribeToLiveLanStream(ip);
+      }
       return true;
     } catch (e) {
       debugPrint("triggerLanSync error: $e");
       _isLanSyncing = false;
       notifyListeners();
       return false;
+    }
+  }
+
+  void _subscribeToLiveLanStream(String ip) {
+    _lanLiveStreamSub?.cancel();
+    _lanLiveStreamSub = _lanSync.openLiveStream(ip).listen((event) {
+      final type = event['type']?.toString();
+      final data = event['data'];
+      if (data is! Map) return;
+      final m = Map<String, dynamic>.from(data);
+
+      if (type == 'chat') {
+        _handleLiveChatEvent(m);
+      } else if (type == 'call') {
+        _handleLiveCallEvent(m);
+      } else if (type == 'notification') {
+        _handleLiveNotificationEvent(m);
+      } else if (type == 'status') {
+        _handleLiveStatusEvent(m);
+      }
+    }, onError: (e) {
+      debugPrint("LAN Live stream disconnected: $e");
+      _lanLiveStreamSub = null;
+    }, onDone: () {
+      debugPrint("LAN Live stream completed");
+      _lanLiveStreamSub = null;
+    });
+  }
+
+  void _handleLiveChatEvent(Map<String, dynamic> m) {
+    final id = m['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final appStr = (m['app'] ?? '').toString().toLowerCase();
+    AppType app = AppType.whatsApp;
+    if (appStr.contains('insta')) app = AppType.instagram;
+    if (appStr.contains('tele')) app = AppType.telegram;
+    if (appStr.contains('snap')) app = AppType.snapchat;
+    if (appStr.contains('sms')) app = AppType.sms;
+
+    final dt = m['timestampMs'] != null
+        ? DateTime.fromMillisecondsSinceEpoch((m['timestampMs'] as num).toInt())
+        : DateTime.now();
+
+    final newMsg = ChatMessage(
+      id: id,
+      appType: app,
+      contactName: m['sender']?.toString() ?? 'Unknown',
+      contactIdentifier: m['sender']?.toString() ?? '',
+      messageText: m['text']?.toString() ?? '',
+      timestamp: dt,
+      isIncoming: (m['isIncoming'] as bool?) ?? true,
+      isDeletedBackup: m['isDeletedBySender'] as bool? ?? false,
+      isWatchlistTarget: m['isWatchlistTarget'] as bool? ?? false,
+    );
+
+    _childChatMessages.putIfAbsent(_activeChildId, () => []);
+    final exists = _childChatMessages[_activeChildId]!.any((x) => x.id == id);
+    if (!exists) {
+      _childChatMessages[_activeChildId]!.insert(0, newMsg);
+      _mergeNotificationsIntoActiveChats();
+      _saveLocalPersistence();
+      notifyListeners();
+    }
+  }
+
+  void _handleLiveCallEvent(Map<String, dynamic> c) {
+    final id = c['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final dt = c['timestampMs'] != null
+        ? DateTime.fromMillisecondsSinceEpoch((c['timestampMs'] as num).toInt())
+        : DateTime.now();
+
+    final newCall = CallRecord(
+      id: id,
+      contactName: c['contactName']?.toString() ?? 'Unknown',
+      phoneNumber: c['phoneNumber']?.toString() ?? '',
+      callType: CallType.incoming,
+      timestamp: dt,
+      durationSeconds: (c['durationSeconds'] as num?)?.toInt() ?? 0,
+      recordingUrl: c['recordingUrl']?.toString(),
+      isTamperAttemptDetected: c['isTamperAttemptDetected'] as bool? ?? false,
+    );
+
+    _childCallRecords.putIfAbsent(_activeChildId, () => []);
+    final exists = _childCallRecords[_activeChildId]!.any((x) => x.id == id);
+    if (!exists) {
+      _childCallRecords[_activeChildId]!.insert(0, newCall);
+      _saveLocalPersistence();
+      notifyListeners();
+    }
+  }
+
+  void _handleLiveNotificationEvent(Map<String, dynamic> n) {
+    final id = n['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final dt = n['timestampMs'] != null
+        ? DateTime.fromMillisecondsSinceEpoch((n['timestampMs'] as num).toInt())
+        : DateTime.now();
+
+    final newNotif = NotificationItem(
+      id: id,
+      packageName: n['packageName']?.toString() ?? '',
+      appName: n['appName']?.toString() ?? 'App',
+      title: n['title']?.toString() ?? '',
+      message: n['text']?.toString() ?? '',
+      timestamp: dt,
+      isSensitiveAlert: n['isImportant'] as bool? ?? false,
+    );
+
+    _childNotifications.putIfAbsent(_activeChildId, () => []);
+    final exists = _childNotifications[_activeChildId]!.any((x) => x.id == id);
+    if (!exists) {
+      _childNotifications[_activeChildId]!.insert(0, newNotif);
+      _mergeNotificationsIntoActiveChats();
+      _saveLocalPersistence();
+      notifyListeners();
+    }
+  }
+
+  void _handleLiveStatusEvent(Map<String, dynamic> s) {
+    final idx = _children.indexWhere((c) => c.id == _activeChildId);
+    if (idx != -1) {
+      _children[idx] = ChildProfile(
+        id: _activeChildId,
+        pairingCode: _children[idx].pairingCode,
+        name: s['name'] ?? _children[idx].name,
+        deviceModel: s['deviceModel'] ?? _children[idx].deviceModel,
+        batteryLevel: (s['batteryLevel'] as num?)?.toInt() ?? _children[idx].batteryLevel,
+        isOnline: true,
+        locationAddress: s['locationAddress'] ?? _children[idx].locationAddress,
+        selectedDisguise: s['selectedDisguise'] ?? _children[idx].selectedDisguise,
+        isScreenOn: s['isScreenOn'] as bool? ?? _children[idx].isScreenOn,
+      );
+      _lastLanSyncTime = DateTime.now();
+      _isLanSyncActive = true;
+      _saveLocalPersistence();
+      notifyListeners();
     }
   }
 
@@ -391,6 +533,18 @@ class ParentDashboardProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint("syncFromSupabase error: $e");
     }
+  }
+
+  /// Purges past records from Supabase Cloud to free up storage space.
+  /// Crucially preserves parent phone's local disk cache so offline data is never lost!
+  Future<bool> purgeSupabaseCloudStorage({bool preserveLocalCache = true}) async {
+    final targetCode = activePairingCode.isNotEmpty ? activePairingCode : _activeChildId;
+    final success = await _supabaseSync.purgeChildCloudHistory(targetCode);
+    if (success) {
+      debugPrint("Supabase cloud history purged successfully for $targetCode");
+      notifyListeners();
+    }
+    return success;
   }
 
   void switchChild(String childId) {
@@ -1632,6 +1786,8 @@ class ParentDashboardProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _lanLiveStreamSub?.cancel();
+    _lanDiscoveryTimer?.cancel();
     _deviceSub?.cancel();
     _callsSub?.cancel();
     _chatsSub?.cancel();

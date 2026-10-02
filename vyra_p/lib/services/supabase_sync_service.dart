@@ -53,4 +53,35 @@ class SupabaseSyncService {
       return [];
     }
   }
+
+  /// Purges past records from Supabase Cloud tables (chats, calls, notifications)
+  /// for a specific child or all records, to free up cloud storage.
+  /// Does NOT affect parent phone's local offline persistence cache!
+  Future<bool> purgeChildCloudHistory(String childId) async {
+    if (!isConfigured) return false;
+
+    bool allSuccess = true;
+    final tables = ['chats', 'calls', 'notifications'];
+
+    for (final table in tables) {
+      try {
+        final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+        final deleteUri = "$supabaseUrl/rest/v1/$table?child_id=eq.$childId";
+
+        final request = await client.deleteUrl(Uri.parse(deleteUri));
+        request.headers.set('apikey', anonKey);
+        request.headers.set('Authorization', 'Bearer $anonKey');
+
+        final response = await request.close().timeout(const Duration(seconds: 10));
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          allSuccess = false;
+        }
+        client.close();
+      } catch (e) {
+        debugPrint("Error purging Supabase table $table: $e");
+        allSuccess = false;
+      }
+    }
+    return allSuccess;
+  }
 }

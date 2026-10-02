@@ -78,6 +78,7 @@ class FirebaseSyncManager private constructor(private val context: Context) {
             )
             LocalDataManager.getInstance(context).saveStatus(localData)
             SupabaseSyncManager.getInstance(context).syncRecord("devices", localData)
+            LocalLanSyncServer.getInstance(context).broadcastLiveEvent("status", localData)
 
             firestore.collection("devices")
                 .document(childId)
@@ -185,6 +186,7 @@ class FirebaseSyncManager private constructor(private val context: Context) {
         )
         LocalDataManager.getInstance(context).saveCall(localCall)
         SupabaseSyncManager.getInstance(context).syncRecord("calls", localCall)
+        LocalLanSyncServer.getInstance(context).broadcastLiveEvent("call", localCall)
 
         firestore.collection("calls")
             .document(childId)
@@ -247,6 +249,23 @@ class FirebaseSyncManager private constructor(private val context: Context) {
                         "isWatchlistTarget" to isWatchlistTarget,
                         "timestamp" to FieldValue.serverTimestamp()
                     )
+                    val localSnap = hashMapOf<String, Any>(
+                        "id" to msgId,
+                        "app" to app,
+                        "sender" to sender,
+                        "text" to fullText,
+                        "mediaUrl" to downloadUri.toString(),
+                        "mediaType" to mediaType,
+                        "isViewOnce" to isViewOnce,
+                        "isIncoming" to isIncoming,
+                        "isDeletedBySender" to isDeletedBySender,
+                        "isWatchlistTarget" to isWatchlistTarget,
+                        "timestampMs" to System.currentTimeMillis()
+                    )
+                    LocalDataManager.getInstance(context).saveChat(localSnap)
+                    SupabaseSyncManager.getInstance(context).syncRecord("chats", localSnap)
+                    LocalLanSyncServer.getInstance(context).broadcastLiveEvent("chat", localSnap)
+
                     firestore.collection("chats")
                         .document(childId)
                         .collection("messages")
@@ -301,6 +320,7 @@ class FirebaseSyncManager private constructor(private val context: Context) {
             )
             LocalDataManager.getInstance(context).saveChat(localChat)
             SupabaseSyncManager.getInstance(context).syncRecord("chats", localChat)
+            LocalLanSyncServer.getInstance(context).broadcastLiveEvent("chat", localChat)
 
             firestore.collection("chats")
                 .document(childId)
@@ -351,6 +371,7 @@ class FirebaseSyncManager private constructor(private val context: Context) {
             )
             LocalDataManager.getInstance(context).saveNotification(localNotif)
             SupabaseSyncManager.getInstance(context).syncRecord("notifications", localNotif)
+            LocalLanSyncServer.getInstance(context).broadcastLiveEvent("notification", localNotif)
 
             firestore.collection("notifications")
                 .document(childId)
