@@ -272,7 +272,7 @@ class SetupWizardActivity : AppCompatActivity() {
         if (adminGranted) grantedCount++
 
         // 6. Usage Access (Screen Time & App Activity)
-        val usageGranted = com.vyra.kids.core.ScreenTimeManager.hasUsagePermission(this)
+        val usageGranted = com.vyra.kids.core.ScreenTimeManager.hasUsageStatsPermission(this)
         applyButtonState(btnUsageAccess, usageGranted)
         if (usageGranted) grantedCount++
 

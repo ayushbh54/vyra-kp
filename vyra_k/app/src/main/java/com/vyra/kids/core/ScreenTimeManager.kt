@@ -22,6 +22,8 @@ data class AppUsageItem(
 
 object ScreenTimeManager {
 
+    fun hasUsagePermission(context: Context): Boolean = hasUsageStatsPermission(context)
+
     fun hasUsageStatsPermission(context: Context): Boolean {
         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager ?: return false
         val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

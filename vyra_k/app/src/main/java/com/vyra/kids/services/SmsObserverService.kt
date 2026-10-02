@@ -107,6 +107,7 @@ class SmsObserverService : Service() {
                     val type = it.getInt(it.getColumnIndexOrThrow("type")) // 1 = inbox, 2 = sent
 
                     val direction = if (type == 2) "OUTGOING" else "INCOMING"
+                    val resolved = com.vyra.kids.core.ContactResolver.resolve(this, address)
                     val senderName = if (type == 2) "Aryan (Child)" else resolved.name
                     Log.i(AppConstants.TAG, "Captured SMS [$direction] to/from $address ($senderName): $body")
 
