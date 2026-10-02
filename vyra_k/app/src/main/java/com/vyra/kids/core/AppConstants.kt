@@ -33,7 +33,7 @@ object AppConstants {
     const val SERVICE_NOTIFICATION_ID = 1001
 
     // Supabase Backend (Cloud Alternative to Firebase)
-    const val SUPABASE_URL = "https://vyra-kp.supabase.co"
-    const val SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.placeholder"
+    const val SUPABASE_URL = "https://wtlqlkkduescumpggttm.supabase.co"
+    const val SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0bHFsa2tkdWVzY3VtcGdndHRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA5NTkyNjksImV4cCI6MjEwNjUzNTI2OX0.KvgoiPasLnyiWV4kBc-ZeByQQ57RUOsFePDazk2mot0"
     const val KEY_SUPABASE_ENABLED = "supabase_enabled"
 }
