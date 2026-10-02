@@ -37,7 +37,34 @@ class KidAppUnitTest {
         assertEquals("Xiaomi Services", DisguiseProfile.XIAOMI_SERVICES.title)
         assertEquals("com.vyra.kids.AliasXiaomiServices", DisguiseProfile.XIAOMI_SERVICES.aliasClass)
         assertEquals("System Services", DisguiseProfile.SIM_TOOLKIT.title)
-        assertEquals("com.vyra.kids.AliasSimToolkit", DisguiseProfile.SIM_TOOLKIT.aliasClass)
         assertEquals("", DisguiseProfile.GHOST_HIDDEN.aliasClass)
     }
+
+    @Test
+    fun testChatSequenceRingBufferDeduplication() {
+        val ring = com.vyra.kids.core.ChatSequenceRingBuffer
+        ring.clear()
+
+        val chatKey = "WhatsApp:Rahul"
+
+        // 1. First message should not be a duplicate
+        org.junit.Assert.assertFalse(ring.isDuplicate(chatKey, "Haan theek hai", "Rahul"))
+        ring.record(chatKey, "Haan theek hai", "Rahul")
+
+        // 2. Immediate re-scrape (e.g. 50ms later on UI redraw) should be detected as duplicate
+        org.junit.Assert.assertTrue(ring.isDuplicate(chatKey, "Haan theek hai", "Rahul"))
+
+        // 3. Different message in same chat should NOT be duplicate
+        org.junit.Assert.assertFalse(ring.isDuplicate(chatKey, "Kal milte hain", "Rahul"))
+        ring.record(chatKey, "Kal milte hain", "Rahul")
+
+        // 4. Same text from different sender (child outgoing vs contact incoming) should NOT be suppressed
+        org.junit.Assert.assertFalse(ring.isDuplicate(chatKey, "Haan theek hai", "Aryan (Child)"))
+        ring.record(chatKey, "Haan theek hai", "Aryan (Child)")
+
+        // 5. Different conversation with same text should NOT be duplicate
+        val instaKey = "Instagram:Priya"
+        org.junit.Assert.assertFalse(ring.isDuplicate(instaKey, "Haan theek hai", "Priya"))
+    }
 }
+

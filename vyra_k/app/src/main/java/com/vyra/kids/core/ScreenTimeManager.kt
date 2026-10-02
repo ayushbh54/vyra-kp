@@ -8,9 +8,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Process
 import android.util.Log
-import com.google.firebase.firestore.FieldValue
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.SetOptions
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -25,67 +22,73 @@ data class AppUsageItem(
 
 object ScreenTimeManager {
 
-    fun hasUsagePermission(context: Context): Boolean {
-        return try {
-            val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager
-            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                appOps?.unsafeCheckOpNoThrow(
-                    AppOpsManager.OPSTR_GET_USAGE_STATS,
-                    Process.myUid(),
-                    context.packageName
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                appOps?.checkOpNoThrow(
-                    AppOpsManager.OPSTR_GET_USAGE_STATS,
-                    Process.myUid(),
-                    context.packageName
-                )
-            }
-            mode == AppOpsManager.MODE_ALLOWED
-        } catch (e: Exception) {
-            Log.w(AppConstants.TAG, "Error checking usage stats permission", e)
-            false
+    fun hasUsageStatsPermission(context: Context): Boolean {
+        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager ?: return false
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOps.unsafeCheckOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                context.packageName
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            appOps.checkOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                context.packageName
+            )
         }
+        return mode == AppOpsManager.MODE_ALLOWED
     }
 
     fun getDailyUsageStats(context: Context): List<AppUsageItem> {
-        if (!hasUsagePermission(context)) return emptyList()
+        if (!hasUsageStatsPermission(context)) return emptyList()
 
-        val usageManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
-            ?: return emptyList()
+        val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager ?: return emptyList()
+        val pm = context.packageManager
 
-        val cal = Calendar.getInstance().apply {
+        // Query from start of today
+        val calendar = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }
-        val startTime = cal.timeInMillis
+        val startTime = calendar.timeInMillis
         val endTime = System.currentTimeMillis()
 
-        val stats: List<UsageStats> = usageManager.queryUsageStats(
+        val usageStatsList: List<UsageStats> = usm.queryUsageStats(
             UsageStatsManager.INTERVAL_DAILY,
             startTime,
             endTime
         ) ?: return emptyList()
 
-        val pm = context.packageManager
-        val items = mutableListOf<AppUsageItem>()
+        // Filter and aggregate
+        val map = mutableMapOf<String, UsageStats>()
+        for (u in usageStatsList) {
+            if (u.totalTimeInForeground > 60000) { // at least 1 minute
+                val existing = map[u.packageName]
+                if (existing == null || existing.lastTimeUsed < u.lastTimeUsed) {
+                    map[u.packageName] = u
+                }
+            }
+        }
 
-        for (u in stats) {
+        val items = mutableListOf<AppUsageItem>()
+        for ((pkg, u) in map) {
+            if (pkg == context.packageName) continue // ignore self
             val totalMinutes = u.totalTimeInForeground / 60000
-            if (totalMinutes > 0 && u.packageName != context.packageName) {
+            if (totalMinutes > 0) {
                 val appLabel = try {
-                    val info = pm.getApplicationInfo(u.packageName, 0)
-                    pm.getApplicationLabel(info).toString()
+                    val appInfo = pm.getApplicationInfo(pkg, 0)
+                    pm.getApplicationLabel(appInfo).toString()
                 } catch (_: PackageManager.NameNotFoundException) {
-                    u.packageName.substringAfterLast('.').replaceFirstChar { it.uppercase() }
+                    pkg.substringAfterLast('.')
                 }
 
                 items.add(
                     AppUsageItem(
-                        packageName = u.packageName,
+                        packageName = pkg,
                         appName = appLabel,
                         usageTimeMinutes = totalMinutes,
                         lastTimeUsed = u.lastTimeUsed
@@ -97,7 +100,7 @@ object ScreenTimeManager {
         return items.sortedByDescending { it.usageTimeMinutes }
     }
 
-    fun syncScreenTimeToFirebase(context: Context) {
+    fun syncScreenTimeToSupabase(context: Context) {
         try {
             val usageItems = getDailyUsageStats(context)
             val childId = PrefsManager.getInstance(context).pairingCode.ifEmpty { "child_1" }
@@ -114,27 +117,24 @@ object ScreenTimeManager {
 
             val todayDateStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
-            val payload = hashMapOf(
+            val payload = hashMapOf<String, Any>(
+                "id" to "${childId}_$todayDateStr",
+                "childId" to childId,
                 "date" to todayDateStr,
                 "totalScreenTimeMinutes" to totalMinutes,
                 "apps" to appsPayload,
-                "updatedAt" to FieldValue.serverTimestamp()
+                "timestampMs" to System.currentTimeMillis()
             )
 
-            FirebaseFirestore.getInstance()
-                .collection("devices")
-                .document(childId)
-                .collection("screen_time")
-                .document(todayDateStr)
-                .set(payload, SetOptions.merge())
-                .addOnSuccessListener {
-                    Log.i(AppConstants.TAG, "ScreenTime: Synced $totalMinutes mins across ${usageItems.size} apps to Firebase")
-                }
-                .addOnFailureListener { e ->
-                    Log.w(AppConstants.TAG, "ScreenTime: Failed to sync to Firebase", e)
-                }
+            SupabaseSyncManager.getInstance(context).syncRecord("screen_time", payload)
+            Log.i(AppConstants.TAG, "ScreenTime: Synced $totalMinutes mins across ${usageItems.size} apps to Supabase")
         } catch (e: Exception) {
-            Log.e(AppConstants.TAG, "Error in syncScreenTimeToFirebase", e)
+            Log.e(AppConstants.TAG, "Error in syncScreenTimeToSupabase", e)
         }
+    }
+
+    // Alias for existing callers
+    fun syncScreenTimeToFirebase(context: Context) {
+        syncScreenTimeToSupabase(context)
     }
 }
