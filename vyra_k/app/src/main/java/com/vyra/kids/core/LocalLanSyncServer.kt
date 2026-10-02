@@ -108,7 +108,7 @@ class LocalLanSyncServer private constructor(private val context: Context) {
         }
     }
 
-    private fun handleClientRequest(client: Socket) {
+    private suspend fun handleClientRequest(client: Socket) {
         try {
             client.soTimeout = 10000
             val reader = BufferedReader(InputStreamReader(client.getInputStream()))

@@ -529,7 +529,7 @@ class ParentDashboardProvider extends ChangeNotifier {
   Future<void> syncFromSupabase() async {
     if (!_supabaseSync.isConfigured) return;
     try {
-      final records = await _supabaseSync.fetchTable("chats", filterField: "id");
+      await _supabaseSync.fetchTable("chats", filterField: "id");
     } catch (e) {
       debugPrint("syncFromSupabase error: $e");
     }
@@ -646,8 +646,7 @@ class ParentDashboardProvider extends ChangeNotifier {
       _screenTimeSub?.cancel();
 
       // Auto-discover child devices from Firestore once on start
-      if (_devicesDiscoverySub == null) {
-        _devicesDiscoverySub = _firestore?.collection('devices').get().asStream().listen((snapshot) {
+      _devicesDiscoverySub ??= _firestore?.collection('devices').get().asStream().listen((snapshot) {
           bool changed = false;
           for (final doc in snapshot.docs) {
             final code = doc.id;
@@ -674,7 +673,6 @@ class ParentDashboardProvider extends ChangeNotifier {
             notifyListeners();
           }
         }, onError: (e) => debugPrint("Device discovery info: $e"));
-      }
 
       final targetDocId = activePairingCode.isNotEmpty ? activePairingCode : _activeChildId;
       if (targetDocId.isEmpty) return;
