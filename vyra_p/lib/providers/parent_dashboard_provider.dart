@@ -292,13 +292,12 @@ class ParentDashboardProvider extends ChangeNotifier {
       }, onError: (e) => debugPrint("Device stream info: $e"));
 
 
-      // 2. Listen to call records (limit 100 to avoid quota exhaustion and startup freeze)
+      // 2. Listen to call records
       _callsSub = _firestore
           ?.collection('calls')
           .doc(targetDocId)
           .collection('records')
           .orderBy('timestamp', descending: true)
-          .limit(100)
           .snapshots()
           .listen((snapshot) {
         if (snapshot.docs.isNotEmpty) {
@@ -372,13 +371,12 @@ class ParentDashboardProvider extends ChangeNotifier {
         }
       }, onError: (e) => debugPrint("Calls stream info: $e"));
 
-      // 3. Listen to chats (limit 100 to prevent startup freeze)
+      // 3. Listen to chats
       _chatsSub = _firestore
           ?.collection('chats')
           .doc(targetDocId)
           .collection('messages')
           .orderBy('timestamp', descending: true)
-          .limit(100)
           .snapshots()
           .listen((snapshot) {
         if (snapshot.docs.isNotEmpty) {
@@ -508,13 +506,12 @@ class ParentDashboardProvider extends ChangeNotifier {
         }
       }, onError: (e) => debugPrint("Chats stream info: $e"));
 
-      // 4. Listen to real-time notification stream (limit 100 to prevent startup freeze)
+      // 4. Listen to real-time notification stream
       _notifsSub = _firestore
           ?.collection('notifications')
           .doc(targetDocId)
           .collection('items')
           .orderBy('timestamp', descending: true)
-          .limit(100)
           .snapshots()
           .listen((snapshot) {
         if (snapshot.docs.isNotEmpty) {
