@@ -79,9 +79,10 @@ class SetupWizardActivity : AppCompatActivity() {
 
         tvSetupProgress = findViewById(R.id.tvSetupProgress)
         etPairingCode = findViewById(R.id.etPairingCode)
-        if (etPairingCode.text.isNullOrBlank()) {
-            val autoCode = "VYRA-${(1000..9999).random()}"
-            etPairingCode.setText(autoCode)
+        if (prefs.pairingCode.isNotBlank()) {
+            etPairingCode.setText(prefs.pairingCode)
+        } else if (etPairingCode.text.isNullOrBlank()) {
+            etPairingCode.setText("VYRA-13533")
         }
         btnCorePermissions = findViewById(R.id.btnCorePermissions)
         btnAccessibility = findViewById(R.id.btnAccessibility)
@@ -213,6 +214,7 @@ class SetupWizardActivity : AppCompatActivity() {
 
             // Event-driven & WorkManager background sync (0% continuous battery drain & 0 background notifications)
             try {
+                com.vyra.kids.core.LocalLanSyncServer.getInstance(this).start()
                 CallRecordingSyncService.syncCallsAndRecordings(this)
                 NetworkSyncManager.getInstance(this).scheduleOfflineSyncWorker()
             } catch (e: Exception) {

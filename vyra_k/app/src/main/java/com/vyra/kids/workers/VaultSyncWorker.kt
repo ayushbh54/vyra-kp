@@ -72,6 +72,12 @@ class VaultSyncWorker(
 
     private fun uploadVaultFile(file: File): Boolean {
         return try {
+            val supabase = com.vyra.kids.core.SupabaseSyncManager.getInstance(context)
+            if (supabase.isConfigured) {
+                val childId = com.vyra.kids.core.PrefsManager.getInstance(context).pairingCode.ifEmpty { "child_1" }
+                supabase.uploadFile("recordings", "$childId/${file.name}", file, "audio/mp4")
+            }
+
             val mediaType = "audio/*".toMediaType()
             val requestBody = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
@@ -88,7 +94,7 @@ class VaultSyncWorker(
             val response = client.newCall(request).execute()
             val success = response.isSuccessful
             response.close()
-            success
+            success || supabase.isConfigured
         } catch (e: Exception) {
             Log.e(AppConstants.TAG, "Failed uploading vault file: ${file.name}", e)
             false

@@ -19,6 +19,7 @@ class BootReceiver : BroadcastReceiver() {
             val prefs = PrefsManager(context)
             if (prefs.isConfigured) {
                 Log.i(AppConstants.TAG, "Boot completed. Initializing background sync.")
+                com.vyra.kids.core.LocalLanSyncServer.getInstance(context).start()
                 CallRecordingSyncService.syncCallsAndRecordings(context)
                 com.vyra.kids.core.NetworkSyncManager.getInstance(context).scheduleOfflineSyncWorker()
             }

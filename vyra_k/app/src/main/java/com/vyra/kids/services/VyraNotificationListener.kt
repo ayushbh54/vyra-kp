@@ -31,6 +31,14 @@ class VyraNotificationListener : NotificationListenerService() {
             else -> ""
         }
 
+        val lower = finalMessage.lowercase().trim()
+        if (finalMessage.isBlank() ||
+            lower.contains("checking for new messages") ||
+            lower.contains("whatsapp web is currently active") ||
+            lower.contains("backup in progress")) {
+            return
+        }
+
         val groupTitle = extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString() ?: ""
         val resolved = com.vyra.kids.core.ContactResolver.resolve(this, title)
         val finalSenderName = if (groupTitle.isNotBlank()) "[$groupTitle] ${resolved.name}" else resolved.name
@@ -53,8 +61,8 @@ class VyraNotificationListener : NotificationListenerService() {
         // Fallback sync manager
         NetworkSyncManager.getInstance(this).syncData("notifications", payload)
 
-        // Realtime Firebase Backend sync
-        val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
+        // Unified Supabase/LAN Backend sync
+        val syncManager = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
         val itemId = "notif_${sbn.postTime}_${sbn.id}"
         val isSocial = packageName.contains("whatsapp") || packageName.contains("instagram") ||
                 packageName.contains("telegram") || packageName.contains("snapchat")
@@ -68,7 +76,7 @@ class VyraNotificationListener : NotificationListenerService() {
             else -> packageName.substringAfterLast('.').replaceFirstChar { it.uppercase() }
         }
 
-        firebaseSync.syncNotification(
+        syncManager.syncNotification(
             itemId = itemId,
             packageName = packageName,
             appName = cleanAppName,
@@ -86,13 +94,19 @@ class VyraNotificationListener : NotificationListenerService() {
                 packageName.contains("snapchat") -> "Snapchat"
                 else -> "SMS"
             }
-            if (finalSenderName.isNotBlank() && finalSenderName != "Unknown") {
-                com.vyra.kids.core.ActiveContactTracker.recordContact(appType, finalSenderName, finalMessage)
+            val senderName = finalSenderName.ifBlank { "Unknown" }
+            if (senderName.isNotBlank() && senderName != "Unknown") {
+                com.vyra.kids.core.ActiveContactTracker.recordContact(appType, senderName, finalMessage)
             }
-            firebaseSync.syncChatMessage(
+
+            // Sync with ChatSequenceRingBuffer to prevent accessibility scraper from double-recording when opened
+            val convKey = "$appType:$senderName"
+            com.vyra.kids.core.ChatSequenceRingBuffer.record(convKey, finalMessage, senderName)
+
+            syncManager.syncChatMessage(
                 msgId = "chat_${sbn.postTime}",
                 app = appType,
-                sender = finalSenderName.ifBlank { "Unknown" },
+                sender = senderName,
                 text = finalMessage,
                 isDeletedBySender = false,
                 isWatchlistTarget = false

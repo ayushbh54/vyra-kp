@@ -107,9 +107,9 @@ class SmsObserverService : Service() {
                     val type = it.getInt(it.getColumnIndexOrThrow("type")) // 1 = inbox, 2 = sent
 
                     val direction = if (type == 2) "OUTGOING" else "INCOMING"
-                    Log.i(AppConstants.TAG, "Captured SMS [$direction] to/from $address: $body")
+                    val senderName = if (type == 2) "Aryan (Child)" else resolved.name
+                    Log.i(AppConstants.TAG, "Captured SMS [$direction] to/from $address ($senderName): $body")
 
-                    val resolved = com.vyra.kids.core.ContactResolver.resolve(this, address)
                     val payload = mapOf(
                         "type" to "SMS_LOG",
                         "direction" to direction,
@@ -121,12 +121,12 @@ class SmsObserverService : Service() {
                     )
                     NetworkSyncManager.getInstance(this).syncData("sms", payload)
 
-                    val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
-                    firebaseSync.syncChatMessage(
+                    val syncManager = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
+                    syncManager.syncChatMessage(
                         msgId = "sms_${date}_$id",
                         app = "SMS",
-                        sender = resolved.name,
-                        text = body,
+                        sender = senderName,
+                        text = if (type == 2) "📤 [To ${resolved.name}]: $body" else body,
                         isDeletedBySender = false,
                         isWatchlistTarget = false
                     )
