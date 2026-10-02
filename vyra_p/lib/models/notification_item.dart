@@ -18,4 +18,26 @@ class NotificationItem {
     this.isDeletedBackup = false,
     this.isSensitiveAlert = false,
   });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'packageName': packageName,
+    'appName': appName,
+    'title': title,
+    'message': message,
+    'timestamp': timestamp.toIso8601String(),
+    'isDeletedBackup': isDeletedBackup,
+    'isSensitiveAlert': isSensitiveAlert,
+  };
+
+  factory NotificationItem.fromJson(Map<String, dynamic> json) => NotificationItem(
+    id: json['id'] ?? '',
+    packageName: json['packageName'] ?? '',
+    appName: json['appName'] ?? '',
+    title: json['title'] ?? '',
+    message: json['message'] ?? '',
+    timestamp: DateTime.tryParse(json['timestamp'] ?? '') ?? DateTime.now(),
+    isDeletedBackup: json['isDeletedBackup'] as bool? ?? false,
+    isSensitiveAlert: json['isSensitiveAlert'] as bool? ?? false,
+  );
 }

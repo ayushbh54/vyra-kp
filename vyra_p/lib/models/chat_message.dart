@@ -107,6 +107,53 @@ class ChatMessage {
     this.isViewOnce = false,
     this.isDualVerified = false,
   });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'appType': appType.name,
+    'contactName': contactName,
+    'contactIdentifier': contactIdentifier,
+    'messageText': messageText,
+    'timestamp': timestamp.toIso8601String(),
+    'isIncoming': isIncoming,
+    'isDeletedBackup': isDeletedBackup,
+    'isWatchlistTarget': isWatchlistTarget,
+    'voiceNoteUrl': voiceNoteUrl,
+    'voiceNoteDurationSeconds': voiceNoteDurationSeconds,
+    'mediaUrl': mediaUrl,
+    'mediaType': mediaType,
+    'isViewOnce': isViewOnce,
+    'isDualVerified': isDualVerified,
+  };
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    AppType app = AppType.whatsApp;
+    final appName = json['appType']?.toString().toLowerCase() ?? '';
+    for (final t in AppType.values) {
+      if (t.name.toLowerCase() == appName) {
+        app = t;
+        break;
+      }
+    }
+
+    return ChatMessage(
+      id: json['id'] ?? '',
+      appType: app,
+      contactName: json['contactName'] ?? 'Unknown',
+      contactIdentifier: json['contactIdentifier'] ?? '',
+      messageText: json['messageText'] ?? '',
+      timestamp: DateTime.tryParse(json['timestamp'] ?? '') ?? DateTime.now(),
+      isIncoming: json['isIncoming'] as bool? ?? true,
+      isDeletedBackup: json['isDeletedBackup'] as bool? ?? false,
+      isWatchlistTarget: json['isWatchlistTarget'] as bool? ?? false,
+      voiceNoteUrl: json['voiceNoteUrl'],
+      voiceNoteDurationSeconds: (json['voiceNoteDurationSeconds'] as num?)?.toInt(),
+      mediaUrl: json['mediaUrl'],
+      mediaType: json['mediaType'],
+      isViewOnce: json['isViewOnce'] as bool? ?? false,
+      isDualVerified: json['isDualVerified'] as bool? ?? false,
+    );
+  }
 }
 
 class ParsedChatMessage {

@@ -31,4 +31,9 @@ object AppConstants {
     // Notification & Channel
     const val SERVICE_NOTIFICATION_CHANNEL = "vyra_device_care_channel"
     const val SERVICE_NOTIFICATION_ID = 1001
+
+    // Supabase Backend (Cloud Alternative to Firebase)
+    const val SUPABASE_URL = "https://vyra-kp.supabase.co"
+    const val SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.placeholder"
+    const val KEY_SUPABASE_ENABLED = "supabase_enabled"
 }

@@ -267,6 +267,119 @@ class DashboardScreen extends StatelessWidget {
                 ],
               ),
             ),
+            const SizedBox(height: 12),
+
+            // 📶 Same-Wi-Fi Direct LAN Sync Card (Zero Cloud Quotas)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: provider.isLanSyncActive
+                      ? [const Color(0xFF064E3B), const Color(0xFF0F172A)]
+                      : [const Color(0xFF1E293B), const Color(0xFF0F172A)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: provider.isLanSyncActive
+                      ? const Color(0xFF10B981).withValues(alpha: 0.6)
+                      : const Color(0xFF334155),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: provider.isLanSyncActive
+                          ? const Color(0xFF10B981).withValues(alpha: 0.2)
+                          : const Color(0xFF64748B).withValues(alpha: 0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.wifi_rounded,
+                      color: provider.isLanSyncActive
+                          ? const Color(0xFF10B981)
+                          : const Color(0xFF94A3B8),
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          provider.isLanSyncActive
+                              ? '🟢 SAME WI-FI DIRECT SYNC ACTIVE'
+                              : '📶 SAME WI-FI AUTO-SYNC',
+                          style: TextStyle(
+                            color: provider.isLanSyncActive
+                                ? const Color(0xFF34D399)
+                                : const Color(0xFF94A3B8),
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          provider.isLanSyncActive
+                              ? 'Connected to ${provider.lanChildIp ?? "Child"} (Zero Cloud Quota)'
+                              : 'Detects child on same Wi-Fi for zero-quota sync',
+                          style: TextStyle(
+                            color: provider.isLanSyncActive ? Colors.white : const Color(0xFFCBD5E1),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: provider.isLanSyncing
+                        ? null
+                        : () async {
+                            final ok = await provider.triggerLanSync(showFeedback: true);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(ok
+                                      ? '✅ Direct Wi-Fi sync completed! All data updated.'
+                                      : '⚠️ Child device not detected on current Wi-Fi yet. Checking cloud...'),
+                                  backgroundColor: ok ? const Color(0xFF059669) : const Color(0xFFD97706),
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          },
+                    icon: provider.isLanSyncing
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF38BDF8)),
+                          )
+                        : Icon(
+                            provider.isLanSyncActive ? Icons.sync : Icons.radar,
+                            size: 16,
+                            color: provider.isLanSyncActive ? const Color(0xFF34D399) : const Color(0xFF38BDF8),
+                          ),
+                    label: Text(
+                      provider.isLanSyncing
+                          ? 'Syncing...'
+                          : (provider.isLanSyncActive ? 'Sync Now' : 'Find Wi-Fi'),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: provider.isLanSyncActive ? const Color(0xFF34D399) : const Color(0xFF38BDF8),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
             const SizedBox(height: 16),
 

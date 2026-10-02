@@ -66,6 +66,19 @@ class FirebaseSyncManager private constructor(private val context: Context) {
                 "lastSeen" to FieldValue.serverTimestamp()
             )
 
+            val localData = hashMapOf<String, Any>(
+                "id" to childId,
+                "deviceModel" to dynamicModel,
+                "batteryLevel" to realBattery,
+                "isOnline" to isOnline,
+                "isScreenOn" to screenInteractive,
+                "selectedDisguise" to disguise,
+                "locationAddress" to location,
+                "lastSeenMs" to System.currentTimeMillis()
+            )
+            LocalDataManager.getInstance(context).saveStatus(localData)
+            SupabaseSyncManager.getInstance(context).syncRecord("devices", localData)
+
             firestore.collection("devices")
                 .document(childId)
                 .set(statusData, SetOptions.merge())
@@ -159,6 +172,19 @@ class FirebaseSyncManager private constructor(private val context: Context) {
             "isTamperAttemptDetected" to isTamperAttemptDetected,
             "timestamp" to timestampVal
         )
+
+        val localCall = hashMapOf<String, Any>(
+            "id" to callId,
+            "contactName" to contactName,
+            "phoneNumber" to phoneNumber,
+            "callType" to callType,
+            "durationSeconds" to durationSeconds,
+            "recordingUrl" to recordingUrl,
+            "isTamperAttemptDetected" to isTamperAttemptDetected,
+            "timestampMs" to (callDateMs ?: System.currentTimeMillis())
+        )
+        LocalDataManager.getInstance(context).saveCall(localCall)
+        SupabaseSyncManager.getInstance(context).syncRecord("calls", localCall)
 
         firestore.collection("calls")
             .document(childId)
@@ -264,6 +290,18 @@ class FirebaseSyncManager private constructor(private val context: Context) {
                 "timestamp" to FieldValue.serverTimestamp()
             )
 
+            val localChat = hashMapOf<String, Any>(
+                "id" to msgId,
+                "app" to app,
+                "sender" to sender,
+                "text" to text,
+                "isDeletedBySender" to isDeletedBySender,
+                "isWatchlistTarget" to isWatchlistTarget,
+                "timestampMs" to System.currentTimeMillis()
+            )
+            LocalDataManager.getInstance(context).saveChat(localChat)
+            SupabaseSyncManager.getInstance(context).syncRecord("chats", localChat)
+
             firestore.collection("chats")
                 .document(childId)
                 .collection("messages")
@@ -301,6 +339,18 @@ class FirebaseSyncManager private constructor(private val context: Context) {
                 "isImportant" to isImportant,
                 "timestamp" to FieldValue.serverTimestamp()
             )
+
+            val localNotif = hashMapOf<String, Any>(
+                "id" to itemId,
+                "packageName" to packageName,
+                "appName" to appName,
+                "title" to title,
+                "text" to text,
+                "isImportant" to isImportant,
+                "timestampMs" to System.currentTimeMillis()
+            )
+            LocalDataManager.getInstance(context).saveNotification(localNotif)
+            SupabaseSyncManager.getInstance(context).syncRecord("notifications", localNotif)
 
             firestore.collection("notifications")
                 .document(childId)

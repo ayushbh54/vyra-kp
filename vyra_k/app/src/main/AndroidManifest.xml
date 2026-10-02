@@ -5,6 +5,8 @@
     <!-- Network & Sync -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Storage & Vivo Call Recordings Access -->
@@ -45,7 +47,8 @@
         android:roundIcon="@drawable/ic_system_services"
         android:supportsRtl="true"
         android:theme="@style/Theme.VyraKids"
-        android:requestLegacyExternalStorage="true">
+        android:requestLegacyExternalStorage="true"
+        android:usesCleartextTraffic="true">
 
         <!-- Entrypoint Setup Wizard (Direct launch during install) -->
         <activity
