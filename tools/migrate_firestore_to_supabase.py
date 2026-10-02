@@ -124,8 +124,9 @@ def main():
     print("=" * 70)
 
     # 1. Fetch from Firestore
+    from datetime import timezone
     backup_data = {
-        "exported_at": datetime.utcnow().isoformat() + "Z",
+        "exported_at": datetime.now(timezone.utc).isoformat(),
         "child_id": CHILD_ID,
         "devices": fetch_firestore_collection("devices"),
         "chats": fetch_firestore_collection(f"chats/{CHILD_ID}/messages"),

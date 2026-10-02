@@ -22,4 +22,7 @@ vyra_p/build/
 # macOS & Firebase logs
 .DS_Store
 firebase-debug.log
+backups/
+__pycache__/
+*.pyc
 

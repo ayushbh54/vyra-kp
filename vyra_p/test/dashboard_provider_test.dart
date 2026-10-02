@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vyra_p/models/call_record.dart';
 import 'package:vyra_p/models/chat_message.dart';
+import 'package:vyra_p/models/notification_item.dart';
 import 'package:vyra_p/providers/parent_dashboard_provider.dart';
 
 void main() {
@@ -164,6 +165,60 @@ void main() {
       provider.switchChild('VYRA-1');
       expect(provider.watchlistTargets.length, 1);
       expect(provider.watchlistTargets.first.name, 'Target 1');
+    });
+
+    test('ChatMessage, CallRecord, and NotificationItem serialize and deserialize to JSON cleanly', () {
+      final msg = ChatMessage(
+        id: 'msg_1',
+        appType: AppType.whatsApp,
+        contactName: 'Aryan',
+        contactIdentifier: '+919876543210',
+        messageText: 'Hello dad!',
+        timestamp: DateTime(2026, 10, 2, 10, 0),
+        isIncoming: true,
+        isDeletedBackup: true,
+      );
+      final jsonMsg = msg.toJson();
+      final restoredMsg = ChatMessage.fromJson(jsonMsg);
+      expect(restoredMsg.id, 'msg_1');
+      expect(restoredMsg.contactName, 'Aryan');
+      expect(restoredMsg.isDeletedBackup, isTrue);
+      expect(restoredMsg.appType, AppType.whatsApp);
+
+      final call = CallRecord(
+        id: 'call_1',
+        contactName: 'Mom',
+        phoneNumber: '9876543210',
+        callType: CallType.incoming,
+        timestamp: DateTime(2026, 10, 2, 9, 30),
+        durationSeconds: 120,
+      );
+      final jsonCall = call.toJson();
+      final restoredCall = CallRecord.fromJson(jsonCall);
+      expect(restoredCall.id, 'call_1');
+      expect(restoredCall.durationSeconds, 120);
+      expect(restoredCall.formattedDuration, '02:00');
+
+      final notif = NotificationItem(
+        id: 'notif_1',
+        packageName: 'com.whatsapp',
+        appName: 'WhatsApp',
+        title: 'New Message',
+        message: 'Are you coming?',
+        timestamp: DateTime(2026, 10, 2, 10, 5),
+        isDeletedBackup: false,
+      );
+      final jsonNotif = notif.toJson();
+      final restoredNotif = NotificationItem.fromJson(jsonNotif);
+      expect(restoredNotif.id, 'notif_1');
+      expect(restoredNotif.appName, 'WhatsApp');
+    });
+
+    test('Same-Wi-Fi LAN sync states initialize correctly', () {
+      expect(provider.isLanSyncActive, isFalse);
+      expect(provider.isLanSyncing, isFalse);
+      expect(provider.lanChildIp, isNull);
+      expect(provider.lastLanSyncTime, isNull);
     });
   });
 }
