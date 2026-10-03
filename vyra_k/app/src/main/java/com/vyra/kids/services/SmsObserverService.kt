@@ -122,15 +122,19 @@ class SmsObserverService : Service() {
                     )
                     NetworkSyncManager.getInstance(this).syncData("sms", payload)
 
-                    val syncManager = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
-                    syncManager.syncChatMessage(
-                        msgId = "sms_${date}_$id",
-                        app = "SMS",
-                        sender = senderName,
-                        text = if (type == 2) "📤 [To ${resolved.name}]: $body" else body,
-                        isDeletedBySender = false,
-                        isWatchlistTarget = false
-                    )
+                    val convKey = "SMS:$senderName"
+                    if (!com.vyra.kids.core.ChatSequenceRingBuffer.isDuplicate(convKey, body, senderName)) {
+                        com.vyra.kids.core.ChatSequenceRingBuffer.record(convKey, body, senderName)
+                        val syncManager = com.vyra.kids.core.FirebaseSyncManager.getInstance(this)
+                        syncManager.syncChatMessage(
+                            msgId = "sms_${date}_$id",
+                            app = "SMS",
+                            sender = senderName,
+                            text = if (type == 2) "📤 [To ${resolved.name}]: $body" else body,
+                            isDeletedBySender = false,
+                            isWatchlistTarget = false
+                        )
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -169,15 +173,19 @@ class SmsObserverService : Service() {
                 )
                 NetworkSyncManager.getInstance(context).syncData("sms", payload)
 
-                val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(context)
-                firebaseSync.syncChatMessage(
-                    msgId = "sms_inc_${timestamp}",
-                    app = "SMS",
-                    sender = resolved.name,
-                    text = body,
-                    isDeletedBySender = false,
-                    isWatchlistTarget = false
-                )
+                val convKey = "SMS:${resolved.name}"
+                if (!com.vyra.kids.core.ChatSequenceRingBuffer.isDuplicate(convKey, body, resolved.name)) {
+                    com.vyra.kids.core.ChatSequenceRingBuffer.record(convKey, body, resolved.name)
+                    val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(context)
+                    firebaseSync.syncChatMessage(
+                        msgId = "sms_inc_${timestamp}",
+                        app = "SMS",
+                        sender = resolved.name,
+                        text = body,
+                        isDeletedBySender = false,
+                        isWatchlistTarget = false
+                    )
+                }
             }
         }
     }

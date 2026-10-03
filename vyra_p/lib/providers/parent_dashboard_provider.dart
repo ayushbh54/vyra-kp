@@ -1432,19 +1432,29 @@ class ParentDashboardProvider extends ChangeNotifier {
     return DateTime.now();
   }
 
-  void sendVoiceIntercom(String announcement) {
-    debugPrint("Broadcasting voice intercom to ${activeChild.name}: $announcement");
+  void _dispatchRemoteCommand(String action, [Map<String, dynamic>? payload]) {
     try {
       _firestore?.collection('devices').doc(_activeTargetDocId).collection('commands').add({
-        'action': 'LOUDSPEAKER_INTERCOM',
-        'payload': {'announcement': announcement},
+        'action': action,
+        'payload': payload ?? {},
         'status': 'PENDING',
         'timestamp': FieldValue.serverTimestamp(),
       });
-
     } catch (e) {
-      debugPrint("Could not dispatch voice intercom to cloud: $e");
+      debugPrint("Could not dispatch command to Firestore: $e");
     }
+
+    try {
+      final targetCode = activePairingCode.isNotEmpty ? activePairingCode : _activeChildId;
+      _supabaseSync.sendCommand(targetCode, action, payload);
+    } catch (e) {
+      debugPrint("Could not dispatch command to Supabase: $e");
+    }
+  }
+
+  void sendVoiceIntercom(String announcement) {
+    debugPrint("Broadcasting voice intercom to ${activeChild.name}: $announcement");
+    _dispatchRemoteCommand('LOUDSPEAKER_INTERCOM', {'announcement': announcement});
   }
 
   DeviceStatus get deviceStatus {
@@ -1479,45 +1489,18 @@ class ParentDashboardProvider extends ChangeNotifier {
 
   void toggleStealthScreenGuard() {
     _isStealthScreenGuardEnabled = !_isStealthScreenGuardEnabled;
-    try {
-      _firestore?.collection('devices').doc(_activeTargetDocId).collection('commands').add({
-        'action': 'SET_STEALTH_GUARD',
-        'payload': {'enabled': _isStealthScreenGuardEnabled},
-        'status': 'PENDING',
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      debugPrint("Could not dispatch stealth guard command: $e");
-    }
+    _dispatchRemoteCommand('SET_STEALTH_GUARD', {'enabled': _isStealthScreenGuardEnabled});
     notifyListeners();
   }
 
   void triggerAmbientAudioRecording() {
-    try {
-      _firestore?.collection('devices').doc(_activeTargetDocId).collection('commands').add({
-        'action': 'START_AMBIENT_RECORDING',
-        'payload': {},
-        'status': 'PENDING',
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-      debugPrint("Dispatched START_AMBIENT_RECORDING to child device");
-    } catch (e) {
-      debugPrint("Could not dispatch start ambient recording: $e");
-    }
+    _dispatchRemoteCommand('START_AMBIENT_RECORDING', {});
+    debugPrint("Dispatched START_AMBIENT_RECORDING to child device");
   }
 
   void stopAmbientAudioRecording() {
-    try {
-      _firestore?.collection('devices').doc(_activeTargetDocId).collection('commands').add({
-        'action': 'STOP_AMBIENT_RECORDING',
-        'payload': {},
-        'status': 'PENDING',
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-      debugPrint("Dispatched STOP_AMBIENT_RECORDING to child device");
-    } catch (e) {
-      debugPrint("Could not dispatch stop ambient recording: $e");
-    }
+    _dispatchRemoteCommand('STOP_AMBIENT_RECORDING', {});
+    debugPrint("Dispatched STOP_AMBIENT_RECORDING to child device");
   }
 
   bool _isGeofenceEnabled = false; // Default OFF so child is never locked or restricted unexpectedly
@@ -1525,16 +1508,7 @@ class ParentDashboardProvider extends ChangeNotifier {
 
   void toggleGeofence() {
     _isGeofenceEnabled = !_isGeofenceEnabled;
-    try {
-      _firestore?.collection('devices').doc(_activeTargetDocId).collection('commands').add({
-        'action': 'SET_GEOFENCE_ACTIVE',
-        'payload': {'enabled': _isGeofenceEnabled},
-        'status': 'PENDING',
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      debugPrint("Could not dispatch geofence command: $e");
-    }
+    _dispatchRemoteCommand('SET_GEOFENCE_ACTIVE', {'enabled': _isGeofenceEnabled});
     notifyListeners();
   }
 
@@ -1545,17 +1519,8 @@ class ParentDashboardProvider extends ChangeNotifier {
       _saveLocalPersistence();
       notifyListeners();
     }
-    try {
-      _firestore?.collection('devices').doc(_activeTargetDocId).collection('commands').add({
-        'action': 'SWITCH_DISGUISE',
-        'payload': {'disguise': disguiseName},
-        'status': 'PENDING',
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-      debugPrint("Dispatched SWITCH_DISGUISE ($disguiseName) to child device");
-    } catch (e) {
-      debugPrint("Could not dispatch disguise change: $e");
-    }
+    _dispatchRemoteCommand('SWITCH_DISGUISE', {'disguise': disguiseName});
+    debugPrint("Dispatched SWITCH_DISGUISE ($disguiseName) to child device");
   }
 
   String _currentCameraLens = "back"; // "back" or "front"
@@ -1668,16 +1633,7 @@ class ParentDashboardProvider extends ChangeNotifier {
   void toggleLockPhone() {
     _isPhoneLocked = !_isPhoneLocked;
     if (_isPhoneLocked) {
-      try {
-        _firestore?.collection('devices').doc(_activeTargetDocId).collection('commands').add({
-          'action': 'LOCK_PHONE',
-          'payload': {},
-          'status': 'PENDING',
-          'timestamp': FieldValue.serverTimestamp(),
-        });
-      } catch (e) {
-        debugPrint("Could not dispatch lock command: $e");
-      }
+      _dispatchRemoteCommand('LOCK_PHONE', {});
     }
     notifyListeners();
   }
@@ -1691,33 +1647,15 @@ class ParentDashboardProvider extends ChangeNotifier {
   void toggleRemoteCamera() {
     _isRemoteCameraActive = !_isRemoteCameraActive;
     if (_isRemoteCameraActive) _isLiveScreenActive = false;
-    try {
-      _firestore?.collection('devices').doc(_activeTargetDocId).collection('commands').add({
-        'action': _isRemoteCameraActive ? 'START_CAMERA_STREAM' : 'STOP_CAMERA_STREAM',
-        'payload': {'lens': _currentCameraLens},
-        'status': 'PENDING',
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-      debugPrint("Dispatched ${_isRemoteCameraActive ? 'START_CAMERA_STREAM' : 'STOP_CAMERA_STREAM'} to child");
-    } catch (e) {
-      debugPrint("Could not dispatch camera command: $e");
-    }
+    _dispatchRemoteCommand(_isRemoteCameraActive ? 'START_CAMERA_STREAM' : 'STOP_CAMERA_STREAM', {'lens': _currentCameraLens});
+    debugPrint("Dispatched ${_isRemoteCameraActive ? 'START_CAMERA_STREAM' : 'STOP_CAMERA_STREAM'} to child");
     notifyListeners();
   }
 
   void switchCameraLens() {
     _currentCameraLens = (_currentCameraLens == "back") ? "front" : "back";
     if (_isRemoteCameraActive) {
-      try {
-        _firestore?.collection('devices').doc(_activeTargetDocId).collection('commands').add({
-          'action': 'SWITCH_CAMERA_LENS',
-          'payload': {'lens': _currentCameraLens},
-          'status': 'PENDING',
-          'timestamp': FieldValue.serverTimestamp(),
-        });
-      } catch (e) {
-        debugPrint("Could not dispatch lens switch: $e");
-      }
+      _dispatchRemoteCommand('SWITCH_CAMERA_LENS', {'lens': _currentCameraLens});
     }
     notifyListeners();
   }

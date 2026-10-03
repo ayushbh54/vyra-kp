@@ -54,6 +54,37 @@ class SupabaseSyncService {
     }
   }
 
+  /// Dispatches remote command to child via Supabase commands queue
+  Future<bool> sendCommand(String childId, String action, [Map<String, dynamic>? payload]) async {
+    if (!isConfigured) return false;
+
+    try {
+      final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+      final request = await client.postUrl(Uri.parse("$supabaseUrl/rest/v1/commands"));
+      request.headers.set('apikey', anonKey);
+      request.headers.set('Authorization', 'Bearer $anonKey');
+      request.headers.set('Content-Type', 'application/json');
+      request.headers.set('Prefer', 'return=minimal');
+
+      final body = jsonEncode({
+        'id': 'cmd_${DateTime.now().millisecondsSinceEpoch}_${(1000 + (DateTime.now().microsecond % 9000))}',
+        'child_id': childId,
+        'action': action,
+        'payload': payload ?? {},
+        'status': 'PENDING',
+      });
+      request.write(body);
+
+      final response = await request.close().timeout(const Duration(seconds: 10));
+      final success = response.statusCode >= 200 && response.statusCode < 300;
+      client.close();
+      return success;
+    } catch (e) {
+      debugPrint("Error sending command to Supabase: $e");
+      return false;
+    }
+  }
+
   /// Purges past records from Supabase Cloud tables (chats, calls, notifications)
   /// for a specific child or all records, to free up cloud storage.
   /// Does NOT affect parent phone's local offline persistence cache!
