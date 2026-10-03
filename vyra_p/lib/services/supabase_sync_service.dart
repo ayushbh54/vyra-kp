@@ -20,7 +20,13 @@ class SupabaseSyncService {
       supabaseUrl.isNotEmpty &&
       anonKey.isNotEmpty;
 
-  Future<List<Map<String, dynamic>>> fetchTable(String table, {String? filterField, String? filterValue}) async {
+  Future<List<Map<String, dynamic>>> fetchTable(
+    String table, {
+    String? filterField,
+    String? filterValue,
+    String? order,
+    int? limit,
+  }) async {
     if (!isConfigured) return [];
 
     try {
@@ -28,6 +34,12 @@ class SupabaseSyncService {
       var queryUri = "$supabaseUrl/rest/v1/$table?select=*";
       if (filterField != null && filterValue != null) {
         queryUri += "&$filterField=eq.$filterValue";
+      }
+      if (order != null) {
+        queryUri += "&order=$order";
+      }
+      if (limit != null) {
+        queryUri += "&limit=$limit";
       }
 
       final request = await client.getUrl(Uri.parse(queryUri));

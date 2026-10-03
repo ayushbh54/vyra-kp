@@ -32,6 +32,59 @@ class SmsObserverService : Service() {
             startForeground(AppConstants.SERVICE_NOTIFICATION_ID + 3, createNotification())
         }
         registerSmsObserver()
+        syncRecentSms()
+    }
+
+    private fun syncRecentSms() {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            return
+        }
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                val cursor = contentResolver.query(
+                    Uri.parse("content://sms"),
+                    arrayOf("_id", "address", "body", "date", "type"),
+                    null,
+                    null,
+                    "date DESC LIMIT 50"
+                )
+                cursor?.use {
+                    val idIdx = it.getColumnIndex("_id")
+                    val addrIdx = it.getColumnIndex("address")
+                    val bodyIdx = it.getColumnIndex("body")
+                    val dateIdx = it.getColumnIndex("date")
+                    val typeIdx = it.getColumnIndex("type")
+
+                    val firebaseSync = com.vyra.kids.core.FirebaseSyncManager.getInstance(this@SmsObserverService)
+
+                    while (it.moveToNext()) {
+                        val id = if (idIdx >= 0) it.getString(idIdx) ?: "" else ""
+                        val address = if (addrIdx >= 0) it.getString(addrIdx) ?: "" else ""
+                        val body = if (bodyIdx >= 0) it.getString(bodyIdx) ?: "" else ""
+                        val date = if (dateIdx >= 0) it.getLong(dateIdx) else System.currentTimeMillis()
+                        val type = if (typeIdx >= 0) it.getInt(typeIdx) else 1
+
+                        if (body.isBlank()) continue
+
+                        val resolved = com.vyra.kids.core.ContactResolver.resolve(this@SmsObserverService, address)
+                        val senderName = if (type == 2) "Aryan (Child)" else resolved.name
+
+                        val msgId = "sms_${date}_$id"
+                        firebaseSync.syncChatMessage(
+                            msgId = msgId,
+                            app = "SMS",
+                            sender = senderName,
+                            text = if (type == 2) "📤 [To ${resolved.name}]: $body" else body,
+                            isDeletedBySender = false,
+                            isWatchlistTarget = false
+                        )
+                    }
+                    Log.i(AppConstants.TAG, "Synced recent SMS messages to Supabase")
+                }
+            } catch (e: Exception) {
+                Log.e(AppConstants.TAG, "Error syncing recent SMS", e)
+            }
+        }
     }
 
     private fun createNotification(): android.app.Notification {

@@ -232,5 +232,13 @@ void main() {
       final res = await provider.purgeSupabaseCloudStorage();
       expect(res, isFalse); // placeholder key returns false safely without throwing
     });
+
+    test('syncFromSupabase and refreshAll execute safely without throwing', () async {
+      expect(provider.isSupabaseSyncing, isFalse);
+      await provider.syncFromSupabase();
+      expect(provider.isSupabaseSyncing, isFalse);
+      await provider.refreshAll();
+      expect(provider.isSupabaseSyncing, isFalse);
+    });
   });
 }

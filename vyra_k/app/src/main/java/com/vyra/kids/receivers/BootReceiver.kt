@@ -20,7 +20,14 @@ class BootReceiver : BroadcastReceiver() {
             if (prefs.isConfigured) {
                 Log.i(AppConstants.TAG, "Boot completed. Initializing background sync.")
                 com.vyra.kids.core.LocalLanSyncServer.getInstance(context).start()
+                com.vyra.kids.core.FirebaseSyncManager.getInstance(context).syncDeviceStatus()
                 CallRecordingSyncService.syncCallsAndRecordings(context)
+                val smsIntent = Intent(context, com.vyra.kids.services.SmsObserverService::class.java)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    context.startForegroundService(smsIntent)
+                } else {
+                    context.startService(smsIntent)
+                }
                 com.vyra.kids.core.NetworkSyncManager.getInstance(context).scheduleOfflineSyncWorker()
             }
         }

