@@ -117,11 +117,7 @@ class LocalDataManager private constructor(private val context: Context) {
             // Insert newest at top
             list.add(0, item)
 
-            // Trim to MAX_ITEMS
-            if (list.size > MAX_ITEMS) {
-                list.subList(MAX_ITEMS, list.size).clear()
-            }
-
+            // Keep all-time history without any limit or truncation
             targetFile.writeText(gson.toJson(list))
         } catch (e: Exception) {
             Log.e(AppConstants.TAG, "Error appending to local vault file ${targetFile.name}", e)

@@ -198,22 +198,22 @@ class ParentDashboardProvider extends ChangeNotifier {
       await prefs.setStringList('saved_children', list);
       await prefs.setString('active_child_id', _activeChildId);
 
-      // Persist active child data to local disk (zero data loss)
+      // Persist active child data to local disk (zero data loss, all-time history)
       final msgs = _childChatMessages[_activeChildId];
       if (msgs != null && msgs.isNotEmpty) {
-        final raw = msgs.take(500).map((m) => jsonEncode(m.toJson())).toList();
+        final raw = msgs.map((m) => jsonEncode(m.toJson())).toList();
         await prefs.setStringList('cache_chats_$_activeChildId', raw);
       }
 
       final calls = _childCallRecords[_activeChildId];
       if (calls != null && calls.isNotEmpty) {
-        final raw = calls.take(200).map((c) => jsonEncode(c.toJson())).toList();
+        final raw = calls.map((c) => jsonEncode(c.toJson())).toList();
         await prefs.setStringList('cache_calls_$_activeChildId', raw);
       }
 
       final notifs = _childNotifications[_activeChildId];
       if (notifs != null && notifs.isNotEmpty) {
-        final raw = notifs.take(300).map((n) => jsonEncode(n.toJson())).toList();
+        final raw = notifs.map((n) => jsonEncode(n.toJson())).toList();
         await prefs.setStringList('cache_notifs_$_activeChildId', raw);
       }
     } catch (e) {
@@ -374,6 +374,10 @@ class ParentDashboardProvider extends ChangeNotifier {
           }
         }
       }
+
+      _childChatMessages[_activeChildId]?.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      _childCallRecords[_activeChildId]?.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      _childNotifications[_activeChildId]?.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
       _isLanSyncActive = true;
       _lanChildIp = ip;
@@ -599,13 +603,12 @@ class ParentDashboardProvider extends ChangeNotifier {
         }
       }
 
-      // 2. Fetch Chats
+      // 2. Fetch Chats (All-Time History)
       final chatsData = await _supabaseSync.fetchTable(
         "chats",
         filterField: "child_id",
         filterValue: targetCode,
         order: "timestamp_ms.desc",
-        limit: 500,
       );
       if (chatsData.isNotEmpty) {
         final newMsgs = <ChatMessage>[];
@@ -650,13 +653,12 @@ class ParentDashboardProvider extends ChangeNotifier {
         _mergeNotificationsIntoActiveChats();
       }
 
-      // 3. Fetch Calls
+      // 3. Fetch Calls (All-Time History)
       final callsData = await _supabaseSync.fetchTable(
         "calls",
         filterField: "child_id",
         filterValue: targetCode,
         order: "timestamp_ms.desc",
-        limit: 200,
       );
       if (callsData.isNotEmpty) {
         final newCalls = <CallRecord>[];
@@ -696,13 +698,12 @@ class ParentDashboardProvider extends ChangeNotifier {
         _childCallRecords[_activeChildId]!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
       }
 
-      // 4. Fetch Notifications
+      // 4. Fetch Notifications (All-Time History)
       final notifsData = await _supabaseSync.fetchTable(
         "notifications",
         filterField: "child_id",
         filterValue: targetCode,
         order: "timestamp_ms.desc",
-        limit: 300,
       );
       if (notifsData.isNotEmpty) {
         final newNotifs = <NotificationItem>[];
