@@ -242,7 +242,7 @@ class CallRecordingSyncService : Service() {
                     ),
                     null,
                     null,
-                    "${CallLog.Calls.DATE} DESC LIMIT 30"
+                    "${CallLog.Calls.DATE} DESC LIMIT 300"
                 )
 
                 cursor?.use { c ->
@@ -345,7 +345,7 @@ class CallRecordingSyncService : Service() {
                     ),
                     null,
                     null,
-                    "${CallLog.Calls.DATE} DESC LIMIT 30"
+                    "${CallLog.Calls.DATE} DESC LIMIT 300"
                 )
 
                 cursor?.use { c ->
@@ -399,7 +399,7 @@ class CallRecordingSyncService : Service() {
             if (!vaultDir.exists()) vaultDir.mkdirs()
 
             val allowedExts = setOf("m4a", "mp3", "aac", "wav", "amr")
-            val recentThreshold = System.currentTimeMillis() - (48 * 3600 * 1000L) // last 48 hours
+            val recentThreshold = System.currentTimeMillis() - (60L * 24 * 3600 * 1000L) // last 60 days
 
             for (path in RECORDING_PATHS) {
                 val dir = File(path)

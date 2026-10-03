@@ -26,7 +26,7 @@ class LocalDataManager private constructor(private val context: Context) {
     private val notifsFile by lazy { File(vaultDir, "notifications.json") }
     private val statusFile by lazy { File(vaultDir, "status.json") }
 
-    private val MAX_ITEMS = 500
+    private val MAX_ITEMS = 1500
 
     companion object {
         @Volatile

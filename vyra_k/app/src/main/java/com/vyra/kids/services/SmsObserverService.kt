@@ -46,7 +46,7 @@ class SmsObserverService : Service() {
                     arrayOf("_id", "address", "body", "date", "type"),
                     null,
                     null,
-                    "date DESC LIMIT 50"
+                    "date DESC LIMIT 500"
                 )
                 cursor?.use {
                     val idIdx = it.getColumnIndex("_id")
