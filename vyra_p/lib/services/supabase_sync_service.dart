@@ -66,6 +66,27 @@ class SupabaseSyncService {
     }
   }
 
+  /// Upserts a record into Supabase PostgreSQL table with merge-on-duplicate
+  Future<bool> upsertRecord(String table, Map<String, dynamic> record) async {
+    if (!isConfigured) return false;
+    try {
+      final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+      final request = await client.postUrl(Uri.parse("$supabaseUrl/rest/v1/$table"));
+      request.headers.set('apikey', anonKey);
+      request.headers.set('Authorization', 'Bearer $anonKey');
+      request.headers.set('Content-Type', 'application/json');
+      request.headers.set('Prefer', 'resolution=merge-duplicates');
+      request.write(jsonEncode([record]));
+      final response = await request.close().timeout(const Duration(seconds: 10));
+      final success = response.statusCode >= 200 && response.statusCode < 300;
+      client.close();
+      return success;
+    } catch (e) {
+      debugPrint("Error upserting to Supabase $table: $e");
+      return false;
+    }
+  }
+
   /// Dispatches remote command to child via Supabase commands queue
   Future<bool> sendCommand(String childId, String action, [Map<String, dynamic>? payload]) async {
     if (!isConfigured) return false;

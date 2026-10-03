@@ -381,6 +381,159 @@ class DashboardScreen extends StatelessWidget {
               ),
             ),
 
+            const SizedBox(height: 12),
+
+            // 📦 Firebase Data Migration & Verification Status Card
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: provider.isFirebaseMigrationComplete
+                      ? [const Color(0xFF0F2E23), const Color(0xFF0F172A)]
+                      : [const Color(0xFF312E1E), const Color(0xFF0F172A)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: provider.isFirebaseMigrationComplete
+                      ? const Color(0xFF10B981).withValues(alpha: 0.6)
+                      : const Color(0xFFF59E0B).withValues(alpha: 0.6),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(7),
+                        decoration: BoxDecoration(
+                          color: provider.isFirebaseMigrationComplete
+                              ? const Color(0xFF10B981).withValues(alpha: 0.2)
+                              : const Color(0xFFF59E0B).withValues(alpha: 0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          provider.isFirebaseMigrationComplete
+                              ? Icons.verified_rounded
+                              : Icons.cloud_sync_rounded,
+                          color: provider.isFirebaseMigrationComplete
+                              ? const Color(0xFF34D399)
+                              : const Color(0xFFFBBF24),
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              provider.isFirebaseMigrationComplete
+                                  ? '✅ ALL FIREBASE DATA VERIFIED & SECURED'
+                                  : '⏳ FIREBASE ARCHIVE STATUS',
+                              style: TextStyle(
+                                color: provider.isFirebaseMigrationComplete
+                                    ? const Color(0xFF34D399)
+                                    : const Color(0xFFFBBF24),
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              provider.firebaseMigrationStatusMessage,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton.icon(
+                        onPressed: provider.isCheckingFirebaseMigration
+                            ? null
+                            : () => provider.verifyAndImportFirebaseArchive(),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          backgroundColor: provider.isFirebaseMigrationComplete
+                              ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                              : const Color(0xFFF59E0B).withValues(alpha: 0.2),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: provider.isCheckingFirebaseMigration
+                            ? const SizedBox(
+                                width: 12,
+                                height: 12,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF38BDF8)),
+                              )
+                            : Icon(
+                                provider.isFirebaseMigrationComplete ? Icons.refresh : Icons.play_arrow,
+                                size: 14,
+                                color: provider.isFirebaseMigrationComplete
+                                    ? const Color(0xFF34D399)
+                                    : const Color(0xFFFBBF24),
+                              ),
+                        label: Text(
+                          provider.isCheckingFirebaseMigration
+                              ? 'Checking...'
+                              : (provider.isFirebaseMigrationComplete ? 'Re-Verify' : 'Verify Archive'),
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: provider.isFirebaseMigrationComplete
+                                ? const Color(0xFF34D399)
+                                : const Color(0xFFFBBF24),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        Text(
+                          '💬 ${provider.totalChatsCount} Chats',
+                          style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 11, fontWeight: FontWeight.w600),
+                        ),
+                        Container(width: 1, height: 12, color: const Color(0xFF475569)),
+                        Text(
+                          '📞 ${provider.totalCallsCount} Calls',
+                          style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 11, fontWeight: FontWeight.w600),
+                        ),
+                        Container(width: 1, height: 12, color: const Color(0xFF475569)),
+                        Text(
+                          '🔔 ${provider.totalNotifsCount} Notifs',
+                          style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 11, fontWeight: FontWeight.w600),
+                        ),
+                        Container(width: 1, height: 12, color: const Color(0xFF475569)),
+                        Text(
+                          provider.isFirebaseMigrationComplete ? '🟢 Supabase Active' : '🟡 Verifying',
+                          style: TextStyle(
+                            color: provider.isFirebaseMigrationComplete ? const Color(0xFF34D399) : const Color(0xFFFBBF24),
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
             const SizedBox(height: 16),
 
             // Active Device Status Card
