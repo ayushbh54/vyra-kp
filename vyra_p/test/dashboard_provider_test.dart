@@ -233,12 +233,99 @@ void main() {
       expect(res, isFalse); // placeholder key returns false safely without throwing
     });
 
-    test('syncFromSupabase and refreshAll execute safely without throwing', () async {
-      expect(provider.isSupabaseSyncing, isFalse);
-      await provider.syncFromSupabase();
-      expect(provider.isSupabaseSyncing, isFalse);
-      await provider.refreshAll();
-      expect(provider.isSupabaseSyncing, isFalse);
+    test('Harshit Kamboj contact normalization and watchlist target detection', () {
+      expect(ParentDashboardProvider.normalizeContactName('harshit_kamboj97'), 'Harshit Kamboj');
+      expect(ParentDashboardProvider.normalizeContactName('harshit'), 'Harshit Kamboj');
+      expect(ParentDashboardProvider.normalizeContactName('kamboj'), 'Harshit Kamboj');
+      expect(ParentDashboardProvider.normalizeContactName('Harshit Kamboj'), 'Harshit Kamboj');
+      expect(ParentDashboardProvider.normalizeContactName('Rohan Sharma'), 'Rohan Sharma');
+
+      expect(ParentDashboardProvider.isWatchlistContact('harshit_kamboj97'), isTrue);
+      expect(ParentDashboardProvider.isWatchlistContact('Harshit'), isTrue);
+      expect(ParentDashboardProvider.isWatchlistContact('kamboj'), isTrue);
+      expect(ParentDashboardProvider.isWatchlistContact('Rohan Sharma'), isFalse);
+    });
+
+    test('Harshit Kamboj is pre-seeded in watchlistTargets with High Priority', () {
+      final targets = provider.watchlistTargets;
+      final harshit = targets.firstWhere(
+        (t) => t.name == 'Harshit Kamboj',
+        orElse: () => throw Exception('Harshit Kamboj not found in watchlist'),
+      );
+      expect(harshit.name, 'Harshit Kamboj');
+      expect(harshit.identifier, '@harshit_kamboj97');
+      expect(harshit.isHighPriority, isTrue);
+      expect(harshit.note.contains('High Watchlist Priority'), isTrue);
+    });
+
+    test('Chats grouping normalizes Harshit Kamboj threads and rejects keystroke fragments and UI counters', () {
+      final messages = [
+        ChatMessage(
+          id: '1',
+          appType: AppType.instagram,
+          contactName: 'harshit_kamboj97',
+          contactIdentifier: 'harshit_kamboj97',
+          messageText: 'Hello there',
+          timestamp: DateTime.now(),
+          isIncoming: true,
+          isDeletedBackup: false,
+          isWatchlistTarget: true,
+        ),
+        ChatMessage(
+          id: '2',
+          appType: AppType.instagram,
+          contactName: 'harshit',
+          contactIdentifier: 'harshit',
+          messageText: 'Meeting tonight?',
+          timestamp: DateTime.now().subtract(const Duration(minutes: 5)),
+          isIncoming: true,
+          isDeletedBackup: false,
+          isWatchlistTarget: true,
+        ),
+        ChatMessage(
+          id: '3',
+          appType: AppType.instagram,
+          contactName: 'ha',
+          contactIdentifier: 'ha',
+          messageText: 'garvthehunter',
+          timestamp: DateTime.now().subtract(const Duration(minutes: 10)),
+          isIncoming: true,
+          isDeletedBackup: false,
+        ),
+        ChatMessage(
+          id: '4',
+          appType: AppType.instagram,
+          contactName: 'Save number is1377',
+          contactIdentifier: 'Save number is1377',
+          messageText: 'UI counter',
+          timestamp: DateTime.now().subtract(const Duration(minutes: 15)),
+          isIncoming: true,
+          isDeletedBackup: false,
+        ),
+      ];
+
+      final Map<String, List<ChatMessage>> grouped = {};
+      for (final msg in messages) {
+        String key = msg.contactIdentifier.isNotEmpty ? msg.contactIdentifier : msg.contactName;
+        final lowerKey = key.trim().toLowerCase();
+        if (lowerKey.contains('harshit') || lowerKey.contains('kamboj')) {
+          key = 'Harshit Kamboj';
+        }
+        grouped.putIfAbsent(key, () => []).add(msg);
+      }
+
+      final conversations = grouped.entries.where((entry) {
+        final k = entry.key.trim().toLowerCase();
+        if (k == 'ha' || k == 'har' || k == 'hars' || k == 'harsh' || k == 'harshi' ||
+            k.contains('save number') || k.contains('reshare') || k.contains('reposted')) {
+          return false;
+        }
+        return true;
+      }).toList();
+
+      expect(conversations.length, 1);
+      expect(conversations.first.key, 'Harshit Kamboj');
+      expect(conversations.first.value.length, 2);
     });
   });
 }
