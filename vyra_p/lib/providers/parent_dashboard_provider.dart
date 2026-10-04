@@ -1322,16 +1322,26 @@ class ParentDashboardProvider extends ChangeNotifier {
     );
   }
 
-  String? _resolveSenderFromNotifications(AppType app, DateTime dt) {
+  String? _resolveSenderFromNotifications(AppType app, DateTime dt, [String? text]) {
     final notifs = _childNotifications[_activeChildId] ?? [];
     if (notifs.isEmpty) return null;
 
     final targetAppStr = app.displayName.toLowerCase();
+    final cleanMsg = text?.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '') ?? '';
+
     for (final n in notifs) {
       if (n.appName.toLowerCase().contains(targetAppStr) || targetAppStr.contains(n.appName.toLowerCase())) {
-        final diff = dt.difference(n.timestamp).inMinutes.abs();
-        if (diff <= 15 && n.title.isNotEmpty && n.title != 'Unknown' && !n.title.contains('Contact')) {
-          return n.title;
+        final diffSeconds = dt.difference(n.timestamp).inSeconds.abs();
+        // Strict verification: Must be within 15 seconds AND text must correlate
+        if (diffSeconds <= 15 && n.title.isNotEmpty && n.title != 'Unknown' && !n.title.contains('Contact')) {
+          if (cleanMsg.isEmpty) {
+            if (diffSeconds <= 5) return n.title;
+          } else {
+            final cleanNotif = n.message.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+            if (cleanNotif.contains(cleanMsg) || cleanMsg.contains(cleanNotif)) {
+              return n.title;
+            }
+          }
         }
       }
     }
@@ -1432,11 +1442,11 @@ class ParentDashboardProvider extends ChangeNotifier {
           isDualVerified: true, // Marked as dual-verified!
         );
       } else {
-        // If message has a generic or fake contact name, resolve from nearby notifications in that app
+        // If message has a generic or fake contact name, resolve from nearby notifications in that app with text correlation
         final lowerContact = msg.contactName.toLowerCase().trim();
         final isGeneric = fakeContactKeywords.any((k) => lowerContact.contains(k));
         if (isGeneric) {
-          final resolved = _resolveSenderFromNotifications(msg.appType, msg.timestamp);
+          final resolved = _resolveSenderFromNotifications(msg.appType, msg.timestamp, msg.messageText);
           if (resolved != null && resolved.isNotEmpty) {
             existingMsgs[i] = ChatMessage(
               id: msg.id,
