@@ -30,36 +30,47 @@ class SupabaseSyncService {
     if (!isConfigured) return [];
 
     try {
-      final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
-      var queryUri = "$supabaseUrl/rest/v1/$table?select=*";
-      if (filterField != null && filterValue != null) {
-        queryUri += "&$filterField=eq.$filterValue";
-      }
-      if (order != null) {
-        queryUri += "&order=$order";
-      }
-      if (limit != null) {
-        queryUri += "&limit=$limit";
-      }
+      final allRows = <Map<String, dynamic>>[];
+      int offset = 0;
+      final pageSize = (limit != null && limit < 1000) ? limit : 1000;
 
-      final request = await client.getUrl(Uri.parse(queryUri));
-      request.headers.set('apikey', anonKey);
-      request.headers.set('Authorization', 'Bearer $anonKey');
+      while (true) {
+        final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+        var queryUri = "$supabaseUrl/rest/v1/$table?select=*";
+        if (filterField != null && filterValue != null) {
+          queryUri += "&$filterField=eq.$filterValue";
+        }
+        if (order != null) {
+          queryUri += "&order=$order";
+        }
+        queryUri += "&limit=$pageSize&offset=$offset";
 
-      final response = await request.close().timeout(const Duration(seconds: 10));
-      if (response.statusCode != 200) {
+        final request = await client.getUrl(Uri.parse(queryUri));
+        request.headers.set('apikey', anonKey);
+        request.headers.set('Authorization', 'Bearer $anonKey');
+
+        final response = await request.close().timeout(const Duration(seconds: 15));
+        if (response.statusCode != 200) {
+          client.close();
+          break;
+        }
+
+        final body = await response.transform(utf8.decoder).join();
         client.close();
-        return [];
-      }
 
-      final body = await response.transform(utf8.decoder).join();
-      client.close();
-
-      final list = jsonDecode(body);
-      if (list is List) {
-        return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        final list = jsonDecode(body);
+        if (list is List) {
+          final batch = list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+          allRows.addAll(batch);
+          if (limit != null || batch.length < pageSize) {
+            break;
+          }
+          offset += pageSize;
+        } else {
+          break;
+        }
       }
-      return [];
+      return allRows;
     } catch (e) {
       debugPrint("Supabase fetch error for $table: $e");
       return [];
