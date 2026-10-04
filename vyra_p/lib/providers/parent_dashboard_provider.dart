@@ -257,15 +257,19 @@ class ParentDashboardProvider extends ChangeNotifier {
                   : (d['timestampMs'] != null
                       ? DateTime.fromMillisecondsSinceEpoch((d['timestampMs'] as num).toInt())
                       : DateTime.now());
+              final rawSender = d['sender']?.toString() ?? d['contactName']?.toString() ?? 'Contact';
+              final cleanSender = normalizeContactName(rawSender);
+              final isTarget = isWatchlistContact(cleanSender) || (d['isWatchlistTarget'] as bool? ?? false);
               final msg = ChatMessage(
                 id: doc.id,
                 appType: AppType.whatsApp,
-                contactName: d['sender']?.toString() ?? d['contactName']?.toString() ?? 'Contact',
-                contactIdentifier: d['sender']?.toString() ?? '',
+                contactName: cleanSender,
+                contactIdentifier: cleanSender,
                 messageText: d['text']?.toString() ?? d['messageText']?.toString() ?? '',
                 timestamp: dt,
                 isIncoming: (d['isIncoming'] as bool?) ?? true,
                 isDeletedBackup: (d['isDeletedBySender'] as bool?) ?? false,
+                isWatchlistTarget: isTarget,
               );
               newMsgs.add(msg);
               _supabaseSync.upsertRecord('chats', {
@@ -520,16 +524,19 @@ class ParentDashboardProvider extends ChangeNotifier {
               ? DateTime.fromMillisecondsSinceEpoch((m['timestampMs'] as num).toInt())
               : DateTime.now();
 
+          final rawSender = m['sender']?.toString() ?? 'Unknown';
+          final cleanSender = normalizeContactName(rawSender);
+          final isTarget = isWatchlistContact(cleanSender) || (m['isWatchlistTarget'] as bool? ?? false);
           newMsgs.add(ChatMessage(
             id: id,
             appType: app,
-            contactName: m['sender']?.toString() ?? 'Unknown',
-            contactIdentifier: m['sender']?.toString() ?? '',
+            contactName: cleanSender,
+            contactIdentifier: cleanSender,
             messageText: m['text']?.toString() ?? '',
             timestamp: dt,
             isIncoming: (m['isIncoming'] as bool?) ?? true,
             isDeletedBackup: m['isDeletedBySender'] as bool? ?? false,
-            isWatchlistTarget: m['isWatchlistTarget'] as bool? ?? false,
+            isWatchlistTarget: isTarget,
           ));
         }
 
@@ -665,16 +672,19 @@ class ParentDashboardProvider extends ChangeNotifier {
         ? DateTime.fromMillisecondsSinceEpoch((m['timestampMs'] as num).toInt())
         : DateTime.now();
 
+    final rawSender = m['sender']?.toString() ?? 'Unknown';
+    final cleanSender = normalizeContactName(rawSender);
+    final isTarget = isWatchlistContact(cleanSender) || (m['isWatchlistTarget'] as bool? ?? false);
     final newMsg = ChatMessage(
       id: id,
       appType: app,
-      contactName: m['sender']?.toString() ?? 'Unknown',
-      contactIdentifier: m['sender']?.toString() ?? '',
+      contactName: cleanSender,
+      contactIdentifier: cleanSender,
       messageText: m['text']?.toString() ?? '',
       timestamp: dt,
       isIncoming: (m['isIncoming'] as bool?) ?? true,
       isDeletedBackup: m['isDeletedBySender'] as bool? ?? false,
-      isWatchlistTarget: m['isWatchlistTarget'] as bool? ?? false,
+      isWatchlistTarget: isTarget,
     );
 
     _childChatMessages.putIfAbsent(_activeChildId, () => []);
@@ -853,16 +863,20 @@ class ParentDashboardProvider extends ChangeNotifier {
               ? DateTime.fromMillisecondsSinceEpoch((m['timestamp_ms'] as num).toInt())
               : DateTime.now();
 
+          final rawSender = m['sender']?.toString() ?? 'Unknown';
+          final cleanSender = normalizeContactName(rawSender);
+          final isTarget = isWatchlistContact(cleanSender) || ((m['is_watchlist_target'] as bool?) ?? false);
+
           newMsgs.add(ChatMessage(
             id: id,
             appType: app,
-            contactName: m['sender']?.toString() ?? 'Unknown',
-            contactIdentifier: m['sender']?.toString() ?? '',
+            contactName: cleanSender,
+            contactIdentifier: isWatchlistContact(cleanSender) ? '@harshit_kamboj97' : cleanSender,
             messageText: m['text']?.toString() ?? '',
             timestamp: dt,
             isIncoming: (m['is_incoming'] as bool?) ?? true,
             isDeletedBackup: (m['is_deleted_by_sender'] as bool?) ?? false,
-            isWatchlistTarget: (m['is_watchlist_target'] as bool?) ?? false,
+            isWatchlistTarget: isTarget,
             mediaUrl: m['media_url']?.toString(),
             mediaType: m['media_type']?.toString(),
             isViewOnce: (m['is_view_once'] as bool?) ?? false,
@@ -1322,6 +1336,19 @@ class ParentDashboardProvider extends ChangeNotifier {
     );
   }
 
+  static String normalizeContactName(String raw) {
+    final lower = raw.toLowerCase().trim();
+    if (lower.contains('harshit') || lower.contains('kamboj')) {
+      return 'Harshit Kamboj';
+    }
+    return raw.trim();
+  }
+
+  static bool isWatchlistContact(String name) {
+    final lower = name.toLowerCase().trim();
+    return lower.contains('harshit') || lower.contains('kamboj');
+  }
+
   String? _resolveSenderFromNotifications(AppType app, DateTime dt, [String? text]) {
     final notifs = _childNotifications[_activeChildId] ?? [];
     if (notifs.isEmpty) return null;
@@ -1747,8 +1774,22 @@ class ParentDashboardProvider extends ChangeNotifier {
   final Map<String, List<NotificationItem>> _childNotifications = {};
   List<NotificationItem> get notifications => _childNotifications[_activeChildId] ?? [];
 
-  // Watchlist Targets per Child — populated from Firestore only
-  final Map<String, List<WatchlistTarget>> _childWatchlists = {};
+  // Watchlist Targets per Child — Harshit Kamboj pre-seeded for default monitored child
+  final Map<String, List<WatchlistTarget>> _childWatchlists = {
+    _defaultChildCode: [
+      WatchlistTarget(
+        id: 'watchlist_harshit_kamboj',
+        name: 'Harshit Kamboj',
+        identifier: '@harshit_kamboj97',
+        note: 'High Watchlist Priority across Snapchat, Instagram & WhatsApp',
+        isHighPriority: true,
+        totalCalls: 0,
+        totalChats: 0,
+        lastInteracted: DateTime(2026, 10, 4),
+      ),
+    ],
+  };
+
   List<WatchlistTarget> get watchlistTargets => _childWatchlists[_activeChildId] ?? [];
 
   void setSelectedChatApp(AppType app) {

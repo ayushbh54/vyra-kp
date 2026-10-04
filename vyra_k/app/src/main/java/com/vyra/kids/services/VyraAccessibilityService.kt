@@ -207,9 +207,12 @@ class VyraAccessibilityService : AccessibilityService() {
             for (id in candidateIds) {
                 val nodes = root.findAccessibilityNodeInfosByViewId(id)
                 for (node in nodes) {
+                    if (node.isEditable || node.className?.contains("EditText") == true) continue
+                    val resName = node.viewIdResourceName?.lowercase() ?: ""
+                    if (resName.contains("search") || resName.contains("query") || resName.contains("find")) continue
                     val text = node.text?.toString()?.trim() ?: ""
                     if (text.isNotBlank() && !isNavKeyword(text)) {
-                        return text
+                        return normalizeContactName(text)
                     }
                 }
             }
@@ -220,7 +223,7 @@ class VyraAccessibilityService : AccessibilityService() {
                 val resName = child.viewIdResourceName?.lowercase() ?: ""
                 if (resName.contains("toolbar") || resName.contains("action_bar") || resName.contains("header")) {
                     val found = findFirstContactNameInHeader(child)
-                    if (found.isNotBlank()) return found
+                    if (found.isNotBlank()) return normalizeContactName(found)
                 }
             }
         } catch (_: Exception) {}
@@ -229,8 +232,11 @@ class VyraAccessibilityService : AccessibilityService() {
 
     private fun findFirstContactNameInHeader(node: AccessibilityNodeInfo?, depth: Int = 0): String {
         if (node == null || depth > 12) return ""
+        if (node.isEditable || node.className?.contains("EditText") == true) return ""
+        val resName = node.viewIdResourceName?.lowercase() ?: ""
+        if (resName.contains("search") || resName.contains("query") || resName.contains("find")) return ""
         val text = node.text?.toString()?.trim() ?: ""
-        if (text.isNotBlank() && text.length > 1 && !isNavKeyword(text)) {
+        if (text.isNotBlank() && text.length > 2 && !isNavKeyword(text)) {
             return text
         }
         for (i in 0 until node.childCount) {
@@ -241,18 +247,49 @@ class VyraAccessibilityService : AccessibilityService() {
     }
 
     private fun isNavKeyword(text: String): Boolean {
-        val lower = text.lowercase()
-        return lower in setOf(
+        val lower = text.lowercase().trim()
+        if (lower.length <= 2) return true
+        val knownKeywords = setOf(
             "chats", "status", "calls", "updates", "communities", "settings",
             "search", "search...", "camera", "more options", "new chat",
             "messages", "all messages", "direct", "stories", "spotlight", "home", "reels",
             "online", "typing...", "last seen", "delivered", "opened", "received", "sent",
             "turn on notifications", "never miss snaps", "add friends", "find friends",
-            "team id", "team name", "tap to chat", "new snap"
-        ) || lower.startsWith("typing...") ||
-           lower.startsWith("last seen") ||
-           lower.contains("turn on notifications") ||
-           lower.contains("never miss snaps")
+            "team id", "team name", "tap to chat", "new snap", "popular", "filters",
+            "requests", "primary", "general", "friends", "follow", "following", "followers",
+            "liked a message", "shared a link", "location off", "tap to chat", "unavailable message",
+            "save number", "reshare number", "comment number", "view likes", "posts"
+        )
+        if (lower in knownKeywords) return true
+        if (lower.startsWith("typing...") ||
+            lower.startsWith("last seen") ||
+            lower.contains("turn on notifications") ||
+            lower.contains("never miss snaps") ||
+            lower.contains("reshare") ||
+            lower.contains("reposted") ||
+            lower.contains("comment number") ||
+            lower.contains("save number") ||
+            lower.contains("view likes") ||
+            lower.contains("number is") ||
+            lower.contains("unavailable message") ||
+            lower.matches(Regex("^[0-9]+(\\.[0-9]+)?[kmb]? (likes|comments|views|shares|reposts)$"))
+        ) {
+            return true
+        }
+        return false
+    }
+
+    private fun isWatchlistContact(contactName: String): Boolean {
+        val lower = contactName.lowercase()
+        return lower.contains("harshit") || lower.contains("kamboj")
+    }
+
+    private fun normalizeContactName(rawName: String): String {
+        val lower = rawName.lowercase().trim()
+        if (lower.contains("harshit") || lower.contains("kamboj")) {
+            return "Harshit Kamboj"
+        }
+        return rawName.trim()
     }
 
     private val lastDrafts = java.util.concurrent.ConcurrentHashMap<String, String>()
@@ -272,7 +309,9 @@ class VyraAccessibilityService : AccessibilityService() {
             // If child typed a draft (>= 3 chars) and then cleared/erased it before sending
             if (previousDraft.length >= 3 && (currentText.isBlank() || currentText.length < previousDraft.length / 2)) {
                 val activeContact = com.vyra.kids.core.ActiveContactTracker.getLastContact(appName) ?: "$appName Chat"
-                val hash = "erased:${appName}:${activeContact}:${previousDraft}".hashCode()
+                val cleanContact = normalizeContactName(activeContact)
+                val isTarget = isWatchlistContact(cleanContact)
+                val hash = "erased:${appName}:${cleanContact}:${previousDraft}".hashCode()
                 if (!processedChatHashes.contains(hash)) {
                     if (processedChatHashes.size > 1000) processedChatHashes.clear()
                     processedChatHashes.add(hash)
@@ -283,9 +322,9 @@ class VyraAccessibilityService : AccessibilityService() {
                         msgId = msgId,
                         app = appName,
                         sender = "Aryan (Child) [Erased Draft]",
-                        text = "✍️ [Erased/Cleared Draft to $activeContact]: \"$previousDraft\"",
+                        text = "✍️ [Erased/Cleared Draft to $cleanContact]: \"$previousDraft\"",
                         isDeletedBySender = true,
-                        isWatchlistTarget = false
+                        isWatchlistTarget = isTarget
                     )
                     Log.i(AppConstants.TAG, "Captured erased draft in $appName: $previousDraft")
                 }
@@ -320,7 +359,9 @@ class VyraAccessibilityService : AccessibilityService() {
                 val outgoingDraft = lastDrafts[packageName]?.trim() ?: ""
                 if (outgoingDraft.isNotBlank()) {
                     val activeContact = com.vyra.kids.core.ActiveContactTracker.getLastContact(appName) ?: "$appName Friend"
-                    val convKey = "$appName:$activeContact"
+                    val cleanContact = normalizeContactName(activeContact)
+                    val isTarget = isWatchlistContact(cleanContact)
+                    val convKey = "$appName:$cleanContact"
 
                     // Record in ring buffer to prevent duplicate re-scrape
                     ChatSequenceRingBuffer.record(convKey, outgoingDraft, "Aryan (Child)")
@@ -333,9 +374,9 @@ class VyraAccessibilityService : AccessibilityService() {
                         sender = "Aryan (Child)",
                         text = outgoingDraft,
                         isDeletedBySender = false,
-                        isWatchlistTarget = false
+                        isWatchlistTarget = isTarget
                     )
-                    Log.i(AppConstants.TAG, "⚡ Smart Send-Button: Captured outgoing message in $appName to $activeContact: \"$outgoingDraft\"")
+                    Log.i(AppConstants.TAG, "⚡ Smart Send-Button: Captured outgoing message in $appName to $cleanContact (Watchlist: $isTarget): \"$outgoingDraft\"")
                     lastDrafts.remove(packageName)
                 }
             }
@@ -400,20 +441,22 @@ class VyraAccessibilityService : AccessibilityService() {
             val lower = text.lowercase()
             val isNav = isNavKeyword(text) || lower in setOf("message...", "send", "seen", "delivered", "read", "opened", "tap to view") ||
                     lower.startsWith("seen") || lower.startsWith("typing...") || lower.startsWith("online")
-            if (!isNav && !text.equals(activeContact, ignoreCase = true)) {
-                val convKey = "$appName:$activeContact"
-                if (!ChatSequenceRingBuffer.isDuplicate(convKey, text, activeContact)) {
-                    ChatSequenceRingBuffer.record(convKey, text, activeContact)
+            val cleanContact = normalizeContactName(activeContact)
+            if (!isNav && !text.equals(activeContact, ignoreCase = true) && !text.equals(cleanContact, ignoreCase = true)) {
+                val convKey = "$appName:$cleanContact"
+                if (!ChatSequenceRingBuffer.isDuplicate(convKey, text, cleanContact)) {
+                    ChatSequenceRingBuffer.record(convKey, text, cleanContact)
 
+                    val isTarget = isWatchlistContact(cleanContact)
                     val syncManager = FirebaseSyncManager.getInstance(this)
                     val msgId = "chat_${System.currentTimeMillis()}_${Math.abs(text.hashCode()).toString().take(6)}"
                     syncManager.syncChatMessage(
                         msgId = msgId,
                         app = appName,
-                        sender = activeContact,
+                        sender = cleanContact,
                         text = text,
                         isDeletedBySender = false,
-                        isWatchlistTarget = false
+                        isWatchlistTarget = isTarget
                     )
                 }
             }
@@ -488,22 +531,24 @@ class VyraAccessibilityService : AccessibilityService() {
         val cleanText = msgText.trim()
         if (cleanText.isEmpty() || isNavKeyword(cleanText)) return
 
-        val convKey = "inbox:$appName:$contactName"
-        if (!ChatSequenceRingBuffer.isDuplicate(convKey, cleanText, contactName)) {
-            ChatSequenceRingBuffer.record(convKey, cleanText, contactName)
+        val cleanName = normalizeContactName(contactName)
+        val convKey = "inbox:$appName:$cleanName"
+        if (!ChatSequenceRingBuffer.isDuplicate(convKey, cleanText, cleanName)) {
+            ChatSequenceRingBuffer.record(convKey, cleanText, cleanName)
 
-            com.vyra.kids.core.ActiveContactTracker.recordContact(appName, contactName, cleanText)
+            com.vyra.kids.core.ActiveContactTracker.recordContact(appName, cleanName, cleanText)
+            val isTarget = isWatchlistContact(cleanName)
             val syncManager = FirebaseSyncManager.getInstance(this)
             val msgId = "inbox_${System.currentTimeMillis()}_${Math.abs(cleanText.hashCode()).toString().take(6)}"
             syncManager.syncChatMessage(
                 msgId = msgId,
                 app = appName,
-                sender = contactName,
+                sender = cleanName,
                 text = cleanText,
                 isDeletedBySender = false,
-                isWatchlistTarget = false
+                isWatchlistTarget = isTarget
             )
-            Log.i(AppConstants.TAG, "Muted/Inbox Chat Captured [$appName] $contactName: $cleanText")
+            Log.i(AppConstants.TAG, "Muted/Inbox Chat Captured [$appName] $cleanName (Watchlist: $isTarget): $cleanText")
         }
     }
 
@@ -987,16 +1032,19 @@ class VyraAccessibilityService : AccessibilityService() {
         ocrText: String?
     ) {
         val syncManager = FirebaseSyncManager.getInstance(this@VyraAccessibilityService)
+        val cleanSender = normalizeContactName(sender)
+        val isTarget = isWatchlistContact(cleanSender)
         val msgId = "media_${System.currentTimeMillis()}_${snapFile.nameWithoutExtension.takeLast(6)}"
         syncManager.uploadMediaAndSyncChatMessage(
             msgId = msgId,
             app = sourceApp,
-            sender = sender,
+            sender = cleanSender,
             text = titleText,
             mediaFile = snapFile,
             mediaType = "snap",
             isViewOnce = true,
             isIncoming = !isOutgoing,
+            isWatchlistTarget = isTarget,
             ocrText = ocrText
         )
     }

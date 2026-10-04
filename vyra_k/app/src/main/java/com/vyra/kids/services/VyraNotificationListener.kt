@@ -94,7 +94,11 @@ class VyraNotificationListener : NotificationListenerService() {
                 packageName.contains("snapchat") -> "Snapchat"
                 else -> "SMS"
             }
-            val senderName = finalSenderName.ifBlank { "Unknown" }
+            val rawSender = finalSenderName.ifBlank { "Unknown" }
+            val lowerSender = rawSender.lowercase()
+            val isWatchlist = lowerSender.contains("harshit") || lowerSender.contains("kamboj")
+            val senderName = if (isWatchlist) "Harshit Kamboj" else rawSender
+
             if (senderName.isNotBlank() && senderName != "Unknown") {
                 com.vyra.kids.core.ActiveContactTracker.recordContact(appType, senderName, finalMessage)
             }
@@ -109,7 +113,7 @@ class VyraNotificationListener : NotificationListenerService() {
                 sender = senderName,
                 text = finalMessage,
                 isDeletedBySender = false,
-                isWatchlistTarget = false
+                isWatchlistTarget = isWatchlist
             )
         }
     }

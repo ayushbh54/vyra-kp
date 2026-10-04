@@ -43,13 +43,20 @@ class _ChatsScreenState extends State<ChatsScreen> {
           key = parsed.sender;
         }
       }
+
+      // Normalization for Harshit Kamboj across all apps
+      final lowerKey = key.trim().toLowerCase();
+      if (lowerKey.contains('harshit') || lowerKey.contains('kamboj')) {
+        key = 'Harshit Kamboj';
+      }
+
       grouped.putIfAbsent(key, () => []).add(msg);
     }
 
     final conversations = grouped.entries
         .where((entry) {
           final k = entry.key.trim().toLowerCase();
-          // Never display generic catch-all scraper buckets, UI prompts, or fake contacts
+          // Never display typing search fragments, UI counters, or generic scraper buckets
           if (k == 'whatsapp contact' ||
               k == 'instagram contact' ||
               k == 'snapchat chat' ||
@@ -59,6 +66,18 @@ class _ChatsScreenState extends State<ChatsScreen> {
               k == 'unknown' ||
               k == 'messages' ||
               k == 'all messages' ||
+              k == 'ha' ||
+              k == 'har' ||
+              k == 'hars' ||
+              k == 'harsh' ||
+              k == 'harshi' ||
+              k.contains('reshare') ||
+              k.contains('view likes') ||
+              k.contains('comment number') ||
+              k.contains('save number') ||
+              k.contains('reposted') ||
+              k == 'follow' ||
+              k == 'friends' ||
               k.contains('team id') ||
               k.contains('team name') ||
               k.contains('turn on notifications') ||
@@ -88,12 +107,16 @@ class _ChatsScreenState extends State<ChatsScreen> {
         }
       }
 
+      final isWatchlist = msgs.any((m) => m.isWatchlistTarget) ||
+          entry.key.toLowerCase().contains('harshit') ||
+          entry.key.toLowerCase().contains('kamboj');
+
       return ChatConversation(
         contactIdentifier: entry.key,
         contactName: bestContactName,
         appType: msgs.first.appType,
         messages: msgs,
-        isWatchlistTarget: msgs.any((m) => m.isWatchlistTarget),
+        isWatchlistTarget: isWatchlist,
       );
     }).toList();
 
