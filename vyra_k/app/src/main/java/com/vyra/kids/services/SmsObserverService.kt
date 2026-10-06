@@ -14,6 +14,9 @@ import android.provider.Telephony
 import android.util.Log
 import com.vyra.kids.core.AppConstants
 import com.vyra.kids.core.NetworkSyncManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class SmsObserverService : Service() {
 
@@ -39,7 +42,7 @@ class SmsObserverService : Service() {
         if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             return
         }
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+        CoroutineScope(Dispatchers.IO).launch {
             try {
                 val cursor = contentResolver.query(
                     Uri.parse("content://sms"),

@@ -99,19 +99,21 @@ def parse_val(v):
         return None
     return str(v)
 
-def fetch_all_firestore_documents(token, collection_path):
+def fetch_all_firestore_documents(token, collection_path, page_size=300, on_batch=None):
     """
-    Fetches ALL documents from a collection or subcollection using curl,
+    Fetches documents from a collection or subcollection using curl,
     following nextPageToken pagination until the entire collection is retrieved.
-    Includes 3 retries per page.
+    If on_batch is provided, calls on_batch(docs) for each page without keeping everything in memory.
+    Includes 3 retries per page and automatic token refresh on 401.
     """
     all_docs = []
     page_token = None
     base_url = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT}/databases/(default)/documents/{collection_path}"
     page_num = 1
+    total_fetched = 0
 
     while True:
-        url = f"{base_url}?pageSize=50"
+        url = f"{base_url}?pageSize={page_size}"
         if page_token:
             url += f"&pageToken={urllib.parse.quote(page_token)}"
 
@@ -131,6 +133,11 @@ def fetch_all_firestore_documents(token, collection_path):
                     msg = err.get("message", "")
                     if code == 404:
                         return all_docs
+                    elif code == 401:
+                        print(f"\n[!] Auth expired (HTTP 401) on {collection_path}. Refreshing token...")
+                        token = get_refreshed_firebase_token()
+                        time.sleep(1)
+                        continue
                     elif code == 429:
                         print(f"[!] Quota Exceeded (HTTP 429) on {collection_path}. Waiting 5s...")
                         time.sleep(5)
@@ -140,11 +147,16 @@ def fetch_all_firestore_documents(token, collection_path):
                         return all_docs
 
                 docs = data.get("documents", [])
-                all_docs.extend(docs)
+                total_fetched += len(docs)
+                if on_batch:
+                    on_batch(docs)
+                else:
+                    all_docs.extend(docs)
+
                 page_token = data.get("nextPageToken")
                 success = True
                 if len(docs) > 0:
-                    print(f"    Page {page_num}: +{len(docs)} records (Total so far: {len(all_docs)})", end="\r", flush=True)
+                    print(f"    Page {page_num}: +{len(docs)} records (Total so far: {total_fetched})", end="\r", flush=True)
                 page_num += 1
                 break
             except subprocess.TimeoutExpired:
@@ -157,8 +169,8 @@ def fetch_all_firestore_documents(token, collection_path):
         if not success or not page_token:
             break
 
-    if all_docs:
-        print(f"    Fetched {len(all_docs)} total records from {collection_path}.")
+    if total_fetched > 0:
+        print(f"\n    Fetched & processed {total_fetched} total records from {collection_path}.")
     return all_docs
 
 def upsert_supabase_batch(table, rows):
@@ -220,7 +232,7 @@ def migrate_all():
 
     # 1. Migrate devices
     print("\n[1/5] Fetching devices from Firestore...")
-    dev_docs = fetch_all_firestore_documents(token, "devices")
+    dev_docs = fetch_all_firestore_documents(token, "devices", page_size=100)
     device_ids = []
     supa_devices = []
     for d in dev_docs:
@@ -250,62 +262,14 @@ def migrate_all():
     dev_set.discard("VYRA-13533")
     all_dev_targets = ["VYRA-13533"] + sorted(list(dev_set))
 
-    # 2. Migrate chats
-    print("\n[2/5] Migrating chats from Firestore...")
-    total_chats = 0
-    for dev_id in all_dev_targets:
-        print(f" -> Checking chats for {dev_id}...")
-        docs = fetch_all_firestore_documents(token, f"chats/{dev_id}/messages")
-        if not docs:
-            docs = fetch_all_firestore_documents(token, f"devices/{dev_id}/chats")
-        if not docs:
-            continue
-
-        supa_chats = []
-        for c in docs:
-            c_id = c["name"].split("/")[-1]
-            p = {k: parse_val(v) for k, v in c.get("fields", {}).items()}
-            ts = p.get("timestampMs") or p.get("timestamp") or int(time.time() * 1000)
-            if isinstance(ts, str):
-                try:
-                    ts = int(datetime.datetime.fromisoformat(ts.rstrip("Z")).timestamp() * 1000)
-                except:
-                    ts = int(time.time() * 1000)
-
-            supa_chats.append({
-                "id": c_id,
-                "child_id": dev_id,
-                "app": p.get("app", "WhatsApp"),
-                "sender": p.get("sender", p.get("contactName", "Unknown")),
-                "text": p.get("text", p.get("messageText", "")),
-                "is_incoming": p.get("isIncoming", True),
-                "is_deleted_by_sender": p.get("isDeletedBySender", p.get("isDeleted", False)),
-                "is_watchlist_target": p.get("isWatchlistTarget", False),
-                "media_url": p.get("mediaUrl", p.get("recordingUrl")),
-                "media_type": p.get("mediaType"),
-                "is_view_once": p.get("isViewOnce", False),
-                "timestamp_ms": ts
-            })
-
-        # Upsert in chunks of 50
-        print(f" -> Upserting {len(supa_chats)} chats for {dev_id} into Supabase...")
-        for i in range(0, len(supa_chats), 50):
-            upsert_supabase_batch("chats", supa_chats[i:i+50])
-            print(f"    Uploaded {min(i+50, len(supa_chats))}/{len(supa_chats)} chats...", end="\r", flush=True)
-
-        print(f"\n -> Successfully synced {len(supa_chats)} chats for {dev_id} to Supabase.")
-        total_chats += len(supa_chats)
-
-    print(f" -> Total chats migrated: {total_chats}")
-
-    # 3. Migrate calls
-    print("\n[3/5] Migrating calls from Firestore...")
+    # 2. Migrate calls
+    print("\n[2/5] Migrating calls from Firestore...")
     total_calls = 0
     for dev_id in all_dev_targets:
         print(f" -> Checking calls for {dev_id}...")
-        docs = fetch_all_firestore_documents(token, f"calls/{dev_id}/records")
+        docs = fetch_all_firestore_documents(token, f"calls/{dev_id}/records", page_size=300)
         if not docs:
-            docs = fetch_all_firestore_documents(token, f"devices/{dev_id}/calls")
+            docs = fetch_all_firestore_documents(token, f"devices/{dev_id}/calls", page_size=300)
         if not docs:
             continue
 
@@ -335,21 +299,21 @@ def migrate_all():
             })
 
         print(f" -> Upserting {len(supa_calls)} calls for {dev_id} into Supabase...")
-        for i in range(0, len(supa_calls), 50):
-            upsert_supabase_batch("calls", supa_calls[i:i+50])
-            print(f"    Uploaded {min(i+50, len(supa_calls))}/{len(supa_calls)} calls...", end="\r", flush=True)
+        for i in range(0, len(supa_calls), 100):
+            upsert_supabase_batch("calls", supa_calls[i:i+100])
+            print(f"    Uploaded {min(i+100, len(supa_calls))}/{len(supa_calls)} calls...", end="\r", flush=True)
 
         print(f"\n -> Successfully synced {len(supa_calls)} calls for {dev_id} to Supabase.")
         total_calls += len(supa_calls)
 
     print(f" -> Total calls migrated: {total_calls}")
 
-    # 4. Migrate notifications
-    print("\n[4/5] Migrating notifications from Firestore...")
+    # 3. Migrate notifications
+    print("\n[3/5] Migrating notifications from Firestore...")
     total_notifs = 0
     for dev_id in all_dev_targets:
         print(f" -> Checking notifications for {dev_id}...")
-        docs = fetch_all_firestore_documents(token, f"notifications/{dev_id}/items")
+        docs = fetch_all_firestore_documents(token, f"notifications/{dev_id}/items", page_size=300)
         if not docs:
             continue
 
@@ -376,20 +340,20 @@ def migrate_all():
             })
 
         print(f" -> Upserting {len(supa_notifs)} notifications for {dev_id} into Supabase...")
-        for i in range(0, len(supa_notifs), 50):
-            upsert_supabase_batch("notifications", supa_notifs[i:i+50])
-            print(f"    Uploaded {min(i+50, len(supa_notifs))}/{len(supa_notifs)} notifications...", end="\r", flush=True)
+        for i in range(0, len(supa_notifs), 100):
+            upsert_supabase_batch("notifications", supa_notifs[i:i+100])
+            print(f"    Uploaded {min(i+100, len(supa_notifs))}/{len(supa_notifs)} notifications...", end="\r", flush=True)
 
         print(f"\n -> Successfully synced {len(supa_notifs)} notifications for {dev_id} to Supabase.")
         total_notifs += len(supa_notifs)
 
     print(f" -> Total notifications migrated: {total_notifs}")
 
-    # 5. Migrate screen time
-    print("\n[5/5] Migrating screen time from Firestore...")
+    # 4. Migrate screen time
+    print("\n[4/5] Migrating screen time from Firestore...")
     total_st = 0
     for dev_id in all_dev_targets:
-        docs = fetch_all_firestore_documents(token, f"devices/{dev_id}/screen_time")
+        docs = fetch_all_firestore_documents(token, f"devices/{dev_id}/screen_time", page_size=300)
         if not docs:
             continue
 
@@ -413,13 +377,62 @@ def migrate_all():
                 "timestamp_ms": ts
             })
 
-        for i in range(0, len(supa_st), 50):
-            upsert_supabase_batch("screen_time", supa_st[i:i+50])
+        for i in range(0, len(supa_st), 100):
+            upsert_supabase_batch("screen_time", supa_st[i:i+100])
 
         total_st += len(supa_st)
         print(f" -> Successfully synced {len(supa_st)} screen time records for {dev_id}.")
 
     print(f" -> Total screen time records migrated: {total_st}")
+
+    # 5. Migrate chats
+    print("\n[5/5] Migrating chats from Firestore...")
+    total_chats = 0
+    for dev_id in all_dev_targets:
+        print(f" -> Checking chats for {dev_id}...")
+
+        dev_chats_count = [0]
+        def sync_chat_batch(docs_chunk):
+            if not docs_chunk:
+                return
+            supa_chunk = []
+            for c in docs_chunk:
+                c_id = c["name"].split("/")[-1]
+                p = {k: parse_val(v) for k, v in c.get("fields", {}).items()}
+                ts = p.get("timestampMs") or p.get("timestamp") or int(time.time() * 1000)
+                if isinstance(ts, str):
+                    try:
+                        ts = int(datetime.datetime.fromisoformat(ts.rstrip("Z")).timestamp() * 1000)
+                    except:
+                        ts = int(time.time() * 1000)
+
+                supa_chunk.append({
+                    "id": c_id,
+                    "child_id": dev_id,
+                    "app": p.get("app", "WhatsApp"),
+                    "sender": p.get("sender", p.get("contactName", "Unknown")),
+                    "text": p.get("text", p.get("messageText", "")),
+                    "is_incoming": p.get("isIncoming", True),
+                    "is_deleted_by_sender": p.get("isDeletedBySender", p.get("isDeleted", False)),
+                    "is_watchlist_target": p.get("isWatchlistTarget", False),
+                    "media_url": p.get("mediaUrl", p.get("recordingUrl")),
+                    "media_type": p.get("mediaType"),
+                    "is_view_once": p.get("isViewOnce", False),
+                    "timestamp_ms": ts
+                })
+
+            for i in range(0, len(supa_chunk), 100):
+                upsert_supabase_batch("chats", supa_chunk[i:i+100])
+            dev_chats_count[0] += len(supa_chunk)
+
+        fetch_all_firestore_documents(token, f"chats/{dev_id}/messages", page_size=300, on_batch=sync_chat_batch)
+        if dev_chats_count[0] == 0:
+            fetch_all_firestore_documents(token, f"devices/{dev_id}/chats", page_size=300, on_batch=sync_chat_batch)
+
+        print(f"\n -> Successfully synced {dev_chats_count[0]} chats for {dev_id} to Supabase.")
+        total_chats += dev_chats_count[0]
+
+    print(f" -> Total chats migrated: {total_chats}")
 
     # Final live verification counts in Supabase
     print("\n" + "=" * 75)
