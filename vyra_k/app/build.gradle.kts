@@ -11,10 +11,20 @@ android {
         applicationId = "com.vyra.kids"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 64
+        versionName = "1.0.${System.getenv("GITHUB_RUN_NUMBER") ?: "64"}"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = file("../keystore/vyra_release.p12")
+            storePassword = "vyra2026pass"
+            keyAlias = "vyra_key"
+            keyPassword = "vyra2026pass"
+            storeType = "PKCS12"
+        }
     }
 
     buildTypes {
@@ -24,7 +34,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
