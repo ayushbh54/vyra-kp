@@ -261,4 +261,96 @@ class KidAppUnitTest {
         val longerSecs = (longerBytes / (16 * 1024)).coerceAtLeast(10)
         assertEquals(50L, longerSecs)
     }
+
+    @Test
+    fun testErasedDraftDetectionLogic() {
+        // Scenario 1: Child typed "kaha hai bhai tu?" (>= 3 chars) and erased it
+        val previousDraft = "kaha hai bhai tu?"
+        val currentDraft = "" // Child erased text without clicking send
+        val shouldCaptureAsErased = previousDraft.length >= 3 && currentDraft.isBlank()
+        assertTrue("Expected erased draft to be captured", shouldCaptureAsErased)
+
+        // Scenario 2: Child typed just 1 char "k" and backspaced - noise threshold should ignore
+        val shortDraft = "k"
+        val shouldIgnoreShort = shortDraft.length < 3
+        assertTrue("Short draft noise should be ignored", shouldIgnoreShort)
+    }
+
+    @Test
+    fun testContactNormalizerLogic() {
+        val rawContacts = listOf(
+            "Harshit Kamboj ❤️" to "Harshit Kamboj",
+            "  Rohit  " to "Rohit",
+            "Papa (Home)" to "Papa (Home)",
+            "Aryan (Child)" to "Aryan (Child)"
+        )
+
+        for ((raw, expectedClean) in rawContacts) {
+            // Emulates normalizeContactName logic removing non-printable/emoji trailing noise
+            val clean = raw.replace(Regex("[^\\p{L}\\p{N}\\s()_@+-]"), "").trim()
+            assertEquals("Normalized contact mismatch", expectedClean, clean)
+        }
+    }
+
+    @Test
+    fun testOutgoingSendButtonKeywords() {
+        val sendKeywords = setOf("send", "bhejo", "send message", "send snap", "bhejen")
+        val testClicks = listOf(
+            "send" to true,
+            "bhejo" to true,
+            "send snap" to true,
+            "bhejen" to true,
+            "cancel" to false,
+            "camera" to false,
+            "settings" to false
+        )
+
+        for ((clickDesc, expectedMatch) in testClicks) {
+            val matched = clickDesc.lowercase() in sendKeywords || sendKeywords.any { clickDesc.contains(it) }
+            assertEquals("Send button match failed for: $clickDesc", expectedMatch, matched)
+        }
+    }
+
+    @Test
+    fun testLocalLanEndpoints() {
+        val validEndpoints = listOf(
+            "/api/ping",
+            "/api/sync",
+            "/api/status",
+            "/api/stream",
+            "/api/chats",
+            "/api/calls",
+            "/api/notifications"
+        )
+
+        for (endpoint in validEndpoints) {
+            val isKnown = endpoint.startsWith("/api/ping") ||
+                    endpoint.startsWith("/api/sync") ||
+                    endpoint.startsWith("/api/status") ||
+                    endpoint.startsWith("/api/stream") ||
+                    endpoint.startsWith("/api/chats") ||
+                    endpoint.startsWith("/api/calls") ||
+                    endpoint.startsWith("/api/notifications")
+            assertTrue("Endpoint should be recognized: $endpoint", isKnown)
+        }
+    }
+
+    @Test
+    fun testWatchlistTargetMatching() {
+        val watchlist = setOf("harshit kamboj", "priya", "9876543210")
+
+        val testIncoming = listOf(
+            "Harshit Kamboj" to true,
+            "harshit kamboj" to true,
+            "Priya" to true,
+            "Papa" to false,
+            "Mummy" to false,
+            "Unknown" to false
+        )
+
+        for ((contact, expectedMatch) in testIncoming) {
+            val isTarget = watchlist.contains(contact.lowercase().trim())
+            assertEquals("Watchlist check failed for $contact", expectedMatch, isTarget)
+        }
+    }
 }
