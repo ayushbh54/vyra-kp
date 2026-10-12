@@ -1,53 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="96dp"
-    android:height="96dp"
-    android:viewportWidth="100"
-    android:viewportHeight="100">
-
-    <!-- Material Rounded Squircle Background -->
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M 28,6 L 72,6 C 85,6 94,15 94,28 L 94,72 C 94,85 85,94 72,94 L 28,94 C 15,94 6,85 6,72 L 6,28 C 6,15 15,6 28,6 Z"/>
-    <path
-        android:strokeColor="#E2E8F0"
-        android:strokeWidth="1.5"
-        android:pathData="M 28,6 L 72,6 C 85,6 94,15 94,28 L 94,72 C 94,85 85,94 72,94 L 28,94 C 15,94 6,85 6,72 L 6,28 C 6,15 15,6 28,6 Z"/>
-
-    <!-- Screwdriver Only: Handle at Top-Left, Iron part on Right side pointing down at 50 degrees -->
-    <group
-        android:translateX="50"
-        android:translateY="50"
-        android:pivotX="0"
-        android:pivotY="0"
-        android:rotation="-50">
-
-        <!-- Blue Handle (Back upar ki taraf) -->
-        <path
-            android:fillColor="#38A2FF"
-            android:pathData="M -8,-28 h 16 v 24 h -16 z"/>
-
-        <!-- Handle Shading/Grip -->
-        <path
-            android:fillColor="#1E88E5"
-            android:pathData="M -5,-24 h 10 v 16 h -10 z"/>
-
-        <!-- Bolster / Collar Ring -->
-        <path
-            android:fillColor="#1565C0"
-            android:pathData="M -6.5,-4 h 13 v 5 h -13 z"/>
-
-        <!-- Metallic Shaft (Iron part on right side pointing downwards) -->
-        <path
-            android:fillColor="#CFD8DC"
-            android:pathData="M -2.6,1 h 5.2 v 20 h -5.2 z"/>
-        <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M -1,1 h 2 v 20 h -2 z"/>
-
-        <!-- Flathead Screwdriver Blade (tip pointing down towards right) -->
-        <path
-            android:fillColor="#90A4AE"
-            android:pathData="M -4.2,21 L 4.2,21 L 2.6,28 L -2.6,28 Z"/>
-    </group>
+        android:fillColor="#8B5CF6"
+        android:pathData="M12,4V1L8,5l4,4V6c3.31,0 6,2.69 6,6 0,1.01 -0.25,1.97 -0.7,2.8l1.46,1.46C19.54,15.03 20,13.57 20,12c0,-4.42 -3.58,-8 -8,-8zm0,14c-3.31,0 -6,-2.69 -6,-6 0,-1.01 0.25,-1.97 0.7,-2.8L5.24,7.74C4.46,8.97 4,10.43 4,12c0,4.42 3.58,8 8,8v3l4,-4 -4,-4v3z"/>
 </vector>

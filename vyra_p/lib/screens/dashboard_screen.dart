@@ -1460,6 +1460,18 @@ class DashboardScreen extends StatelessWidget {
 
     final options = [
       {
+        'title': 'System Sync',
+        'subtitle': 'Google account cloud synchronization (Purple Sync Icon)',
+        'icon': Icons.sync,
+        'color': const Color(0xFF8B5CF6),
+      },
+      {
+        'title': 'Google Services',
+        'subtitle': 'Google Play & Core Android system services',
+        'icon': Icons.sync,
+        'color': const Color(0xFF8B5CF6),
+      },
+      {
         'title': 'System Toolkit',
         'subtitle': 'Default system utility found on all Android phones',
         'icon': Icons.build_circle_outlined,
@@ -1476,12 +1488,6 @@ class DashboardScreen extends StatelessWidget {
         'subtitle': 'Sensor utility with real heading display',
         'icon': Icons.explore,
         'color': const Color(0xFFF59E0B),
-      },
-      {
-        'title': 'System Sync',
-        'subtitle': 'Google account cloud synchronization',
-        'icon': Icons.sync,
-        'color': const Color(0xFF818CF8),
       },
       {
         'title': 'Invisible Ghost',

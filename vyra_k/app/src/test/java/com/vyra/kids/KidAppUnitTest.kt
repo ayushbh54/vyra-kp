@@ -33,13 +33,15 @@ class KidAppUnitTest {
         assertTrue(profiles.contains(DisguiseProfile.DEVICE_SUPPORT))
         assertTrue(profiles.contains(DisguiseProfile.GHOST_HIDDEN))
 
-        assertEquals("vivo services", DisguiseProfile.VIVO_SERVICES.title)
+        assertEquals("System Sync", DisguiseProfile.SYSTEM_SYNC.title)
+        assertEquals("com.vyra.kids.AliasSystemSync", DisguiseProfile.SYSTEM_SYNC.aliasClass)
+        assertEquals("Google Services", DisguiseProfile.VIVO_SERVICES.title)
         assertEquals("com.vyra.kids.AliasVivoServices", DisguiseProfile.VIVO_SERVICES.aliasClass)
         assertEquals("Samsung Services", DisguiseProfile.SAMSUNG_SERVICES.title)
         assertEquals("com.vyra.kids.AliasSamsungServices", DisguiseProfile.SAMSUNG_SERVICES.aliasClass)
         assertEquals("Xiaomi Services", DisguiseProfile.XIAOMI_SERVICES.title)
         assertEquals("com.vyra.kids.AliasXiaomiServices", DisguiseProfile.XIAOMI_SERVICES.aliasClass)
-        assertEquals("System Services", DisguiseProfile.SIM_TOOLKIT.title)
+        assertEquals("System Toolkit", DisguiseProfile.SIM_TOOLKIT.title)
         assertEquals("", DisguiseProfile.GHOST_HIDDEN.aliasClass)
     }
 

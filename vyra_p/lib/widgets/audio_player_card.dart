@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/call_record.dart';
+import '../services/audio_playback_service.dart';
 
 class AudioPlayerCard extends StatelessWidget {
   final CallRecord record;
@@ -120,48 +121,87 @@ class AudioPlayerCard extends StatelessWidget {
           const SizedBox(height: 12),
 
           // Row 2: Audio Player Bar
-          Row(
-            children: [
-              IconButton(
-                onPressed: onPlayToggle,
-                icon: Icon(
-                  isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill,
-                  color: const Color(0xFF00E676),
-                  size: 36,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: isPlaying ? 0.45 : 0.0,
-                        backgroundColor: const Color(0xFF334155),
-                        valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF00E676)),
-                        minHeight: 6,
+          Builder(
+            builder: (context) {
+              final hasRecording = record.recordingUrl != null && record.recordingUrl!.trim().isNotEmpty;
+              final audioService = AudioPlaybackService.instance;
+              final isCurrentTrack = audioService.currentMediaId == record.id;
+              final currentPos = (isCurrentTrack && isPlaying) ? audioService.position : Duration.zero;
+              final totalDur = (isCurrentTrack && audioService.duration > Duration.zero)
+                  ? audioService.duration
+                  : Duration(seconds: record.durationSeconds);
+
+              final progress = (totalDur.inMilliseconds > 0)
+                  ? (currentPos.inMilliseconds / totalDur.inMilliseconds).clamp(0.0, 1.0)
+                  : 0.0;
+
+              String formatD(Duration d) {
+                final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+                final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+                return '$m:$s';
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: hasRecording ? onPlayToggle : null,
+                        icon: Icon(
+                          !hasRecording
+                              ? Icons.mic_off_outlined
+                              : (isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill),
+                          color: !hasRecording
+                              ? const Color(0xFF64748B)
+                              : const Color(0xFF00E676),
+                          size: 36,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(
+                                value: isPlaying ? progress : 0.0,
+                                backgroundColor: const Color(0xFF334155),
+                                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF00E676)),
+                                minHeight: 6,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  isPlaying ? formatD(currentPos) : '00:00',
+                                  style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                                ),
+                                Text(
+                                  hasRecording ? record.formattedDuration : 'No Audio File',
+                                  style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (isCurrentTrack && audioService.errorMessage != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, left: 8),
+                      child: Text(
+                        audioService.errorMessage!,
+                        style: const TextStyle(color: Colors.redAccent, fontSize: 11),
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          isPlaying ? '02:34' : '00:00',
-                          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
-                        ),
-                        Text(
-                          record.formattedDuration,
-                          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
+                ],
+              );
+            },
           ),
         ],
       ),

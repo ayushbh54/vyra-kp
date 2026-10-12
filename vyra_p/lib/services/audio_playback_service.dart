@@ -81,7 +81,10 @@ class AudioPlaybackService extends ChangeNotifier {
       } else if (trimmedUrl.startsWith('/')) {
         await _player.play(DeviceFileSource(trimmedUrl));
       } else {
-        await _player.play(UrlSource(trimmedUrl));
+        // Automatically resolve filename to Supabase recordings storage bucket
+        final encodedUrl = Uri.encodeComponent(trimmedUrl).replaceAll('+', '%20');
+        final supabaseAudioUrl = "https://wtlqlkkduescumpggttm.supabase.co/storage/v1/object/public/recordings/$encodedUrl";
+        await _player.play(UrlSource(supabaseAudioUrl));
       }
     } catch (e) {
       debugPrint("Audio playback error: $e");

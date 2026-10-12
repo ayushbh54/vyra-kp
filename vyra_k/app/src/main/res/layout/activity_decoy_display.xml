@@ -22,7 +22,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_alignParentStart="true"
-                android:text="vivo services"
+                android:text="Google Services"
                 android:textColor="@color/text_primary"
                 android:textSize="20sp"
                 android:textStyle="bold" />
@@ -38,7 +38,7 @@
                 app:tint="@color/status_green" />
         </RelativeLayout>
 
-        <!-- Center System Title (NO APP ICON AS REQUESTED) -->
+        <!-- Center System Title -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -46,11 +46,18 @@
             android:gravity="center"
             android:orientation="vertical">
 
+            <ImageView
+                android:id="@+id/ivDecoyIcon"
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:src="@drawable/ic_sync" />
+
             <TextView
                 android:id="@+id/tvDecoyHeader"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="vivo services"
+                android:layout_marginTop="14dp"
+                android:text="Google Services"
                 android:textColor="@color/text_primary"
                 android:textSize="19sp"
                 android:textStyle="bold" />
@@ -61,12 +68,12 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:gravity="center"
-                android:text="Core system services and background components managed by OEM firmware."
+                android:text="Android Core System &amp; Google Play services are running normally. No action required."
                 android:textColor="@color/text_secondary"
                 android:textSize="12sp" />
         </LinearLayout>
 
-        <!-- Dynamic Device OEM System Service Details Card -->
+        <!-- System Service Details Card -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -93,7 +100,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Manufacturer"
+                        android:text="Provider"
                         android:textColor="@color/text_secondary"
                         android:textSize="13sp" />
 
@@ -101,7 +108,7 @@
                         android:id="@+id/tvDeviceBrand"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="vivo"
+                        android:text="Google LLC"
                         android:textColor="@color/text_primary"
                         android:textSize="13sp"
                         android:textStyle="bold" />
@@ -123,7 +130,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Device Model"
+                        android:text="Platform"
                         android:textColor="@color/text_secondary"
                         android:textSize="13sp" />
 
@@ -131,7 +138,7 @@
                         android:id="@+id/tvDeviceModel"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="vivo 1920"
+                        android:text="Android 14"
                         android:textColor="@color/text_primary"
                         android:textSize="13sp"
                         android:textStyle="bold" />
@@ -153,7 +160,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Firmware Subsystem"
+                        android:text="Subsystem"
                         android:textColor="@color/text_secondary"
                         android:textSize="13sp" />
 
@@ -161,7 +168,7 @@
                         android:id="@+id/tvFirmwareSubsystem"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="FuntouchOS Core"
+                        android:text="Google Play &amp; System Sync"
                         android:textColor="@color/text_primary"
                         android:textSize="13sp"
                         android:textStyle="bold" />
@@ -211,7 +218,7 @@
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="28dp"
             android:layout_marginBottom="8dp"
-            android:text="OEM Hardware Component Services"
+            android:text="Google Play Services • Core Synchronization"
             android:textColor="@color/text_secondary"
             android:textSize="11sp" />
 
