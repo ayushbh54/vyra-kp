@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/device_status.dart';
@@ -17,11 +16,7 @@ import '../services/supabase_sync_service.dart';
 
 class ParentDashboardProvider extends ChangeNotifier {
   ParentDashboardProvider() {
-    try {
-      _firestore = FirebaseFirestore.instance;
-    } catch (_) {}
     _loadLocalPersistence();
-    _initFirebaseListeners();
     _startLanDiscovery();
     _startSupabaseSync();
   }
@@ -48,35 +43,9 @@ class ParentDashboardProvider extends ChangeNotifier {
   Timer? _supabaseSyncTimer;
   StreamSubscription<Map<String, dynamic>>? _lanLiveStreamSub;
 
-  bool _isCheckingFirebaseMigration = false;
-  bool get isCheckingFirebaseMigration => _isCheckingFirebaseMigration;
-
-  bool _isFirebaseMigrationComplete = false;
-  bool get isFirebaseMigrationComplete => _isFirebaseMigrationComplete;
-
-  String _firebaseMigrationStatusMessage = 'Ready to verify Firebase archive';
-  String get firebaseMigrationStatusMessage => _firebaseMigrationStatusMessage;
-
-  int _firebaseArchivedChats = 0;
-  int get firebaseArchivedChats => _firebaseArchivedChats;
-
-  int _firebaseArchivedCalls = 0;
-  int get firebaseArchivedCalls => _firebaseArchivedCalls;
-
-  int _firebaseArchivedNotifs = 0;
-  int get firebaseArchivedNotifs => _firebaseArchivedNotifs;
-
   int get totalChatsCount => _childChatMessages[_activeChildId]?.length ?? 0;
   int get totalCallsCount => _childCallRecords[_activeChildId]?.length ?? 0;
   int get totalNotifsCount => _childNotifications[_activeChildId]?.length ?? 0;
-
-  FirebaseFirestore? _firestore;
-  StreamSubscription? _deviceSub;
-  StreamSubscription? _devicesDiscoverySub;
-  StreamSubscription? _callsSub;
-  StreamSubscription? _chatsSub;
-  StreamSubscription? _notifsSub;
-  StreamSubscription? _screenTimeSub;
 
   int _todayScreenTimeMinutes = 0;
   int get todayScreenTimeMinutes => _todayScreenTimeMinutes;
@@ -206,219 +175,12 @@ class ParentDashboardProvider extends ChangeNotifier {
             }
           }
 
-          _initFirebaseListeners();
           syncFromSupabase();
           notifyListeners();
         }
       }
-      _isFirebaseMigrationComplete = prefs.getBool('firebase_migration_complete_$_activeChildId') ?? false;
-      if (_isFirebaseMigrationComplete) {
-        _firebaseMigrationStatusMessage = 'All Firebase data verified & secured in Supabase (100%)';
-      }
     } catch (e) {
       debugPrint("Load persistence error: $e");
-    }
-  }
-
-  /// One-Time Verification & Safe Archive of Firebase Data into Supabase
-  /// Operates purely on a single .get() read (zero snapshot stream loops)
-  Future<void> verifyAndImportFirebaseArchive({bool forceRefresh = false}) async {
-    if (_isCheckingFirebaseMigration) return;
-    _isCheckingFirebaseMigration = true;
-    _firebaseMigrationStatusMessage = 'Connecting to Firebase & checking archive...';
-    notifyListeners();
-
-    try {
-      final targetDocId = activePairingCode.isNotEmpty ? activePairingCode : _activeChildId;
-      try {
-        _firestore ??= FirebaseFirestore.instance;
-      } catch (_) {}
-
-      bool readAnyFirebase = false;
-
-      if (_firestore != null) {
-        try {
-          // 1. One-time fetch of Firestore chats (no stream listeners, no loops!)
-          final chatsSnap = await _firestore!
-              .collection('devices')
-              .doc(targetDocId)
-              .collection('chats')
-              .get()
-              .timeout(const Duration(seconds: 12));
-
-          if (chatsSnap.docs.isNotEmpty) {
-            readAnyFirebase = true;
-            _firebaseArchivedChats = chatsSnap.docs.length;
-            final newMsgs = <ChatMessage>[];
-            for (final doc in chatsSnap.docs) {
-              final d = doc.data();
-              final dt = (d['timestamp'] is Timestamp)
-                  ? (d['timestamp'] as Timestamp).toDate()
-                  : (d['timestampMs'] != null
-                      ? DateTime.fromMillisecondsSinceEpoch((d['timestampMs'] as num).toInt())
-                      : DateTime.now());
-              final rawSender = d['sender']?.toString() ?? d['contactName']?.toString() ?? 'Contact';
-              final cleanSender = normalizeContactName(rawSender);
-              final isTarget = isWatchlistContact(cleanSender) || (d['isWatchlistTarget'] as bool? ?? false);
-              final msg = ChatMessage(
-                id: doc.id,
-                appType: AppType.whatsApp,
-                contactName: cleanSender,
-                contactIdentifier: cleanSender,
-                messageText: d['text']?.toString() ?? d['messageText']?.toString() ?? '',
-                timestamp: dt,
-                isIncoming: (d['isIncoming'] as bool?) ?? true,
-                isDeletedBackup: (d['isDeletedBySender'] as bool?) ?? false,
-                isWatchlistTarget: isTarget,
-              );
-              newMsgs.add(msg);
-              _supabaseSync.upsertRecord('chats', {
-                'id': doc.id,
-                'child_id': targetDocId,
-                'app': 'WhatsApp',
-                'sender': msg.contactName,
-                'text': msg.messageText,
-                'is_incoming': msg.isIncoming,
-                'is_deleted_by_sender': msg.isDeletedBackup,
-                'timestamp_ms': msg.timestamp.millisecondsSinceEpoch,
-              });
-            }
-
-            _childChatMessages.putIfAbsent(_activeChildId, () => []);
-            final existingIds = _childChatMessages[_activeChildId]!.map((e) => e.id).toSet();
-            for (final msg in newMsgs) {
-              if (!existingIds.contains(msg.id)) {
-                _childChatMessages[_activeChildId]!.add(msg);
-              }
-            }
-            _childChatMessages[_activeChildId]!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-          }
-
-          // 2. One-time fetch of Firestore calls
-          final callsSnap = await _firestore!
-              .collection('devices')
-              .doc(targetDocId)
-              .collection('calls')
-              .get()
-              .timeout(const Duration(seconds: 10));
-
-          if (callsSnap.docs.isNotEmpty) {
-            readAnyFirebase = true;
-            _firebaseArchivedCalls = callsSnap.docs.length;
-            final newCalls = <CallRecord>[];
-            for (final doc in callsSnap.docs) {
-              final d = doc.data();
-              final dt = (d['timestamp'] is Timestamp)
-                  ? (d['timestamp'] as Timestamp).toDate()
-                  : (d['timestampMs'] != null
-                      ? DateTime.fromMillisecondsSinceEpoch((d['timestampMs'] as num).toInt())
-                      : DateTime.now());
-              final call = CallRecord(
-                id: doc.id,
-                contactName: d['contactName']?.toString() ?? 'Contact',
-                phoneNumber: d['phoneNumber']?.toString() ?? '',
-                callType: CallType.incoming,
-                timestamp: dt,
-                durationSeconds: (d['durationSeconds'] as num?)?.toInt() ?? 0,
-                recordingUrl: d['recordingUrl']?.toString(),
-              );
-              newCalls.add(call);
-              _supabaseSync.upsertRecord('calls', {
-                'id': doc.id,
-                'child_id': targetDocId,
-                'contact_name': call.contactName,
-                'phone_number': call.phoneNumber,
-                'call_type': 'incoming',
-                'duration_seconds': call.durationSeconds,
-                'recording_url': call.recordingUrl,
-                'timestamp_ms': call.timestamp.millisecondsSinceEpoch,
-              });
-            }
-
-            _childCallRecords.putIfAbsent(_activeChildId, () => []);
-            final existingCallIds = _childCallRecords[_activeChildId]!.map((e) => e.id).toSet();
-            for (final call in newCalls) {
-              if (!existingCallIds.contains(call.id)) {
-                _childCallRecords[_activeChildId]!.add(call);
-              }
-            }
-            _childCallRecords[_activeChildId]!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-          }
-
-          // 3. One-time fetch of Firestore notifications
-          final notifsSnap = await _firestore!
-              .collection('notifications')
-              .doc(targetDocId)
-              .collection('items')
-              .get()
-              .timeout(const Duration(seconds: 10));
-
-          if (notifsSnap.docs.isNotEmpty) {
-            readAnyFirebase = true;
-            _firebaseArchivedNotifs = notifsSnap.docs.length;
-            final newNotifs = <NotificationItem>[];
-            for (final doc in notifsSnap.docs) {
-              final d = doc.data();
-              final dt = (d['timestamp'] is Timestamp)
-                  ? (d['timestamp'] as Timestamp).toDate()
-                  : DateTime.now();
-              final notif = NotificationItem(
-                id: doc.id,
-                packageName: d['packageName']?.toString() ?? '',
-                appName: d['appName']?.toString() ?? 'App',
-                title: d['title']?.toString() ?? '',
-                message: (d['text'] ?? d['message'] ?? '').toString(),
-                timestamp: dt,
-              );
-              newNotifs.add(notif);
-              _supabaseSync.upsertRecord('notifications', {
-                'id': doc.id,
-                'child_id': targetDocId,
-                'package_name': notif.packageName,
-                'app_name': notif.appName,
-                'title': notif.title,
-                'text': notif.message,
-                'timestamp_ms': notif.timestamp.millisecondsSinceEpoch,
-              });
-            }
-
-            _childNotifications.putIfAbsent(_activeChildId, () => []);
-            final existingNotifIds = _childNotifications[_activeChildId]!.map((e) => e.id).toSet();
-            for (final notif in newNotifs) {
-              if (!existingNotifIds.contains(notif.id)) {
-                _childNotifications[_activeChildId]!.add(notif);
-              }
-            }
-            _childNotifications[_activeChildId]!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-          }
-        } catch (e) {
-          final errStr = e.toString().toLowerCase();
-          if (errStr.contains('quota') || errStr.contains('429') || errStr.contains('resource-exhausted')) {
-            _firebaseMigrationStatusMessage = 'Firebase daily quota cooling down. Local & Supabase active.';
-          } else {
-            debugPrint("Firestore archive check info: $e");
-          }
-        }
-      }
-
-      // 4. Verify against Supabase & Local Cache
-      await syncFromSupabase();
-      final totalChats = _childChatMessages[_activeChildId]?.length ?? 0;
-      final totalCalls = _childCallRecords[_activeChildId]?.length ?? 0;
-
-      if (readAnyFirebase || totalChats > 0 || totalCalls > 0) {
-        _isFirebaseMigrationComplete = true;
-        _firebaseMigrationStatusMessage = 'All Firebase data verified & secured in Supabase ($totalChats chats, $totalCalls calls)';
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('firebase_migration_complete_$_activeChildId', true);
-      }
-
-      await _saveLocalPersistence();
-    } catch (e) {
-      debugPrint("verifyAndImportFirebaseArchive error: $e");
-    } finally {
-      _isCheckingFirebaseMigration = false;
-      notifyListeners();
     }
   }
 
@@ -1149,7 +911,6 @@ class ParentDashboardProvider extends ChangeNotifier {
     if (_activeChildId == childId) return; // Prevent redundant refetching
     _activeChildId = childId;
     _saveLocalPersistence();
-    _initFirebaseListeners();
     syncFromSupabase();
     notifyListeners();
   }
@@ -1183,7 +944,6 @@ class ParentDashboardProvider extends ChangeNotifier {
     _childWatchlists[newId] = [];
     _activeChildId = newId;
     _saveLocalPersistence();
-    _initFirebaseListeners();
     notifyListeners();
     return newChild;
   }
@@ -1205,7 +965,6 @@ class ParentDashboardProvider extends ChangeNotifier {
       final shouldSwitch = _activeChildId != _children[existingIdx].id;
       if (shouldSwitch) {
         _activeChildId = _children[existingIdx].id;
-        _initFirebaseListeners();
       }
       _saveLocalPersistence();
       notifyListeners();
@@ -1229,16 +988,9 @@ class ParentDashboardProvider extends ChangeNotifier {
       _childWatchlists[cleanCode] = [];
       _activeChildId = cleanCode;
       _saveLocalPersistence();
-      _initFirebaseListeners();
       notifyListeners();
       return newChild;
     }
-  }
-
-  void _initFirebaseListeners() {
-    // Completely superseded by Supabase Cloud Sync & Same-Wi-Fi Direct LAN Sync.
-    // Early return permanently halts the 2.7 Million read/day Firestore quota consumption.
-    return;
   }
 
   static bool isScraperGarbage(String text) {
@@ -1715,20 +1467,7 @@ class ParentDashboardProvider extends ChangeNotifier {
     }).toList();
   }
 
-  String get _activeTargetDocId => activePairingCode.isNotEmpty ? activePairingCode : _activeChildId;
-
   void _dispatchRemoteCommand(String action, [Map<String, dynamic>? payload]) {
-    try {
-      _firestore?.collection('devices').doc(_activeTargetDocId).collection('commands').add({
-        'action': action,
-        'payload': payload ?? {},
-        'status': 'PENDING',
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      debugPrint("Could not dispatch command to Firestore: $e");
-    }
-
     try {
       final targetCode = activePairingCode.isNotEmpty ? activePairingCode : _activeChildId;
       _supabaseSync.sendCommand(targetCode, action, payload);
@@ -1818,11 +1557,11 @@ class ParentDashboardProvider extends ChangeNotifier {
   AppType _selectedChatApp = AppType.whatsApp;
   AppType get selectedChatApp => _selectedChatApp;
 
-  // Call Records per Child — populated from Firestore only
+  // Call Records per Child — populated from Supabase & LAN Sync
   final Map<String, List<CallRecord>> _childCallRecords = {};
   List<CallRecord> get callRecords => _childCallRecords[_activeChildId] ?? [];
 
-  // Ambient Soundbites & Voice Activity Logs per Child — populated from Firestore only
+  // Ambient Soundbites & Voice Activity Logs per Child — populated from Supabase & LAN Sync
   final Map<String, List<AmbientLogItem>> _childAmbientLogs = {};
   List<AmbientLogItem> get ambientLogs => _childAmbientLogs[_activeChildId] ?? [];
 
@@ -1871,7 +1610,7 @@ class ParentDashboardProvider extends ChangeNotifier {
   }
 
 
-  // Master Archive of Chat Messages per Child — populated from Firestore & Supabase
+  // Master Archive of Chat Messages per Child — populated from Supabase & LAN Sync
   final Map<String, List<ChatMessage>> _childChatMessages = {};
 
   List<ChatMessage> get chatMessages {
@@ -1894,7 +1633,7 @@ class ParentDashboardProvider extends ChangeNotifier {
 
   List<ChatMessage> get allArchivedChatMessages => _childChatMessages[_activeChildId] ?? [];
 
-  // Notification Items per Child — populated from Firestore & Supabase
+  // Notification Items per Child — populated from Supabase & LAN Sync
   final Map<String, List<NotificationItem>> _childNotifications = {};
   List<NotificationItem> get notifications => _childNotifications[_activeChildId] ?? [];
 
@@ -2058,12 +1797,6 @@ class ParentDashboardProvider extends ChangeNotifier {
     _lanLiveStreamSub?.cancel();
     _lanDiscoveryTimer?.cancel();
     _supabaseSyncTimer?.cancel();
-    _deviceSub?.cancel();
-    _devicesDiscoverySub?.cancel();
-    _callsSub?.cancel();
-    _chatsSub?.cancel();
-    _notifsSub?.cancel();
-    _screenTimeSub?.cancel();
     super.dispose();
   }
 }
