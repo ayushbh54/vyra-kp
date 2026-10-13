@@ -191,10 +191,28 @@ class ParentDashboardProvider extends ChangeNotifier {
       await prefs.setStringList('saved_children', list);
       await prefs.setString('active_child_id', _activeChildId);
 
-      // Persist active child data to local disk (capped to recent 2,000 chats so SharedPreferences stays fast)
+      // Persist active child data to local disk while guaranteeing multi-app coverage
       final msgs = _childChatMessages[_activeChildId];
       if (msgs != null && msgs.isNotEmpty) {
-        final raw = msgs.take(2000).map((m) => jsonEncode(m.toJson())).toList();
+        final preserved = <ChatMessage>[];
+        final seenIds = <String>{};
+        void addUpTo(Iterable<ChatMessage> source, int maxCount) {
+          int count = 0;
+          for (final m in source) {
+            if (count >= maxCount) break;
+            if (seenIds.add(m.id)) {
+              preserved.add(m);
+              count++;
+            }
+          }
+        }
+        addUpTo(msgs.where((m) => m.isViewOnce), 200);
+        addUpTo(msgs.where((m) => m.appType == AppType.instagram), 300);
+        addUpTo(msgs.where((m) => m.appType == AppType.snapchat), 300);
+        addUpTo(msgs.where((m) => m.appType == AppType.sms), 300);
+        addUpTo(msgs.where((m) => m.appType == AppType.telegram), 200);
+        addUpTo(msgs, 1200);
+        final raw = preserved.map((m) => jsonEncode(m.toJson())).toList();
         await prefs.setStringList('cache_chats_$_activeChildId', raw);
       }
 
@@ -824,16 +842,68 @@ class ParentDashboardProvider extends ChangeNotifier {
       // Notify UI immediately once fast telemetry, calls, ambient logs, notifications & screen time are ready!
       notifyListeners();
 
-      // 5. Fetch Chats (Windowed so 276,157 archived rows never stall UI or exhaust RAM)
-      final hasLoadedChats = _childChatMessages[_activeChildId]?.isNotEmpty ?? false;
-      final effectiveChatLimit = chatLimit ?? (hasLoadedChats ? 1000 : 3000);
-      final chatsData = await _supabaseSync.fetchTable(
-        "chats",
-        filterField: "child_id",
-        filterValue: targetCode,
-        order: "timestamp_ms.desc",
-        limit: effectiveChatLimit,
-      );
+      // 5. Fetch Chats (Windowed so 276,157 archived rows never stall UI or exhaust RAM,
+      //    plus per-app queries so heavy WhatsApp group traffic never starves Instagram/Snapchat/SMS/1-View tabs)
+      final currentChats = _childChatMessages[_activeChildId] ?? [];
+      final hasLoadedChats = currentChats.isNotEmpty;
+      final hasMultiAppCoverage = currentChats.any((m) => m.appType == AppType.instagram) &&
+          currentChats.any((m) => m.appType == AppType.snapchat) &&
+          currentChats.any((m) => m.appType == AppType.sms);
+
+      final effectiveChatLimit = chatLimit ?? (hasLoadedChats ? 1000 : 2000);
+      final chatQueries = <Future<List<Map<String, dynamic>>>>[
+        _supabaseSync.fetchTable(
+          "chats",
+          filterField: "child_id",
+          filterValue: targetCode,
+          order: "timestamp_ms.desc",
+          limit: effectiveChatLimit,
+        ),
+      ];
+
+      if (!hasMultiAppCoverage || chatLimit != null) {
+        chatQueries.addAll([
+          _supabaseSync.fetchTable(
+            "chats",
+            filterField: "child_id",
+            filterValue: targetCode,
+            extraFilters: const {'app': 'Instagram'},
+            order: "timestamp_ms.desc",
+            limit: 300,
+          ),
+          _supabaseSync.fetchTable(
+            "chats",
+            filterField: "child_id",
+            filterValue: targetCode,
+            extraFilters: const {'app': 'Snapchat'},
+            order: "timestamp_ms.desc",
+            limit: 300,
+          ),
+          _supabaseSync.fetchTable(
+            "chats",
+            filterField: "child_id",
+            filterValue: targetCode,
+            extraFilters: const {'app': 'SMS'},
+            order: "timestamp_ms.desc",
+            limit: 300,
+          ),
+          _supabaseSync.fetchTable(
+            "chats",
+            filterField: "child_id",
+            filterValue: targetCode,
+            extraFilters: const {'is_view_once': 'true'},
+            order: "timestamp_ms.desc",
+            limit: 200,
+          ),
+        ]);
+      }
+
+      final chatBatches = await Future.wait(chatQueries);
+      final chatsData = <Map<String, dynamic>>[];
+      for (final batch in chatBatches) {
+        chatsData.addAll(batch);
+      }
+
       if (chatsData.isNotEmpty) {
         final newMsgs = <ChatMessage>[];
         for (final m in chatsData) {
@@ -876,9 +946,10 @@ class ParentDashboardProvider extends ChangeNotifier {
         }
 
         _childChatMessages.putIfAbsent(_activeChildId, () => []);
+        _childChatMessages[_activeChildId]!.removeWhere((m) => isScraperGarbage(m.messageText));
         final existingIds = _childChatMessages[_activeChildId]!.map((e) => e.id).toSet();
         for (final msg in newMsgs) {
-          if (!existingIds.contains(msg.id)) {
+          if (existingIds.add(msg.id)) {
             _childChatMessages[_activeChildId]!.add(msg);
           }
         }
@@ -1039,8 +1110,21 @@ class ParentDashboardProvider extends ChangeNotifier {
       'select all',
       'unread',
       'read',
+      'read more',
+      'group settings',
+      'go to most recent message',
+      'open voice chat',
+      'only admins can send messages',
+      'message your assistant',
     };
     if (actionButtons.contains(lower)) return true;
+    if (lower.contains("you'll get notifications only for @mentions") ||
+        lower.contains('only admins can send messages')) {
+      return true;
+    }
+    if (RegExp(r'^\d+\s+unread\s+messages?$', caseSensitive: false).hasMatch(t)) {
+      return true;
+    }
 
     // Relative timestamps: "6 minutes ago", "12 mins ago", "2 hours ago", "yesterday", "just now", "10:30 AM"
     if (RegExp(r'^\d+\s*(?:second|sec|minute|min|hour|hr|day|week|month)s?\s*(?:ago)?$', caseSensitive: false).hasMatch(t)) {

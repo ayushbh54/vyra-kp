@@ -24,6 +24,7 @@ class SupabaseSyncService {
     String table, {
     String? filterField,
     String? filterValue,
+    Map<String, String>? extraFilters,
     String? order,
     int? limit,
   }) async {
@@ -32,13 +33,21 @@ class SupabaseSyncService {
     try {
       final allRows = <Map<String, dynamic>>[];
       int offset = 0;
-      final pageSize = (limit != null && limit < 1000) ? limit : 1000;
 
       while (true) {
+        final remaining = limit != null ? (limit - allRows.length) : 1000;
+        if (remaining <= 0) break;
+        final pageSize = remaining < 1000 ? remaining : 1000;
+
         final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
         var queryUri = "$supabaseUrl/rest/v1/$table?select=*";
         if (filterField != null && filterValue != null) {
-          queryUri += "&$filterField=eq.$filterValue";
+          queryUri += "&$filterField=eq.${Uri.encodeQueryComponent(filterValue)}";
+        }
+        if (extraFilters != null) {
+          extraFilters.forEach((k, v) {
+            queryUri += "&$k=eq.${Uri.encodeQueryComponent(v)}";
+          });
         }
         if (order != null) {
           queryUri += "&order=$order";
@@ -62,7 +71,7 @@ class SupabaseSyncService {
         if (list is List) {
           final batch = list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
           allRows.addAll(batch);
-          if (limit != null || batch.length < pageSize) {
+          if (batch.length < pageSize || (limit != null && allRows.length >= limit)) {
             break;
           }
           offset += pageSize;
