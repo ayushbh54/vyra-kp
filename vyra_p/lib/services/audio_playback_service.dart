@@ -44,6 +44,51 @@ class AudioPlaybackService extends ChangeNotifier {
     });
   }
 
+  /// Normalizes and percent-encodes a recording URL or filename so Android ExoPlayer/MediaPlayer
+  /// can stream files containing spaces, emojis, or special characters from Supabase Storage.
+  static String normalizeAudioUrl(String rawUrl, {String defaultChildId = 'VYRA-13533'}) {
+    final trimmed = rawUrl.trim();
+    if (trimmed.isEmpty) return '';
+    if (trimmed.startsWith('/')) return trimmed;
+
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      const marker = '/storage/v1/object/public/recordings/';
+      final idx = trimmed.indexOf(marker);
+      if (idx != -1) {
+        final baseUrl = trimmed.substring(0, idx + marker.length);
+        final objectPath = trimmed.substring(idx + marker.length);
+        final encodedSegments = objectPath.split('/').map((seg) {
+          String decoded = seg;
+          try {
+            decoded = Uri.decodeComponent(seg);
+          } catch (_) {}
+          return Uri.encodeComponent(decoded).replaceAll('+', '%20');
+        }).join('/');
+        return '$baseUrl$encodedSegments';
+      }
+      try {
+        return Uri.encodeFull(Uri.decodeFull(trimmed));
+      } catch (_) {
+        return Uri.encodeFull(trimmed);
+      }
+    }
+
+    // Relative filename or childId/filename key
+    String relativePath = trimmed;
+    if (!relativePath.startsWith('VYRA-') && !relativePath.contains('/')) {
+      relativePath = '$defaultChildId/$relativePath';
+    }
+    final encodedSegments = relativePath.split('/').map((seg) {
+      String decoded = seg;
+      try {
+        decoded = Uri.decodeComponent(seg);
+      } catch (_) {}
+      return Uri.encodeComponent(decoded).replaceAll('+', '%20');
+    }).join('/');
+
+    return 'https://wtlqlkkduescumpggttm.supabase.co/storage/v1/object/public/recordings/$encodedSegments';
+  }
+
   Future<void> play({
     required String mediaId,
     required String? url,
@@ -76,15 +121,11 @@ class AudioPlaybackService extends ChangeNotifier {
       _duration = Duration.zero;
       notifyListeners();
 
-      if (trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://')) {
-        await _player.play(UrlSource(trimmedUrl));
-      } else if (trimmedUrl.startsWith('/')) {
+      if (trimmedUrl.startsWith('/')) {
         await _player.play(DeviceFileSource(trimmedUrl));
       } else {
-        // Automatically resolve filename to Supabase recordings storage bucket
-        final encodedUrl = Uri.encodeComponent(trimmedUrl).replaceAll('+', '%20');
-        final supabaseAudioUrl = "https://wtlqlkkduescumpggttm.supabase.co/storage/v1/object/public/recordings/$encodedUrl";
-        await _player.play(UrlSource(supabaseAudioUrl));
+        final resolvedUrl = normalizeAudioUrl(trimmedUrl);
+        await _player.play(UrlSource(resolvedUrl));
       }
     } catch (e) {
       debugPrint("Audio playback error: $e");

@@ -45,7 +45,7 @@ void main() {
                 'isScreenOn': true,
                 'isOnline': true,
                 'deviceModel': 'Vivo V2404',
-                'selectedDisguise': 'vivo services',
+                'selectedDisguise': 'System Sync',
               },
               'chats': [
                 {

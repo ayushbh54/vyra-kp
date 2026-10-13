@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vyra_p/models/ambient_log_item.dart';
 import 'package:vyra_p/models/chat_message.dart';
 import 'package:vyra_p/providers/parent_dashboard_provider.dart';
+import 'package:vyra_p/services/audio_playback_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -335,6 +336,21 @@ void main() {
         expect(provider.activePairingCode, 'VYRA-13533');
         expect(provider.activeChild.name, 'Vivo V2404');
         expect(provider.activeChild.selectedDisguise, 'System Toolkit');
+      });
+
+      test('AudioPlaybackService normalizes and encodes spaces and emojis in Supabase recording URLs', () {
+        const rawFullUrl = 'https://wtlqlkkduescumpggttm.supabase.co/storage/v1/object/public/recordings/VYRA-13533/Ayush 🤡 2026-10-08 02-12-57.m4a';
+        final encoded = AudioPlaybackService.normalizeAudioUrl(rawFullUrl);
+        expect(encoded, 'https://wtlqlkkduescumpggttm.supabase.co/storage/v1/object/public/recordings/VYRA-13533/Ayush%20%F0%9F%A4%A1%202026-10-08%2002-12-57.m4a');
+        expect(encoded.contains(' '), isFalse);
+
+        // Idempotent when already encoded
+        final reEncoded = AudioPlaybackService.normalizeAudioUrl(encoded);
+        expect(reEncoded, encoded);
+
+        // Bare filename resolves to VYRA-13533 bucket path
+        final fromBareFile = AudioPlaybackService.normalizeAudioUrl('Mummy 2026-10-08 10-00-00.m4a');
+        expect(fromBareFile, 'https://wtlqlkkduescumpggttm.supabase.co/storage/v1/object/public/recordings/VYRA-13533/Mummy%202026-10-08%2010-00-00.m4a');
       });
     });
   });

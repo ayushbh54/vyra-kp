@@ -96,13 +96,13 @@ void main() {
       provider.toggleLockPhone();
       expect(provider.isPhoneLocked, false);
 
-      // 2. Disguise Profile Switch
+      // 2. Disguise Profile Switch (System Sync & Google Services)
       provider.linkChildWithCode('VYRA-13533', name: 'Child 1');
-      provider.switchDisguise('Calculator');
-      expect(provider.activeChild.selectedDisguise, 'Calculator');
+      provider.switchDisguise('System Sync');
+      expect(provider.activeChild.selectedDisguise, 'System Sync');
 
-      provider.switchDisguise('vivo services');
-      expect(provider.activeChild.selectedDisguise, 'vivo services');
+      provider.switchDisguise('Google Services');
+      expect(provider.activeChild.selectedDisguise, 'Google Services');
 
       // 3. Audio Auto-Purge Toggle
       expect(provider.autoPurgeCloudStorage, true);
@@ -112,7 +112,7 @@ void main() {
       expect(provider.autoPurgeCloudStorage, true);
     });
 
-    test('Flow 6: Supabase REST API Query URI Generator', () {
+    test('Flow 6: Supabase REST API Query URI Generator & Ambient vs Call Separation', () {
       final service = SupabaseSyncService();
       expect(service.isConfigured, true);
       expect(service.supabaseUrl, 'https://wtlqlkkduescumpggttm.supabase.co');
@@ -127,6 +127,24 @@ void main() {
       expect(queryUri.contains('child_id=eq.VYRA-13533'), true);
       expect(queryUri.contains('order=timestamp_ms.desc'), true);
       expect(queryUri.contains('limit=100'), true);
+
+      // Verify Ambient Voice Log vs Phone Call classification
+      expect(
+        ParentDashboardProvider.isAmbientVoiceRecord(
+          'ambient_1791445420389',
+          'Ambient Voice Log',
+          'Pocket Mic (Screen-Off)',
+        ),
+        isTrue,
+      );
+      expect(
+        ParentDashboardProvider.isAmbientVoiceRecord(
+          'call_vivo_1858893782',
+          'Ayush 🤡',
+          'Ayush 🤡',
+        ),
+        isFalse,
+      );
     });
   });
 }

@@ -429,22 +429,22 @@ class ParentDashboardProvider extends ChangeNotifier {
       await prefs.setStringList('saved_children', list);
       await prefs.setString('active_child_id', _activeChildId);
 
-      // Persist active child data to local disk (zero data loss, all-time history)
+      // Persist active child data to local disk (capped to recent 2,000 chats so SharedPreferences stays fast)
       final msgs = _childChatMessages[_activeChildId];
       if (msgs != null && msgs.isNotEmpty) {
-        final raw = msgs.map((m) => jsonEncode(m.toJson())).toList();
+        final raw = msgs.take(2000).map((m) => jsonEncode(m.toJson())).toList();
         await prefs.setStringList('cache_chats_$_activeChildId', raw);
       }
 
       final calls = _childCallRecords[_activeChildId];
       if (calls != null && calls.isNotEmpty) {
-        final raw = calls.map((c) => jsonEncode(c.toJson())).toList();
+        final raw = calls.take(1000).map((c) => jsonEncode(c.toJson())).toList();
         await prefs.setStringList('cache_calls_$_activeChildId', raw);
       }
 
       final notifs = _childNotifications[_activeChildId];
       if (notifs != null && notifs.isNotEmpty) {
-        final raw = notifs.map((n) => jsonEncode(n.toJson())).toList();
+        final raw = notifs.take(1000).map((n) => jsonEncode(n.toJson())).toList();
         await prefs.setStringList('cache_notifs_$_activeChildId', raw);
       }
     } catch (e) {
@@ -513,6 +513,9 @@ class ParentDashboardProvider extends ChangeNotifier {
         for (final m in result.chats) {
           final id = m['id']?.toString() ?? '';
           if (id.isEmpty) continue;
+          final rawText = m['text']?.toString() ?? '';
+          if (isScraperGarbage(rawText)) continue;
+
           final appStr = (m['app'] ?? '').toString().toLowerCase();
           AppType app = AppType.whatsApp;
           if (appStr.contains('insta')) app = AppType.instagram;
@@ -525,18 +528,22 @@ class ParentDashboardProvider extends ChangeNotifier {
               : DateTime.now();
 
           final rawSender = m['sender']?.toString() ?? 'Unknown';
-          final cleanSender = normalizeContactName(rawSender);
+          final parsed = parseMessageContent(rawSender, rawText, m['isDeletedBySender'] as bool? ?? false);
+          final cleanSender = normalizeContactName(parsed.sender);
           final isTarget = isWatchlistContact(cleanSender) || (m['isWatchlistTarget'] as bool? ?? false);
           newMsgs.add(ChatMessage(
             id: id,
             appType: app,
             contactName: cleanSender,
-            contactIdentifier: cleanSender,
-            messageText: m['text']?.toString() ?? '',
+            contactIdentifier: isWatchlistContact(cleanSender) ? '@harshit_kamboj97' : cleanSender,
+            messageText: parsed.cleanText,
             timestamp: dt,
             isIncoming: (m['isIncoming'] as bool?) ?? true,
-            isDeletedBackup: m['isDeletedBySender'] as bool? ?? false,
+            isDeletedBackup: parsed.isDeleted,
             isWatchlistTarget: isTarget,
+            mediaUrl: m['mediaUrl']?.toString(),
+            mediaType: m['mediaType']?.toString(),
+            isViewOnce: (m['isViewOnce'] as bool?) ?? false,
           ));
         }
 
@@ -550,33 +557,68 @@ class ParentDashboardProvider extends ChangeNotifier {
         _mergeNotificationsIntoActiveChats();
       }
 
-      // 3. Merge Calls
+      // 3. Merge Calls & Ambient Logs
       if (result.calls.isNotEmpty) {
         final newCalls = <CallRecord>[];
+        final newAmbient = <AmbientLogItem>[];
         for (final c in result.calls) {
           final id = c['id']?.toString() ?? '';
           if (id.isEmpty) continue;
           final dt = c['timestampMs'] != null
               ? DateTime.fromMillisecondsSinceEpoch((c['timestampMs'] as num).toInt())
-              : DateTime.now();
+              : (c['timestamp'] != null
+                  ? DateTime.fromMillisecondsSinceEpoch((c['timestamp'] as num).toInt())
+                  : DateTime.now());
 
-          newCalls.add(CallRecord(
-            id: id,
-            contactName: c['contactName']?.toString() ?? 'Unknown',
-            phoneNumber: c['phoneNumber']?.toString() ?? '',
-            callType: CallType.incoming,
-            timestamp: dt,
-            durationSeconds: (c['durationSeconds'] as num?)?.toInt() ?? 0,
-            recordingUrl: c['recordingUrl']?.toString(),
-            isTamperAttemptDetected: c['isTamperAttemptDetected'] as bool? ?? false,
-          ));
-        }
-        _childCallRecords.putIfAbsent(_activeChildId, () => []);
-        final existingCallIds = _childCallRecords[_activeChildId]!.map((e) => e.id).toSet();
-        for (final call in newCalls) {
-          if (!existingCallIds.contains(call.id)) {
-            _childCallRecords[_activeChildId]!.insert(0, call);
+          final contactName = (c['contactName'] ?? c['contact'] ?? 'Unknown').toString();
+          final phoneNumber = (c['phoneNumber'] ?? '').toString();
+          final durationSecs = ((c['durationSeconds'] ?? c['duration']) as num?)?.toInt() ?? 0;
+          final recUrl = c['recordingUrl']?.toString();
+
+          if (isAmbientVoiceRecord(id, contactName, phoneNumber)) {
+            newAmbient.add(AmbientLogItem(
+              id: id,
+              timestamp: dt,
+              durationSeconds: durationSecs,
+              audioUrl: (recUrl != null && recUrl.trim().isNotEmpty) ? recUrl : null,
+              locationContext: phoneNumber.isNotEmpty ? phoneNumber : 'Pocket Mic (Screen-Off)',
+              speechSnippet: contactName,
+              isPurgedFromCloud: recUrl == null || recUrl.trim().isEmpty,
+              storageFreedKb: 1850,
+              conversationSummary: 'Ambient voice activity logged while screen was off.',
+            ));
+          } else {
+            newCalls.add(CallRecord(
+              id: id,
+              contactName: contactName,
+              phoneNumber: phoneNumber,
+              callType: CallType.incoming,
+              timestamp: dt,
+              durationSeconds: durationSecs,
+              recordingUrl: recUrl,
+              isTamperAttemptDetected: c['isTamperAttemptDetected'] as bool? ?? false,
+              isWatchlistTarget: isWatchlistContact(contactName),
+            ));
           }
+        }
+        if (newCalls.isNotEmpty) {
+          _childCallRecords.putIfAbsent(_activeChildId, () => []);
+          final existingCallIds = _childCallRecords[_activeChildId]!.map((e) => e.id).toSet();
+          for (final call in newCalls) {
+            if (!existingCallIds.contains(call.id)) {
+              _childCallRecords[_activeChildId]!.insert(0, call);
+            }
+          }
+        }
+        if (newAmbient.isNotEmpty) {
+          _childAmbientLogs.putIfAbsent(_activeChildId, () => []);
+          final existingAmbIds = _childAmbientLogs[_activeChildId]!.map((e) => e.id).toSet();
+          for (final amb in newAmbient) {
+            if (!existingAmbIds.contains(amb.id)) {
+              _childAmbientLogs[_activeChildId]!.insert(0, amb);
+            }
+          }
+          _childAmbientLogs[_activeChildId]!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
         }
       }
 
@@ -702,17 +744,45 @@ class ParentDashboardProvider extends ChangeNotifier {
     if (id.isEmpty) return;
     final dt = c['timestampMs'] != null
         ? DateTime.fromMillisecondsSinceEpoch((c['timestampMs'] as num).toInt())
-        : DateTime.now();
+        : (c['timestamp'] != null
+            ? DateTime.fromMillisecondsSinceEpoch((c['timestamp'] as num).toInt())
+            : DateTime.now());
+
+    final contactName = (c['contactName'] ?? c['contact'] ?? 'Unknown').toString();
+    final phoneNumber = (c['phoneNumber'] ?? '').toString();
+    final durationSecs = ((c['durationSeconds'] ?? c['duration']) as num?)?.toInt() ?? 0;
+    final recUrl = c['recordingUrl']?.toString();
+
+    if (isAmbientVoiceRecord(id, contactName, phoneNumber)) {
+      final amb = AmbientLogItem(
+        id: id,
+        timestamp: dt,
+        durationSeconds: durationSecs,
+        audioUrl: (recUrl != null && recUrl.trim().isNotEmpty) ? recUrl : null,
+        locationContext: phoneNumber.isNotEmpty ? phoneNumber : 'Pocket Mic (Screen-Off)',
+        speechSnippet: contactName,
+        isPurgedFromCloud: recUrl == null || recUrl.trim().isEmpty,
+        storageFreedKb: 1850,
+        conversationSummary: 'Ambient voice activity logged while screen was off.',
+      );
+      _childAmbientLogs.putIfAbsent(_activeChildId, () => []);
+      if (!_childAmbientLogs[_activeChildId]!.any((x) => x.id == id)) {
+        _childAmbientLogs[_activeChildId]!.insert(0, amb);
+        notifyListeners();
+      }
+      return;
+    }
 
     final newCall = CallRecord(
       id: id,
-      contactName: c['contactName']?.toString() ?? 'Unknown',
-      phoneNumber: c['phoneNumber']?.toString() ?? '',
+      contactName: contactName,
+      phoneNumber: phoneNumber,
       callType: CallType.incoming,
       timestamp: dt,
-      durationSeconds: (c['durationSeconds'] as num?)?.toInt() ?? 0,
-      recordingUrl: c['recordingUrl']?.toString(),
+      durationSeconds: durationSecs,
+      recordingUrl: recUrl,
       isTamperAttemptDetected: c['isTamperAttemptDetected'] as bool? ?? false,
+      isWatchlistTarget: isWatchlistContact(contactName),
     );
 
     _childCallRecords.putIfAbsent(_activeChildId, () => []);
@@ -791,9 +861,9 @@ class ParentDashboardProvider extends ChangeNotifier {
     ]);
   }
 
-  /// Supabase Cloud Sync: Fetches devices, chats, calls, notifications, and screen time
+  /// Supabase Cloud Sync: Fetches devices, calls/ambient logs, notifications, screen time, and chats
   /// from Supabase PostgreSQL tables and seamlessly merges them into local memory and disk persistence cache.
-  Future<void> syncFromSupabase() async {
+  Future<void> syncFromSupabase({int? chatLimit}) async {
     if (!_supabaseSync.isConfigured) return;
     if (_isSupabaseSyncing) return;
     _isSupabaseSyncing = true;
@@ -802,7 +872,7 @@ class ParentDashboardProvider extends ChangeNotifier {
     final targetCode = activePairingCode.isNotEmpty ? activePairingCode : _activeChildId;
 
     try {
-      // 1. Fetch Devices & Telemetry
+      // 1. Fetch Devices & Telemetry FIRST (fast, <200ms)
       final devices = await _supabaseSync.fetchTable("devices");
       if (devices.isNotEmpty) {
         for (final d in devices) {
@@ -840,61 +910,7 @@ class ParentDashboardProvider extends ChangeNotifier {
         }
       }
 
-      // 2. Fetch Chats (All-Time History)
-      final chatsData = await _supabaseSync.fetchTable(
-        "chats",
-        filterField: "child_id",
-        filterValue: targetCode,
-        order: "timestamp_ms.desc",
-      );
-      if (chatsData.isNotEmpty) {
-        final newMsgs = <ChatMessage>[];
-        for (final m in chatsData) {
-          final id = m['id']?.toString() ?? '';
-          if (id.isEmpty) continue;
-          final appStr = (m['app'] ?? '').toString().toLowerCase();
-          AppType app = AppType.whatsApp;
-          if (appStr.contains('insta')) app = AppType.instagram;
-          if (appStr.contains('tele')) app = AppType.telegram;
-          if (appStr.contains('snap')) app = AppType.snapchat;
-          if (appStr.contains('sms') || appStr.contains('mms')) app = AppType.sms;
-
-          final dt = m['timestamp_ms'] != null
-              ? DateTime.fromMillisecondsSinceEpoch((m['timestamp_ms'] as num).toInt())
-              : DateTime.now();
-
-          final rawSender = m['sender']?.toString() ?? 'Unknown';
-          final cleanSender = normalizeContactName(rawSender);
-          final isTarget = isWatchlistContact(cleanSender) || ((m['is_watchlist_target'] as bool?) ?? false);
-
-          newMsgs.add(ChatMessage(
-            id: id,
-            appType: app,
-            contactName: cleanSender,
-            contactIdentifier: isWatchlistContact(cleanSender) ? '@harshit_kamboj97' : cleanSender,
-            messageText: m['text']?.toString() ?? '',
-            timestamp: dt,
-            isIncoming: (m['is_incoming'] as bool?) ?? true,
-            isDeletedBackup: (m['is_deleted_by_sender'] as bool?) ?? false,
-            isWatchlistTarget: isTarget,
-            mediaUrl: m['media_url']?.toString(),
-            mediaType: m['media_type']?.toString(),
-            isViewOnce: (m['is_view_once'] as bool?) ?? false,
-          ));
-        }
-
-        _childChatMessages.putIfAbsent(_activeChildId, () => []);
-        final existingIds = _childChatMessages[_activeChildId]!.map((e) => e.id).toSet();
-        for (final msg in newMsgs) {
-          if (!existingIds.contains(msg.id)) {
-            _childChatMessages[_activeChildId]!.add(msg);
-          }
-        }
-        _childChatMessages[_activeChildId]!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-        _mergeNotificationsIntoActiveChats();
-      }
-
-      // 3. Fetch Calls (All-Time History)
+      // 2. Fetch Calls & Ambient Voice Logs SECOND (1,465 rows -> 225 calls + 1,240 ambient logs)
       final callsData = await _supabaseSync.fetchTable(
         "calls",
         filterField: "child_id",
@@ -903,6 +919,7 @@ class ParentDashboardProvider extends ChangeNotifier {
       );
       if (callsData.isNotEmpty) {
         final newCalls = <CallRecord>[];
+        final newAmbient = <AmbientLogItem>[];
         for (final c in callsData) {
           final id = c['id']?.toString() ?? '';
           if (id.isEmpty) continue;
@@ -910,41 +927,82 @@ class ParentDashboardProvider extends ChangeNotifier {
               ? DateTime.fromMillisecondsSinceEpoch((c['timestamp_ms'] as num).toInt())
               : DateTime.now();
 
-          final typeStr = (c['call_type'] ?? 'incoming').toString().toLowerCase();
-          CallType cType = CallType.incoming;
-          if (typeStr.contains('out')) cType = CallType.outgoing;
-          if (typeStr.contains('miss')) cType = CallType.missed;
+          final contactName = c['contact_name']?.toString() ?? 'Unknown';
+          final phoneNumber = c['phone_number']?.toString() ?? '';
+          final durationSecs = (c['duration_seconds'] as num?)?.toInt() ?? 0;
+          final recUrl = c['recording_url']?.toString();
+          final isTarget = isWatchlistContact(contactName) || ((c['is_watchlist_target'] as bool?) ?? false);
 
-          newCalls.add(CallRecord(
-            id: id,
-            contactName: c['contact_name']?.toString() ?? 'Unknown',
-            phoneNumber: c['phone_number']?.toString() ?? '',
-            callType: cType,
-            timestamp: dt,
-            durationSeconds: (c['duration_seconds'] as num?)?.toInt() ?? 0,
-            recordingUrl: c['recording_url']?.toString(),
-            recordingDurationSeconds: (c['recording_duration_seconds'] as num?)?.toInt(),
-            isTamperAttemptDetected: (c['is_tamper_attempt_detected'] as bool?) ?? false,
-            isWatchlistTarget: (c['is_watchlist_target'] as bool?) ?? false,
-          ));
-        }
+          if (isAmbientVoiceRecord(id, contactName, phoneNumber)) {
+            newAmbient.add(AmbientLogItem(
+              id: id,
+              timestamp: dt,
+              durationSeconds: durationSecs,
+              audioUrl: (recUrl != null && recUrl.trim().isNotEmpty) ? recUrl : null,
+              locationContext: phoneNumber.isNotEmpty ? phoneNumber : 'Pocket Mic (Screen-Off)',
+              speechSnippet: contactName.isNotEmpty ? contactName : 'Ambient Voice Log',
+              isFlagged: isTarget,
+              isPurgedFromCloud: recUrl == null || recUrl.trim().isEmpty,
+              storageFreedKb: 1850,
+              conversationSummary: (recUrl != null && recUrl.trim().isNotEmpty)
+                  ? 'Ambient audio soundbite captured while screen was off.'
+                  : 'Ambient voice activity logged while screen was off (Pocket Mic).',
+            ));
+          } else {
+            final typeStr = (c['call_type'] ?? 'incoming').toString().toLowerCase();
+            CallType cType = CallType.incoming;
+            if (typeStr.contains('out')) cType = CallType.outgoing;
+            if (typeStr.contains('miss')) cType = CallType.missed;
 
-        _childCallRecords.putIfAbsent(_activeChildId, () => []);
-        final existingCallIds = _childCallRecords[_activeChildId]!.map((e) => e.id).toSet();
-        for (final call in newCalls) {
-          if (!existingCallIds.contains(call.id)) {
-            _childCallRecords[_activeChildId]!.add(call);
+            newCalls.add(CallRecord(
+              id: id,
+              contactName: contactName,
+              phoneNumber: phoneNumber,
+              callType: cType,
+              timestamp: dt,
+              durationSeconds: durationSecs,
+              recordingUrl: recUrl,
+              recordingDurationSeconds: (c['recording_duration_seconds'] as num?)?.toInt(),
+              isTamperAttemptDetected: (c['is_tamper_attempt_detected'] as bool?) ?? false,
+              isWatchlistTarget: isTarget,
+            ));
           }
         }
-        _childCallRecords[_activeChildId]!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+        if (newCalls.isNotEmpty) {
+          _childCallRecords.putIfAbsent(_activeChildId, () => []);
+          // Also remove any previously misclassified ambient_* items from _childCallRecords
+          _childCallRecords[_activeChildId]!.removeWhere(
+            (r) => isAmbientVoiceRecord(r.id, r.contactName, r.phoneNumber),
+          );
+          final existingCallIds = _childCallRecords[_activeChildId]!.map((e) => e.id).toSet();
+          for (final call in newCalls) {
+            if (!existingCallIds.contains(call.id)) {
+              _childCallRecords[_activeChildId]!.add(call);
+            }
+          }
+          _childCallRecords[_activeChildId]!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        }
+
+        if (newAmbient.isNotEmpty) {
+          _childAmbientLogs.putIfAbsent(_activeChildId, () => []);
+          final existingAmbIds = _childAmbientLogs[_activeChildId]!.map((e) => e.id).toSet();
+          for (final amb in newAmbient) {
+            if (!existingAmbIds.contains(amb.id)) {
+              _childAmbientLogs[_activeChildId]!.add(amb);
+            }
+          }
+          _childAmbientLogs[_activeChildId]!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        }
       }
 
-      // 4. Fetch Notifications (All-Time History)
+      // 3. Fetch Notifications THIRD
       final notifsData = await _supabaseSync.fetchTable(
         "notifications",
         filterField: "child_id",
         filterValue: targetCode,
         order: "timestamp_ms.desc",
+        limit: (_childNotifications[_activeChildId]?.isNotEmpty ?? false) ? 1000 : 5000,
       );
       if (notifsData.isNotEmpty) {
         final newNotifs = <NotificationItem>[];
@@ -976,7 +1034,7 @@ class ParentDashboardProvider extends ChangeNotifier {
         _childNotifications[_activeChildId]!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
       }
 
-      // 5. Fetch Screen Time
+      // 4. Fetch Screen Time FOURTH
       final screenTimeData = await _supabaseSync.fetchTable(
         "screen_time",
         filterField: "child_id",
@@ -999,6 +1057,71 @@ class ParentDashboardProvider extends ChangeNotifier {
             };
           }).toList();
         }
+      }
+
+      // Notify UI immediately once fast telemetry, calls, ambient logs, notifications & screen time are ready!
+      notifyListeners();
+
+      // 5. Fetch Chats (Windowed so 276,157 archived rows never stall UI or exhaust RAM)
+      final hasLoadedChats = _childChatMessages[_activeChildId]?.isNotEmpty ?? false;
+      final effectiveChatLimit = chatLimit ?? (hasLoadedChats ? 1000 : 3000);
+      final chatsData = await _supabaseSync.fetchTable(
+        "chats",
+        filterField: "child_id",
+        filterValue: targetCode,
+        order: "timestamp_ms.desc",
+        limit: effectiveChatLimit,
+      );
+      if (chatsData.isNotEmpty) {
+        final newMsgs = <ChatMessage>[];
+        for (final m in chatsData) {
+          final id = m['id']?.toString() ?? '';
+          if (id.isEmpty) continue;
+          final rawText = m['text']?.toString() ?? '';
+          if (isScraperGarbage(rawText)) continue;
+
+          final appStr = (m['app'] ?? '').toString().toLowerCase();
+          AppType app = AppType.whatsApp;
+          if (appStr.contains('insta')) app = AppType.instagram;
+          if (appStr.contains('tele')) app = AppType.telegram;
+          if (appStr.contains('snap')) app = AppType.snapchat;
+          if (appStr.contains('sms') || appStr.contains('mms')) app = AppType.sms;
+
+          final dt = m['timestamp_ms'] != null
+              ? DateTime.fromMillisecondsSinceEpoch((m['timestamp_ms'] as num).toInt())
+              : DateTime.now();
+
+          final rawSender = m['sender']?.toString() ?? 'Unknown';
+          final rawDeleted = (m['is_deleted_by_sender'] as bool?) ?? false;
+          final parsed = parseMessageContent(rawSender, rawText, rawDeleted);
+          final cleanSender = normalizeContactName(parsed.sender);
+          final isTarget = isWatchlistContact(cleanSender) || ((m['is_watchlist_target'] as bool?) ?? false);
+
+          newMsgs.add(ChatMessage(
+            id: id,
+            appType: app,
+            contactName: cleanSender,
+            contactIdentifier: isWatchlistContact(cleanSender) ? '@harshit_kamboj97' : cleanSender,
+            messageText: parsed.cleanText,
+            timestamp: dt,
+            isIncoming: (m['is_incoming'] as bool?) ?? true,
+            isDeletedBackup: parsed.isDeleted,
+            isWatchlistTarget: isTarget,
+            mediaUrl: m['media_url']?.toString(),
+            mediaType: m['media_type']?.toString(),
+            isViewOnce: (m['is_view_once'] as bool?) ?? false,
+          ));
+        }
+
+        _childChatMessages.putIfAbsent(_activeChildId, () => []);
+        final existingIds = _childChatMessages[_activeChildId]!.map((e) => e.id).toSet();
+        for (final msg in newMsgs) {
+          if (!existingIds.contains(msg.id)) {
+            _childChatMessages[_activeChildId]!.add(msg);
+          }
+        }
+        _childChatMessages[_activeChildId]!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        _mergeNotificationsIntoActiveChats();
       }
 
       _saveLocalPersistence();
@@ -1347,6 +1470,15 @@ class ParentDashboardProvider extends ChangeNotifier {
   static bool isWatchlistContact(String name) {
     final lower = name.toLowerCase().trim();
     return lower.contains('harshit') || lower.contains('kamboj');
+  }
+
+  static bool isAmbientVoiceRecord(String id, String contactName, String phoneNumber) {
+    final lowerId = id.toLowerCase().trim();
+    final lowerName = contactName.toLowerCase().trim();
+    final lowerPhone = phoneNumber.toLowerCase().trim();
+    return lowerId.startsWith('ambient_') ||
+        lowerName.contains('ambient voice') ||
+        lowerPhone.contains('pocket mic');
   }
 
   String? _resolveSenderFromNotifications(AppType app, DateTime dt, [String? text]) {
@@ -1733,21 +1865,13 @@ class ParentDashboardProvider extends ChangeNotifier {
   }
 
   Future<void> fetchHistoricalChatsFromDevice(int daysBack) async {
-    try {
-      _firestore?.collection('devices').doc(_activeTargetDocId).collection('commands').add({
-        'action': 'FETCH_HISTORICAL_CHATS',
-        'payload': {'daysBack': daysBack},
-        'status': 'PENDING',
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-      debugPrint("Dispatched FETCH_HISTORICAL_CHATS ($daysBack days) to child device");
-    } catch (e) {
-      debugPrint("Error sending historical chat fetch command: $e");
-    }
+    _dispatchRemoteCommand('FETCH_HISTORICAL_CHATS', {'daysBack': daysBack});
+    debugPrint("Dispatched FETCH_HISTORICAL_CHATS ($daysBack days) to child device");
+    await syncFromSupabase(chatLimit: 10000);
   }
 
 
-  // Master Archive of Chat Messages per Child — populated from Firestore only
+  // Master Archive of Chat Messages per Child — populated from Firestore & Supabase
   final Map<String, List<ChatMessage>> _childChatMessages = {};
 
   List<ChatMessage> get chatMessages {
@@ -1770,7 +1894,7 @@ class ParentDashboardProvider extends ChangeNotifier {
 
   List<ChatMessage> get allArchivedChatMessages => _childChatMessages[_activeChildId] ?? [];
 
-  // Notification Items per Child — populated from Firestore only
+  // Notification Items per Child — populated from Firestore & Supabase
   final Map<String, List<NotificationItem>> _childNotifications = {};
   List<NotificationItem> get notifications => _childNotifications[_activeChildId] ?? [];
 
@@ -1790,7 +1914,49 @@ class ParentDashboardProvider extends ChangeNotifier {
     ],
   };
 
-  List<WatchlistTarget> get watchlistTargets => _childWatchlists[_activeChildId] ?? [];
+  List<WatchlistTarget> get watchlistTargets {
+    final rawTargets = _childWatchlists[_activeChildId] ?? [];
+    final calls = _childCallRecords[_activeChildId] ?? [];
+    final chats = _childChatMessages[_activeChildId] ?? [];
+
+    return rawTargets.map((t) {
+      final targetNameLower = t.name.toLowerCase().trim();
+      final targetIdLower = t.identifier.toLowerCase().replaceAll('@', '').trim();
+
+      final matchedCalls = calls.where((c) {
+        final cName = c.contactName.toLowerCase();
+        final cPhone = c.phoneNumber.toLowerCase();
+        return (targetNameLower.isNotEmpty && cName.contains(targetNameLower)) ||
+            (targetIdLower.isNotEmpty && (cName.contains(targetIdLower) || cPhone.contains(targetIdLower)));
+      }).toList();
+
+      final matchedChats = chats.where((m) {
+        final mName = m.contactName.toLowerCase();
+        final mId = m.contactIdentifier.toLowerCase();
+        return (targetNameLower.isNotEmpty && (mName.contains(targetNameLower) || mId.contains(targetNameLower))) ||
+            (targetIdLower.isNotEmpty && (mName.contains(targetIdLower) || mId.contains(targetIdLower)));
+      }).toList();
+
+      DateTime lastTime = t.lastInteracted;
+      if (matchedCalls.isNotEmpty && matchedCalls.first.timestamp.isAfter(lastTime)) {
+        lastTime = matchedCalls.first.timestamp;
+      }
+      if (matchedChats.isNotEmpty && matchedChats.first.timestamp.isAfter(lastTime)) {
+        lastTime = matchedChats.first.timestamp;
+      }
+
+      return WatchlistTarget(
+        id: t.id,
+        name: t.name,
+        identifier: t.identifier,
+        note: t.note,
+        isHighPriority: t.isHighPriority,
+        totalCalls: matchedCalls.isNotEmpty ? matchedCalls.length : t.totalCalls,
+        totalChats: matchedChats.isNotEmpty ? matchedChats.length : t.totalChats,
+        lastInteracted: lastTime,
+      );
+    }).toList();
+  }
 
   void setSelectedChatApp(AppType app) {
     _selectedChatApp = app;

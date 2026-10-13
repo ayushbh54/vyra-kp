@@ -120,13 +120,17 @@ class AudioPlayerCard extends StatelessWidget {
           const Divider(color: Color(0xFF334155), height: 1),
           const SizedBox(height: 12),
 
-          // Row 2: Audio Player Bar
-          Builder(
-            builder: (context) {
+          // Row 2: Audio Player Bar (Reactive via ListenableBuilder)
+          ListenableBuilder(
+            listenable: AudioPlaybackService.instance,
+            builder: (context, _) {
               final hasRecording = record.recordingUrl != null && record.recordingUrl!.trim().isNotEmpty;
               final audioService = AudioPlaybackService.instance;
               final isCurrentTrack = audioService.currentMediaId == record.id;
-              final currentPos = (isCurrentTrack && isPlaying) ? audioService.position : Duration.zero;
+              final activePlaying = isCurrentTrack ? audioService.isPlaying : isPlaying;
+              final currentPos = (isCurrentTrack && (activePlaying || audioService.position > Duration.zero))
+                  ? audioService.position
+                  : Duration.zero;
               final totalDur = (isCurrentTrack && audioService.duration > Duration.zero)
                   ? audioService.duration
                   : Duration(seconds: record.durationSeconds);
@@ -151,7 +155,7 @@ class AudioPlayerCard extends StatelessWidget {
                         icon: Icon(
                           !hasRecording
                               ? Icons.mic_off_outlined
-                              : (isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill),
+                              : (activePlaying ? Icons.pause_circle_filled : Icons.play_circle_fill),
                           color: !hasRecording
                               ? const Color(0xFF64748B)
                               : const Color(0xFF00E676),
@@ -166,7 +170,7 @@ class AudioPlayerCard extends StatelessWidget {
                             ClipRRect(
                               borderRadius: BorderRadius.circular(4),
                               child: LinearProgressIndicator(
-                                value: isPlaying ? progress : 0.0,
+                                value: isCurrentTrack ? progress : 0.0,
                                 backgroundColor: const Color(0xFF334155),
                                 valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF00E676)),
                                 minHeight: 6,
@@ -177,7 +181,7 @@ class AudioPlayerCard extends StatelessWidget {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  isPlaying ? formatD(currentPos) : '00:00',
+                                  isCurrentTrack ? formatD(currentPos) : '00:00',
                                   style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
                                 ),
                                 Text(
