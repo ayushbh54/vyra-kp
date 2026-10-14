@@ -51,19 +51,28 @@ def get_refreshed_firebase_token():
         "-d", post_data,
         "https://oauth2.googleapis.com/token"
     ]
-    try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
-        res_json = json.loads(res.stdout)
-        if "access_token" in res_json:
-            new_access_token = res_json["access_token"]
-            cfg["tokens"]["access_token"] = new_access_token
-            cfg["tokens"]["expires_at"] = int(time.time() * 1000) + (res_json.get("expires_in", 3600) * 1000)
-            with open(config_path, "w", encoding="utf-8") as f_out:
-                json.dump(cfg, f_out, indent=2)
-            print("[+] OAuth access token successfully refreshed.")
-            return new_access_token
-    except Exception as e:
-        print(f"[-] Could not refresh token via OAuth endpoint: {e}")
+    for attempt in range(1, 4):
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
+            if not res.stdout or not res.stdout.strip():
+                time.sleep(2)
+                continue
+            res_json = json.loads(res.stdout)
+            if "access_token" in res_json:
+                new_access_token = res_json["access_token"]
+                cfg["tokens"]["access_token"] = new_access_token
+                cfg["tokens"]["expires_at"] = int(time.time() * 1000) + (res_json.get("expires_in", 3600) * 1000)
+                try:
+                    with open(config_path, "w", encoding="utf-8") as f_out:
+                        json.dump(cfg, f_out, indent=2)
+                except Exception:
+                    pass
+                print("[+] OAuth access token successfully refreshed.")
+                return new_access_token
+        except Exception as e:
+            if attempt == 3:
+                print(f"[-] Could not refresh token via OAuth endpoint: {e}")
+            time.sleep(2)
 
     return tokens.get("access_token")
 
@@ -190,10 +199,10 @@ def upsert_supabase_batch(table, rows):
                 url
             ]
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=45)
-            if "HTTP/2 201" in res.stdout or "HTTP/2 200" in res.stdout or "HTTP/1.1 201" in res.stdout or "HTTP/1.1 200" in res.stdout:
+            if re.search(r"HTTP/\S+\s+(200|201|204)", res.stdout):
                 return True
             else:
-                print(f"\n[!] Supabase upsert failed on {table} (attempt {attempt}/3): {res.stdout[:150]}")
+                print(f"\n[!] Supabase upsert note on {table} (attempt {attempt}/3): {res.stdout[:120]}")
                 time.sleep(2)
         except Exception as e:
             print(f"\n[!] Supabase error on {table}: {e}")

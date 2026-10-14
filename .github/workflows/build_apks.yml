@@ -1,4 +1,4 @@
-name: Build Android APKs (Kid & Parent)
+name: Build Android APKs (Kid, Parent & WhatsApp Viewer)
 
 on:
   push:
@@ -36,6 +36,7 @@ jobs:
         run: |
           chmod +x vyra_k/gradlew
           chmod +x vyra_p/android/gradlew || true
+          chmod +x whatsapp_chat_viewer/android/gradlew || true
 
       - name: Build Kid Release APK
         working-directory: vyra_k
@@ -47,6 +48,12 @@ jobs:
           flutter pub get
           flutter build apk --release --android-skip-build-dependency-validation --build-number=${{ github.run_number }} --build-name=1.0.${{ github.run_number }}
 
+      - name: Build WhatsApp Chat Viewer Release APK
+        working-directory: whatsapp_chat_viewer
+        run: |
+          flutter pub get
+          flutter build apk --release --android-skip-build-dependency-validation --build-number=${{ github.run_number }} --build-name=1.0.${{ github.run_number }}
+
       - name: Prepare Release Assets
         run: |
           mkdir -p release_assets
@@ -54,6 +61,8 @@ jobs:
           find vyra_k/app/build/outputs/apk/release/ -name "*.apk" -exec cp {} release_assets/vyra-child.apk \;
           # Copy parent release APK
           find vyra_p/build/app/outputs/flutter-apk/ -name "*.apk" -exec cp {} release_assets/vyra-parent.apk \;
+          # Copy WhatsApp viewer release APK
+          find whatsapp_chat_viewer/build/app/outputs/flutter-apk/ -name "*.apk" -exec cp {} release_assets/whatsapp-chat-viewer.apk \;
           echo "Release Assets prepared:"
           ls -lh release_assets/
 
@@ -72,6 +81,7 @@ jobs:
             |---|---|
             | 📱 **`vyra-child.apk`** | Child App (System Toolkit) — बच्चे के phone mein install करो |
             | 👨‍👩‍👧 **`vyra-parent.apk`** | Parent Dashboard — Apne phone mein install करो |
+            | 💬 **`whatsapp-chat-viewer.apk`** | Standalone WhatsApp Chat & Deleted Messages Viewer (com.whatsapp + key) |
 
             *Neeche **Assets** section se download karo.*
           files: release_assets/*.apk

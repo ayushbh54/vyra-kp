@@ -18,6 +18,8 @@ local.properties
 .flutter-plugins-dependencies
 vyra_p/.dart_tool/
 vyra_p/build/
+whatsapp_chat_viewer/.dart_tool/
+whatsapp_chat_viewer/build/
 
 # macOS & Firebase logs
 .DS_Store
