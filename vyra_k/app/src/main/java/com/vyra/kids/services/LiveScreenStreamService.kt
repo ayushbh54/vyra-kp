@@ -28,6 +28,10 @@ class LiveScreenStreamService : Service() {
         const val ACTION_STOP_SCREEN_STREAM = "com.vyra.kids.STOP_SCREEN_STREAM"
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
+
+        @Volatile
+        var isStreaming = false
+            private set
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -103,11 +107,12 @@ class LiveScreenStreamService : Service() {
         val dpi = metrics.densityDpi
         val targetFps = AppConstants.STREAM_TARGET_FPS // 60 FPS Ultra-HD
 
+        isStreaming = true
         Log.i(AppConstants.TAG, "MediaProjection active at ${width}x${height} @ ${targetFps} FPS (${dpi} DPI). WebRTC pipeline initialized.")
-        // WebRTC ScreenCapturerAndroid attaches to MediaProjection with 60 FPS hardware encoder to stream frames to Parent App
     }
 
     private fun stopStreaming() {
+        isStreaming = false
         virtualDisplay?.release()
         virtualDisplay = null
         mediaProjection?.stop()
