@@ -30,11 +30,25 @@ class LanSyncService {
   String? _lastDiscoveredIp;
   String? get lastDiscoveredIp => _lastDiscoveredIp;
 
-  /// Discover the child device on the same Wi-Fi using UDP broadcast
+  /// Discover the child device on the same Wi-Fi using UDP broadcast + Subnet Ping Fallback
   Future<String?> discoverChildIp({
     required String pairingCode,
-    Duration timeout = const Duration(seconds: 3),
+    String? knownIp,
+    Duration timeout = const Duration(seconds: 4),
   }) async {
+    // 1. Direct Ping on Known / Cached IP first (fastest, <200ms)
+    final candidateIps = <String>{
+      if (knownIp != null && knownIp.trim().isNotEmpty) knownIp.trim(),
+      if (_lastDiscoveredIp != null && _lastDiscoveredIp!.trim().isNotEmpty) _lastDiscoveredIp!.trim(),
+    };
+
+    for (final ip in candidateIps) {
+      if (await pingIp(ip)) {
+        _lastDiscoveredIp = ip;
+        return ip;
+      }
+    }
+
     RawDatagramSocket? socket;
     final completer = Completer<String?>();
 
@@ -67,16 +81,19 @@ class LanSyncService {
       // Send 3 discovery pulses
       for (int i = 0; i < 3; i++) {
         socket.send(message, broadcastAddr, udpDiscoveryPort);
-        await Future.delayed(const Duration(milliseconds: 300));
+        await Future.delayed(const Duration(milliseconds: 250));
       }
 
-      // If cached IP exists, try a direct HTTP ping
-      if (_lastDiscoveredIp != null && !completer.isCompleted) {
-        final ok = await pingIp(_lastDiscoveredIp!);
-        if (ok && !completer.isCompleted) {
-          completer.complete(_lastDiscoveredIp);
+      // If UDP didn't find within 1.2s, launch parallel Subnet Scan
+      Future.delayed(const Duration(milliseconds: 1200), () async {
+        if (!completer.isCompleted) {
+          final subnetIp = await scanLocalSubnet(pairingCode);
+          if (subnetIp != null && !completer.isCompleted) {
+            _lastDiscoveredIp = subnetIp;
+            completer.complete(subnetIp);
+          }
         }
-      }
+      });
 
       Future.delayed(timeout, () {
         if (!completer.isCompleted) {
@@ -94,14 +111,61 @@ class LanSyncService {
     }
   }
 
-  /// Ping child device on port 8899 to verify it's reachable on LAN
-  Future<bool> pingIp(String ip) async {
+  /// Scans local Wi-Fi subnet (/24) concurrently on port 8899 to find child when UDP is blocked by router
+  Future<String?> scanLocalSubnet(String pairingCode) async {
     try {
-      final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+        includeLoopback: false,
+      );
+
+      for (final intf in interfaces) {
+        for (final addr in intf.addresses) {
+          final ipStr = addr.address;
+          if (ipStr.startsWith("127.") || ipStr.startsWith("169.254.")) continue;
+
+          final parts = ipStr.split('.');
+          if (parts.length != 4) continue;
+          final subnetPrefix = "${parts[0]}.${parts[1]}.${parts[2]}.";
+
+          // Generate candidate IPs (1 to 254)
+          final candidates = List.generate(254, (i) => "$subnetPrefix${i + 1}");
+
+          // Ping in parallel batches of 30 for low latency without socket exhaustion
+          const batchSize = 30;
+          for (int i = 0; i < candidates.length; i += batchSize) {
+            final batch = candidates.sublist(
+              i,
+              (i + batchSize > candidates.length) ? candidates.length : (i + batchSize),
+            );
+
+            final results = await Future.wait(batch.map((ip) async {
+              final ok = await pingIp(ip, timeoutMs: 350);
+              return ok ? ip : null;
+            }));
+
+            final found = results.firstWhere((ip) => ip != null, orElse: () => null);
+            if (found != null) {
+              return found;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Subnet scan error: $e");
+    }
+    return null;
+  }
+
+  /// Ping child device on port 8899 to verify it's reachable on LAN
+  Future<bool> pingIp(String ip, {int timeoutMs = 1500}) async {
+    try {
+      final client = HttpClient()..connectionTimeout = Duration(milliseconds: timeoutMs);
       final request = await client.getUrl(Uri.parse("http://$ip:$httpPort/api/ping"));
-      final response = await request.close().timeout(const Duration(seconds: 2));
+      final response = await request.close().timeout(Duration(milliseconds: timeoutMs));
+      final isOk = response.statusCode == 200;
       client.close();
-      return response.statusCode == 200;
+      return isOk;
     } catch (_) {
       return false;
     }

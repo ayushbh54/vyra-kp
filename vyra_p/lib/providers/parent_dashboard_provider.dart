@@ -777,12 +777,12 @@ class ParentDashboardProvider extends ChangeNotifier {
       }
 
       // 3. Fetch Notifications THIRD
+      // 3. Fetch Notifications THIRD (All historical notifications without artificial limit)
       final notifsData = await _supabaseSync.fetchTable(
         "notifications",
         filterField: "child_id",
         filterValue: targetCode,
         order: "timestamp_ms.desc",
-        limit: (_childNotifications[_activeChildId]?.isNotEmpty ?? false) ? 1000 : 5000,
       );
       if (notifsData.isNotEmpty) {
         final newNotifs = <NotificationItem>[];
@@ -842,22 +842,19 @@ class ParentDashboardProvider extends ChangeNotifier {
       // Notify UI immediately once fast telemetry, calls, ambient logs, notifications & screen time are ready!
       notifyListeners();
 
-      // 5. Fetch Chats (Windowed so 276,157 archived rows never stall UI or exhaust RAM,
-      //    plus per-app queries so heavy WhatsApp group traffic never starves Instagram/Snapchat/SMS/1-View tabs)
+      // 5. Fetch Chats without artificial 1000/2000 capping so All Time chats load completely
       final currentChats = _childChatMessages[_activeChildId] ?? [];
-      final hasLoadedChats = currentChats.isNotEmpty;
       final hasMultiAppCoverage = currentChats.any((m) => m.appType == AppType.instagram) &&
           currentChats.any((m) => m.appType == AppType.snapchat) &&
           currentChats.any((m) => m.appType == AppType.sms);
 
-      final effectiveChatLimit = chatLimit ?? (hasLoadedChats ? 1000 : 2000);
       final chatQueries = <Future<List<Map<String, dynamic>>>>[
         _supabaseSync.fetchTable(
           "chats",
           filterField: "child_id",
           filterValue: targetCode,
           order: "timestamp_ms.desc",
-          limit: effectiveChatLimit,
+          limit: chatLimit,
         ),
       ];
 
@@ -869,7 +866,7 @@ class ParentDashboardProvider extends ChangeNotifier {
             filterValue: targetCode,
             extraFilters: const {'app': 'Instagram'},
             order: "timestamp_ms.desc",
-            limit: 300,
+            limit: chatLimit,
           ),
           _supabaseSync.fetchTable(
             "chats",
@@ -877,7 +874,7 @@ class ParentDashboardProvider extends ChangeNotifier {
             filterValue: targetCode,
             extraFilters: const {'app': 'Snapchat'},
             order: "timestamp_ms.desc",
-            limit: 300,
+            limit: chatLimit,
           ),
           _supabaseSync.fetchTable(
             "chats",
@@ -885,7 +882,7 @@ class ParentDashboardProvider extends ChangeNotifier {
             filterValue: targetCode,
             extraFilters: const {'app': 'SMS'},
             order: "timestamp_ms.desc",
-            limit: 300,
+            limit: chatLimit,
           ),
           _supabaseSync.fetchTable(
             "chats",
@@ -893,7 +890,7 @@ class ParentDashboardProvider extends ChangeNotifier {
             filterValue: targetCode,
             extraFilters: const {'is_view_once': 'true'},
             order: "timestamp_ms.desc",
-            limit: 200,
+            limit: chatLimit,
           ),
         ]);
       }
@@ -1690,7 +1687,7 @@ class ParentDashboardProvider extends ChangeNotifier {
   Future<void> fetchHistoricalChatsFromDevice(int daysBack) async {
     _dispatchRemoteCommand('FETCH_HISTORICAL_CHATS', {'daysBack': daysBack});
     debugPrint("Dispatched FETCH_HISTORICAL_CHATS ($daysBack days) to child device");
-    await syncFromSupabase(chatLimit: 10000);
+    await syncFromSupabase();
   }
 
 

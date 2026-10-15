@@ -499,6 +499,113 @@ class _ChatsScreenState extends State<ChatsScreen> {
     );
   }
 
+  void _openFullScreenPhotoViewer(
+    BuildContext context,
+    String imageUrl, {
+    String? title,
+    String? subtitle,
+    String? ocrText,
+  }) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.95),
+      builder: (ctx) => Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          backgroundColor: Colors.black.withValues(alpha: 0.7),
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.close, color: Colors.white, size: 24),
+            onPressed: () => Navigator.pop(ctx),
+          ),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title ?? 'Captured Snap / Screenshot',
+                style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+              ),
+              if (subtitle != null)
+                Text(
+                  subtitle,
+                  style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                ),
+            ],
+          ),
+        ),
+        body: SafeArea(
+          child: Column(
+            children: [
+              Expanded(
+                child: Center(
+                  child: InteractiveViewer(
+                    minScale: 0.5,
+                    maxScale: 5.0,
+                    child: Image.network(
+                      imageUrl,
+                      fit: BoxFit.contain,
+                      loadingBuilder: (context, child, progress) {
+                        if (progress == null) return child;
+                        return const Center(
+                          child: CircularProgressIndicator(color: Color(0xFF38BDF8)),
+                        );
+                      },
+                      errorBuilder: (_, __, ___) => const Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.broken_image, color: Colors.white60, size: 48),
+                            SizedBox(height: 12),
+                            Text(
+                              'Media expired or unavailable in cloud vault',
+                              style: TextStyle(color: Colors.white70, fontSize: 13),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (ocrText != null && ocrText.isNotEmpty && !ocrText.startsWith('📷'))
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF0F172A),
+                    border: Border(top: BorderSide(color: Color(0xFF334155))),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.text_snippet_outlined, color: Color(0xFF38BDF8), size: 14),
+                          SizedBox(width: 6),
+                          Text(
+                            'Captured Text (OCR)',
+                            style: TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        ocrText,
+                        style: const TextStyle(color: Colors.white70, fontSize: 13),
+                        maxLines: 4,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _show1ViewVaultGallery(BuildContext context, List<ChatMessage> snaps) {
     showModalBottomSheet(
       context: context,
@@ -610,20 +717,56 @@ class _ChatsScreenState extends State<ChatsScreen> {
                         ),
                         const SizedBox(height: 10),
                         if (snap.mediaUrl != null && snap.mediaUrl!.isNotEmpty)
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.network(
+                          GestureDetector(
+                            onTap: () => _openFullScreenPhotoViewer(
+                              context,
                               snap.mediaUrl!,
-                              height: 220,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(
-                                height: 120,
-                                color: const Color(0xFF0F172A),
-                                child: const Center(
-                                  child: Icon(Icons.broken_image, color: Color(0xFF64748B), size: 36),
+                              title: snap.contactName,
+                              subtitle: DateFormat('hh:mm a • dd MMM yyyy').format(snap.timestamp),
+                              ocrText: snap.messageText,
+                            ),
+                            child: Stack(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Image.network(
+                                    snap.mediaUrl!,
+                                    height: 220,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => Container(
+                                      height: 120,
+                                      color: const Color(0xFF0F172A),
+                                      child: const Center(
+                                        child: Icon(Icons.broken_image, color: Color(0xFF64748B), size: 36),
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                              ),
+                                Positioned(
+                                  right: 8,
+                                  bottom: 8,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(alpha: 0.75),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: Colors.white24, width: 0.8),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.zoom_in_rounded, color: Color(0xFF38BDF8), size: 14),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'Tap to expand',
+                                          style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           )
                         else

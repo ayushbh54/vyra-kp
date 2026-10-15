@@ -33,9 +33,15 @@ class WhatsAppCryptService {
     return true;
   }
 
-  /// Convert 64-character hex string into 32-byte key
+  /// Convert 64-character hex string into 32-byte key.
+  /// If user pasted the hex dump of a 156/158-byte key file (>124 hex chars),
+  /// extracts the 32-byte AES key from offset 30..62 (hex chars 60..124).
   static Uint8List parseHexKey(String hexString) {
-    final cleaned = hexString.replaceAll(RegExp(r'[^0-9a-fA-F]'), '');
+    String cleaned = hexString.replaceAll(RegExp(r'[^0-9a-fA-F]'), '');
+    if (cleaned.length >= 124) {
+      // Hex dump of key file. Offset 30 bytes = hex char 60, length 32 bytes = 64 hex chars
+      cleaned = cleaned.substring(60, 124);
+    }
     if (cleaned.length != 64) {
       throw FormatException(
         'Key must be exactly 64 hexadecimal characters (32 bytes). Found ${cleaned.length} chars.',
@@ -49,17 +55,19 @@ class WhatsAppCryptService {
     return bytes;
   }
 
-  /// Extract root key from 158-byte WhatsApp key file (from /data/data/com.whatsapp/files/key)
+  /// Extract root key from WhatsApp local key file (from /data/data/com.whatsapp/files/key)
+  /// Supports 32-byte raw keys, and 156/158/160-byte standard WhatsApp key files.
   static Uint8List parseKeyFile(Uint8List fileBytes) {
     if (fileBytes.length == 32) {
       return fileBytes; // Raw 32-byte key
     }
-    if (fileBytes.length >= 158) {
-      // Offset 30 to 62 contains the 32-byte AES key
+    if (fileBytes.length >= 62) {
+      // In standard WhatsApp key files (156 bytes, 158 bytes, etc.),
+      // offset 30 to 62 contains the 32-byte AES key
       return fileBytes.sublist(30, 62);
     }
     throw FormatException(
-      'Unsupported key file size: ${fileBytes.length} bytes. Expected 32 bytes or 158 bytes.',
+      'Unsupported key file size: ${fileBytes.length} bytes. Expected 32 bytes or >= 62 bytes (e.g. 156/158 bytes).',
     );
   }
 
@@ -130,7 +138,7 @@ class WhatsAppCryptService {
       );
     }
 
-    // 4. Decrypt Crypt14 / Crypt15
+    // 4. Decrypt Crypt12 / Crypt13 / Crypt14 / Crypt15
     onProgress?.call("Decrypting backup with AES-256...", 0.4);
     final decryptedBytes = await _decryptCryptPayload(fileBytes, rawKey);
 
@@ -160,52 +168,95 @@ class WhatsAppCryptService {
     return destFile;
   }
 
-  /// Internal AES-GCM decryption with Crypt15 key derivation & heuristic offset detection
+  /// Internal AES-GCM & AES-CBC decryption with Crypt12/Crypt14 raw key & Crypt15 derived key
   static Future<Uint8List> _decryptCryptPayload(Uint8List data, Uint8List rootKey) async {
-    // Crypt15 derives key using HKDF Expand
     final derivedKey = deriveCrypt15Key(rootKey);
+    // Try raw key first (for local Crypt12/13/14 backups), then derived key (for Crypt15)
+    final keysToTry = <Uint8List>[rootKey, derivedKey];
 
-    // Heuristically locate IV and payload
-    // In Crypt15, header has varint size + protobuf.
-    // The IV is 16 bytes.
-    // We attempt multiple known offset candidates.
+    // Priority candidate offsets:
+    // 1. Classic Crypt12 / Crypt14: IV at 51..67, data starts at 67
+    // 2. Crypt14 standard: IV at 67..83, data starts at 191
+    // 3. Crypt14 alternate: IV at 66..82, data starts at 190
+    // 4. Protobuf header offset
+    final protobufOffset = _extractProtobufHeaderOffset(data);
     final candidateOffsets = <int>[
-      _extractProtobufHeaderOffset(data),
-      191, 190, 67, 128, 64, 32, 16, 0
+      67, 191, 190,
+      if (protobufOffset > 0 && protobufOffset < data.length - 64) protobufOffset,
+      128, 64, 32, 16, 0
     ].where((offset) => offset > 0 && offset < data.length - 64).toSet().toList();
 
-    for (final dataOffset in candidateOffsets) {
-      try {
-        final ivOffset = dataOffset >= 16 ? dataOffset - 16 : 0;
-        final iv = data.sublist(ivOffset, ivOffset + 16);
-        final ciphertextWithTag = data.sublist(dataOffset);
+    for (final key in keysToTry) {
+      for (final dataOffset in candidateOffsets) {
+        try {
+          Uint8List iv;
+          if (dataOffset == 67 && data.length >= 67) {
+            iv = data.sublist(51, 67);
+          } else if (dataOffset == 191 && data.length >= 83) {
+            iv = data.sublist(67, 83);
+          } else if (dataOffset == 190 && data.length >= 82) {
+            iv = data.sublist(66, 82);
+          } else if (dataOffset >= 16) {
+            iv = data.sublist(dataOffset - 16, dataOffset);
+          } else {
+            iv = Uint8List(16);
+          }
 
-        // Try AES-GCM with derived key
-        final result = await _tryAesGcmDecrypt(ciphertextWithTag, derivedKey, iv);
-        if (result != null) return result;
+          final ciphertextWithTag = data.sublist(dataOffset);
 
-        // Try AES-GCM with raw key directly
-        final resultRaw = await _tryAesGcmDecrypt(ciphertextWithTag, rootKey, iv);
-        if (resultRaw != null) return resultRaw;
-      } catch (_) {
-        // continue trying next offset candidate
+          // 1. Try AES-GCM
+          final gcmResult = await _tryAesGcmDecrypt(ciphertextWithTag, key, iv);
+          if (gcmResult != null) return gcmResult;
+
+          // 2. Try AES-CBC (for Crypt12/14 variants that use CBC)
+          final cbcResult = await _tryAesCbcDecrypt(ciphertextWithTag, key, iv);
+          if (cbcResult != null) return cbcResult;
+        } catch (_) {
+          // continue trying next candidate
+        }
       }
     }
 
-    // Direct stream decryption fallback:
-    // If header has standard WhatsApp 16-byte IV at byte 67 and data at 191
+    // Direct fallback for byte 67 IV and byte 191 data
     if (data.length > 220) {
-      try {
-        final iv = data.sublist(67, 83);
-        final ciphertext = data.sublist(191);
-        final res = await _tryAesGcmDecrypt(ciphertext, derivedKey, iv);
-        if (res != null) return res;
-      } catch (_) {}
+      for (final key in keysToTry) {
+        try {
+          final iv = data.sublist(67, 83);
+          final ciphertext = data.sublist(191);
+          final res = await _tryAesGcmDecrypt(ciphertext, key, iv);
+          if (res != null) return res;
+          final resCbc = await _tryAesCbcDecrypt(ciphertext, key, iv);
+          if (resCbc != null) return resCbc;
+        } catch (_) {}
+      }
     }
 
     throw const FormatException(
-      "Failed to decrypt backup. Check if the 64-hex key is correct for this specific backup file.",
+      "Failed to decrypt backup. Check if the key (64-hex or 156/158-byte key file) matches this backup file.",
     );
+  }
+
+  static Future<Uint8List?> _tryAesCbcDecrypt(
+    Uint8List ciphertext,
+    Uint8List key,
+    Uint8List iv,
+  ) async {
+    try {
+      final algorithm = AesCbc.with256bits(macAlgorithm: MacAlgorithm.empty);
+      final secretKey = SecretKey(key);
+      final secretBox = SecretBox(
+        ciphertext,
+        nonce: iv,
+        mac: Mac.empty,
+      );
+      final decrypted = await algorithm.decrypt(
+        secretBox,
+        secretKey: secretKey,
+      );
+      return Uint8List.fromList(decrypted);
+    } catch (_) {
+      return null;
+    }
   }
 
   static int _extractProtobufHeaderOffset(Uint8List data) {
