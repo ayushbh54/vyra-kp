@@ -191,40 +191,22 @@ class ParentDashboardProvider extends ChangeNotifier {
       await prefs.setStringList('saved_children', list);
       await prefs.setString('active_child_id', _activeChildId);
 
-      // Persist active child data to local disk while guaranteeing multi-app coverage
+      // Persist active child data to local disk (safely preserves complete chat history locally)
       final msgs = _childChatMessages[_activeChildId];
       if (msgs != null && msgs.isNotEmpty) {
-        final preserved = <ChatMessage>[];
-        final seenIds = <String>{};
-        void addUpTo(Iterable<ChatMessage> source, int maxCount) {
-          int count = 0;
-          for (final m in source) {
-            if (count >= maxCount) break;
-            if (seenIds.add(m.id)) {
-              preserved.add(m);
-              count++;
-            }
-          }
-        }
-        addUpTo(msgs.where((m) => m.isViewOnce), 200);
-        addUpTo(msgs.where((m) => m.appType == AppType.instagram), 300);
-        addUpTo(msgs.where((m) => m.appType == AppType.snapchat), 300);
-        addUpTo(msgs.where((m) => m.appType == AppType.sms), 300);
-        addUpTo(msgs.where((m) => m.appType == AppType.telegram), 200);
-        addUpTo(msgs, 1200);
-        final raw = preserved.map((m) => jsonEncode(m.toJson())).toList();
+        final raw = msgs.take(15000).map((m) => jsonEncode(m.toJson())).toList();
         await prefs.setStringList('cache_chats_$_activeChildId', raw);
       }
 
       final calls = _childCallRecords[_activeChildId];
       if (calls != null && calls.isNotEmpty) {
-        final raw = calls.take(1000).map((c) => jsonEncode(c.toJson())).toList();
+        final raw = calls.take(5000).map((c) => jsonEncode(c.toJson())).toList();
         await prefs.setStringList('cache_calls_$_activeChildId', raw);
       }
 
       final notifs = _childNotifications[_activeChildId];
       if (notifs != null && notifs.isNotEmpty) {
-        final raw = notifs.take(1000).map((n) => jsonEncode(n.toJson())).toList();
+        final raw = notifs.take(5000).map((n) => jsonEncode(n.toJson())).toList();
         await prefs.setStringList('cache_notifs_$_activeChildId', raw);
       }
     } catch (e) {
@@ -634,16 +616,59 @@ class ParentDashboardProvider extends ChangeNotifier {
     Future.delayed(const Duration(milliseconds: 1500), () => syncFromSupabase());
   }
 
-  Future<void> refreshAll() async {
+  Future<void> refreshAll({bool forceFull = false}) async {
     await Future.wait([
-      syncFromSupabase(),
+      syncFromSupabase(forceFullSync: forceFull),
       triggerLanSync(),
     ]);
   }
 
+  int _getLatestChatTimestampMs(String childId) {
+    final list = _childChatMessages[childId];
+    if (list == null || list.isEmpty) return 0;
+    int maxMs = 0;
+    for (final m in list) {
+      final ms = m.timestamp.millisecondsSinceEpoch;
+      if (ms > maxMs) maxMs = ms;
+    }
+    return maxMs;
+  }
+
+  int _getLatestCallTimestampMs(String childId) {
+    final list = _childCallRecords[childId];
+    final ambList = _childAmbientLogs[childId];
+    int maxMs = 0;
+    if (list != null) {
+      for (final c in list) {
+        final ms = c.timestamp.millisecondsSinceEpoch;
+        if (ms > maxMs) maxMs = ms;
+      }
+    }
+    if (ambList != null) {
+      for (final a in ambList) {
+        final ms = a.timestamp.millisecondsSinceEpoch;
+        if (ms > maxMs) maxMs = ms;
+      }
+    }
+    return maxMs;
+  }
+
+  int _getLatestNotifTimestampMs(String childId) {
+    final list = _childNotifications[childId];
+    if (list == null || list.isEmpty) return 0;
+    int maxMs = 0;
+    for (final n in list) {
+      final ms = n.timestamp.millisecondsSinceEpoch;
+      if (ms > maxMs) maxMs = ms;
+    }
+    return maxMs;
+  }
+
   /// Supabase Cloud Sync: Fetches devices, calls/ambient logs, notifications, screen time, and chats
-  /// from Supabase PostgreSQL tables and seamlessly merges them into local memory and disk persistence cache.
-  Future<void> syncFromSupabase({int? chatLimit}) async {
+  /// from Supabase PostgreSQL tables using Smart Incremental Watermark Fetching.
+  /// When data is already loaded locally, only rows newer than the latest local timestamp are requested,
+  /// preserving cloud quota and eliminating redundant re-downloads.
+  Future<void> syncFromSupabase({int? chatLimit, bool forceFullSync = false}) async {
     if (!_supabaseSync.isConfigured) return;
     if (_isSupabaseSyncing) return;
     _isSupabaseSyncing = true;
@@ -690,11 +715,14 @@ class ParentDashboardProvider extends ChangeNotifier {
         }
       }
 
-      // 2. Fetch Calls & Ambient Voice Logs SECOND (1,465 rows -> 225 calls + 1,240 ambient logs)
+      // 2. Fetch Calls & Ambient Voice Logs (Incremental Watermark)
+      final latestCallMs = forceFullSync ? 0 : _getLatestCallTimestampMs(_activeChildId);
       final callsData = await _supabaseSync.fetchTable(
         "calls",
         filterField: "child_id",
         filterValue: targetCode,
+        greaterThanField: latestCallMs > 0 ? "timestamp_ms" : null,
+        greaterThanValue: latestCallMs > 0 ? latestCallMs : null,
         order: "timestamp_ms.desc",
       );
       if (callsData.isNotEmpty) {
@@ -751,7 +779,6 @@ class ParentDashboardProvider extends ChangeNotifier {
 
         if (newCalls.isNotEmpty) {
           _childCallRecords.putIfAbsent(_activeChildId, () => []);
-          // Also remove any previously misclassified ambient_* items from _childCallRecords
           _childCallRecords[_activeChildId]!.removeWhere(
             (r) => isAmbientVoiceRecord(r.id, r.contactName, r.phoneNumber),
           );
@@ -776,12 +803,14 @@ class ParentDashboardProvider extends ChangeNotifier {
         }
       }
 
-      // 3. Fetch Notifications THIRD
-      // 3. Fetch Notifications THIRD (All historical notifications without artificial limit)
+      // 3. Fetch Notifications (Incremental Watermark)
+      final latestNotifMs = forceFullSync ? 0 : _getLatestNotifTimestampMs(_activeChildId);
       final notifsData = await _supabaseSync.fetchTable(
         "notifications",
         filterField: "child_id",
         filterValue: targetCode,
+        greaterThanField: latestNotifMs > 0 ? "timestamp_ms" : null,
+        greaterThanValue: latestNotifMs > 0 ? latestNotifMs : null,
         order: "timestamp_ms.desc",
       );
       if (notifsData.isNotEmpty) {
@@ -842,63 +871,80 @@ class ParentDashboardProvider extends ChangeNotifier {
       // Notify UI immediately once fast telemetry, calls, ambient logs, notifications & screen time are ready!
       notifyListeners();
 
-      // 5. Fetch Chats without artificial 1000/2000 capping so All Time chats load completely
-      final currentChats = _childChatMessages[_activeChildId] ?? [];
-      final hasMultiAppCoverage = currentChats.any((m) => m.appType == AppType.instagram) &&
-          currentChats.any((m) => m.appType == AppType.snapchat) &&
-          currentChats.any((m) => m.appType == AppType.sms);
+      // 5. Fetch Chats (Incremental Watermark Fetching: only fetch rows newer than highest local timestamp)
+      final latestChatMs = forceFullSync ? 0 : _getLatestChatTimestampMs(_activeChildId);
+      final chatsData = <Map<String, dynamic>>[];
 
-      final chatQueries = <Future<List<Map<String, dynamic>>>>[
-        _supabaseSync.fetchTable(
+      if (latestChatMs > 0 && !forceFullSync) {
+        // Fast incremental fetch: Only rows created since last local message!
+        final incrementalBatch = await _supabaseSync.fetchTable(
           "chats",
           filterField: "child_id",
           filterValue: targetCode,
+          greaterThanField: "timestamp_ms",
+          greaterThanValue: latestChatMs,
           order: "timestamp_ms.desc",
           limit: chatLimit,
-        ),
-      ];
+        );
+        chatsData.addAll(incrementalBatch);
+      } else {
+        // Full initial or forced historical fetch
+        final currentChats = _childChatMessages[_activeChildId] ?? [];
+        final hasMultiAppCoverage = currentChats.any((m) => m.appType == AppType.instagram) &&
+            currentChats.any((m) => m.appType == AppType.snapchat) &&
+            currentChats.any((m) => m.appType == AppType.sms);
 
-      if (!hasMultiAppCoverage || chatLimit != null) {
-        chatQueries.addAll([
+        final chatQueries = <Future<List<Map<String, dynamic>>>>[
           _supabaseSync.fetchTable(
             "chats",
             filterField: "child_id",
             filterValue: targetCode,
-            extraFilters: const {'app': 'Instagram'},
             order: "timestamp_ms.desc",
             limit: chatLimit,
           ),
-          _supabaseSync.fetchTable(
-            "chats",
-            filterField: "child_id",
-            filterValue: targetCode,
-            extraFilters: const {'app': 'Snapchat'},
-            order: "timestamp_ms.desc",
-            limit: chatLimit,
-          ),
-          _supabaseSync.fetchTable(
-            "chats",
-            filterField: "child_id",
-            filterValue: targetCode,
-            extraFilters: const {'app': 'SMS'},
-            order: "timestamp_ms.desc",
-            limit: chatLimit,
-          ),
-          _supabaseSync.fetchTable(
-            "chats",
-            filterField: "child_id",
-            filterValue: targetCode,
-            extraFilters: const {'is_view_once': 'true'},
-            order: "timestamp_ms.desc",
-            limit: chatLimit,
-          ),
-        ]);
-      }
+        ];
 
-      final chatBatches = await Future.wait(chatQueries);
-      final chatsData = <Map<String, dynamic>>[];
-      for (final batch in chatBatches) {
-        chatsData.addAll(batch);
+        if (!hasMultiAppCoverage || chatLimit != null) {
+          chatQueries.addAll([
+            _supabaseSync.fetchTable(
+              "chats",
+              filterField: "child_id",
+              filterValue: targetCode,
+              extraFilters: const {'app': 'Instagram'},
+              order: "timestamp_ms.desc",
+              limit: chatLimit,
+            ),
+            _supabaseSync.fetchTable(
+              "chats",
+              filterField: "child_id",
+              filterValue: targetCode,
+              extraFilters: const {'app': 'Snapchat'},
+              order: "timestamp_ms.desc",
+              limit: chatLimit,
+            ),
+            _supabaseSync.fetchTable(
+              "chats",
+              filterField: "child_id",
+              filterValue: targetCode,
+              extraFilters: const {'app': 'SMS'},
+              order: "timestamp_ms.desc",
+              limit: chatLimit,
+            ),
+            _supabaseSync.fetchTable(
+              "chats",
+              filterField: "child_id",
+              filterValue: targetCode,
+              extraFilters: const {'is_view_once': 'true'},
+              order: "timestamp_ms.desc",
+              limit: chatLimit,
+            ),
+          ]);
+        }
+
+        final chatBatches = await Future.wait(chatQueries);
+        for (final batch in chatBatches) {
+          chatsData.addAll(batch);
+        }
       }
 
       if (chatsData.isNotEmpty) {

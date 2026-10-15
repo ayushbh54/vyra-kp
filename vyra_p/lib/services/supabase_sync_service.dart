@@ -24,6 +24,8 @@ class SupabaseSyncService {
     String table, {
     String? filterField,
     String? filterValue,
+    String? greaterThanField,
+    dynamic greaterThanValue,
     Map<String, String>? extraFilters,
     String? order,
     int? limit,
@@ -43,6 +45,9 @@ class SupabaseSyncService {
         var queryUri = "$supabaseUrl/rest/v1/$table?select=*";
         if (filterField != null && filterValue != null) {
           queryUri += "&$filterField=eq.${Uri.encodeQueryComponent(filterValue)}";
+        }
+        if (greaterThanField != null && greaterThanValue != null) {
+          queryUri += "&$greaterThanField=gt.${Uri.encodeQueryComponent(greaterThanValue.toString())}";
         }
         if (extraFilters != null) {
           extraFilters.forEach((k, v) {

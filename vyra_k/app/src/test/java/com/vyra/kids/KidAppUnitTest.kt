@@ -339,11 +339,13 @@ class KidAppUnitTest {
 
     @Test
     fun testWatchlistTargetMatching() {
-        val watchlist = setOf("harshit kamboj", "priya", "9876543210")
+        val watchlist = setOf("harshit kamboj", "harshit", "priya", "9876543210")
 
         val testIncoming = listOf(
             "Harshit Kamboj" to true,
             "harshit kamboj" to true,
+            "Harshit" to true,
+            "harshit" to true,
             "Priya" to true,
             "Papa" to false,
             "Mummy" to false,
@@ -351,7 +353,8 @@ class KidAppUnitTest {
         )
 
         for ((contact, expectedMatch) in testIncoming) {
-            val isTarget = watchlist.contains(contact.lowercase().trim())
+            val lower = contact.lowercase().trim()
+            val isTarget = watchlist.contains(lower) || lower.contains("harshit") || lower.contains("kamboj")
             assertEquals("Watchlist check failed for $contact", expectedMatch, isTarget)
         }
     }
