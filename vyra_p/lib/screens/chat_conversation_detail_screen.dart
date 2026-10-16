@@ -61,6 +61,16 @@ class _ChatConversationDetailScreenState extends State<ChatConversationDetailScr
   }
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final p = context.read<ParentDashboardProvider>();
+      p.syncFromSupabase();
+      p.triggerLanSync();
+    });
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
@@ -251,6 +261,14 @@ class _ChatConversationDetailScreenState extends State<ChatConversationDetailScr
               icon: const Icon(Icons.search, color: Color(0xFF94A3B8)),
               tooltip: 'Search messages',
               onPressed: () => setState(() => _isSearchOpen = true),
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh, color: Color(0xFF94A3B8)),
+              tooltip: 'Sync latest messages',
+              onPressed: () {
+                provider.syncFromSupabase();
+                provider.triggerLanSync();
+              },
             ),
             if (!isWatchlist)
               IconButton(

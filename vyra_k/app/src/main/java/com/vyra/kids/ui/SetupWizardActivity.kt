@@ -168,6 +168,7 @@ class SetupWizardActivity : AppCompatActivity() {
 
         // 7. Battery Optimization Bypass Intent
         btnBatteryOptimization.setOnClickListener {
+            var opened = false
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 try {
                     val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
@@ -176,15 +177,24 @@ class SetupWizardActivity : AppCompatActivity() {
                             data = Uri.parse("package:$packageName")
                         }
                         startActivity(intent)
-                    } else {
-                        Toast.makeText(this, "Battery optimization already unrestricted", Toast.LENGTH_SHORT).show()
+                        opened = true
                     }
-                } catch (e: Exception) {
+                } catch (_: Exception) {}
+            }
+
+            if (!opened) {
+                val fallbackIntents = listOf(
+                    Intent().setComponent(android.content.ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.PurviewTabActivity")),
+                    Intent().setComponent(android.content.ComponentName("com.iqoo.powersaving", "com.iqoo.powersaving.PowerSavingTabActivity")),
+                    Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply { data = Uri.parse("package:$packageName") }
+                )
+                for (intent in fallbackIntents) {
                     try {
-                        startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-                    } catch (ex: Exception) {
-                        Toast.makeText(this, "Open Battery settings and set to Unrestricted", Toast.LENGTH_SHORT).show()
-                    }
+                        startActivity(intent)
+                        opened = true
+                        break
+                    } catch (_: Exception) {}
                 }
             }
         }

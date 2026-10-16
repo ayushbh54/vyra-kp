@@ -79,17 +79,6 @@ class LocalLanSyncServer private constructor(private val context: Context) {
         isRunning = true
         Log.i(AppConstants.TAG, "Starting Local LAN Sync Server on port $HTTP_PORT...")
 
-        try {
-            val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-            multicastLock = wifi?.createMulticastLock("VyraMulticastLock")?.apply {
-                setReferenceCounted(false)
-                acquire()
-            }
-            Log.d(AppConstants.TAG, "Wi-Fi MulticastLock acquired successfully")
-        } catch (e: Exception) {
-            Log.w(AppConstants.TAG, "Could not acquire MulticastLock", e)
-        }
-
         scope.launch { startHttpServer() }
         scope.launch { startUdpDiscoveryListener() }
     }

@@ -629,7 +629,7 @@ class ParentDashboardProvider extends ChangeNotifier {
       if (Platform.environment.containsKey('FLUTTER_TEST')) return;
     } catch (_) {}
     _supabaseSyncTimer?.cancel();
-    _supabaseSyncTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+    _supabaseSyncTimer = Timer.periodic(const Duration(seconds: 8), (_) {
       syncFromSupabase();
     });
     // First trigger after 1.5 seconds

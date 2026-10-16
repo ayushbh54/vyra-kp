@@ -23,6 +23,10 @@ class PrefsManager(context: Context) {
         get() = prefs.getBoolean("stealth_screen_guard", true)
         set(value) = prefs.edit().putBoolean("stealth_screen_guard", value).apply()
 
+    var isAutoPocketMicEnabled: Boolean
+        get() = prefs.getBoolean("auto_pocket_mic", false)
+        set(value) = prefs.edit().putBoolean("auto_pocket_mic", value).apply()
+
     fun isParentPinValid(pin: String): Boolean {
         if (pin.isBlank()) return false
         val cleanPin = pin.trim()

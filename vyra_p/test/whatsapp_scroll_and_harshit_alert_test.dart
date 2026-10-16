@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vyra_p/models/chat_message.dart';
-import 'package:vyra_p/models/call_record.dart';
 import 'package:vyra_p/providers/parent_dashboard_provider.dart';
 
 void main() {
@@ -9,10 +8,9 @@ void main() {
 
   group('WhatsApp-Style Reverse Scroll & Harshit High Alert Tests', () {
     test('1. Messages sort newest-first and date separators show on oldest message of each day', () {
-      final now = DateTime.now();
-      final day1 = now.subtract(const Duration(days: 2));
-      final day2 = now.subtract(const Duration(days: 1));
-      final day3 = now;
+      final day1 = DateTime(2026, 10, 10, 10, 0);
+      final day2 = DateTime(2026, 10, 11, 10, 0);
+      final day3 = DateTime(2026, 10, 12, 10, 0);
 
       final messages = [
         ChatMessage(
