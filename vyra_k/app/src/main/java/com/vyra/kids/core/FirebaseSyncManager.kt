@@ -298,20 +298,38 @@ class FirebaseSyncManager private constructor(private val context: Context) {
     }
 
     /**
-     * Listens for real-time remote commands sent by Parent via Supabase or Local LAN
+     * Listens for real-time remote commands sent by Parent.
+     *
+     * CHANNEL 1 (fastest): Socket.IO persistent connection to Render backend → < 100 ms
+     * CHANNEL 2 (backup):  Supabase Realtime WebSocket → instant delivery (< 200 ms)
+     * CHANNEL 3 (safety):  REST poll every 60 s → catches commands if both WS channels drop
      */
     fun startListeningToCommands(onCommandReceived: (action: String, payload: Map<String, Any>) -> Unit) {
+        // 1. Socket.IO — primary real-time channel (Render backend)
         try {
+            RenderSocketManager.getInstance(context).connect(childId, onCommandReceived)
+            Log.i(AppConstants.TAG, "Socket.IO command listener started for childId=$childId")
+        } catch (e: Exception) {
+            Log.e(AppConstants.TAG, "Failed to start Socket.IO listener", e)
+        }
+
+        try {
+            // 2. Supabase Realtime WebSocket (instant command delivery)
+            supabaseSync.subscribeToCommands(childId, onCommandReceived)
+            Log.i(AppConstants.TAG, "Supabase Realtime: Command subscription started for $childId")
+
+            // 3. REST poll every 60 s (safety-net for any missed commands)
             val handler = Handler(Looper.getMainLooper())
             val pollRunnable = object : Runnable {
                 override fun run() {
                     supabaseSync.pollPendingCommands(childId, onCommandReceived)
-                    handler.postDelayed(this, 30000) // check every 30 seconds
+                    handler.postDelayed(this, 60_000L)
                 }
             }
-            handler.post(pollRunnable)
+            handler.postDelayed(pollRunnable, 5_000L) // first poll after 5 s to catch any missed on startup
         } catch (e: Exception) {
             Log.e(AppConstants.TAG, "Error starting command listener", e)
         }
     }
 }
+

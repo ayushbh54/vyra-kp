@@ -326,51 +326,64 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
           // Contact Conversation Threads (WhatsApp/Telegram-style Inbox)
           Expanded(
-            child: conversations.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.chat_bubble_outline, color: Color(0xFF64748B), size: 44),
-                        const SizedBox(height: 12),
-                        Text(
-                          'No conversations found in ${selectedApp.displayName} within ${selectedRange.label}.',
-                          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-                        ),
-                        const SizedBox(height: 10),
-                        ElevatedButton.icon(
-                          onPressed: () => provider.setSelectedChatRange(ChatDateRange.allTime),
-                          icon: const Icon(Icons.all_inclusive, size: 16),
-                          label: const Text('Switch to "All Time" View', style: TextStyle(fontSize: 12)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF1E88E5),
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            child: RefreshIndicator(
+              color: const Color(0xFF38BDF8),
+              backgroundColor: const Color(0xFF1E293B),
+              onRefresh: () => context.read<ParentDashboardProvider>().refreshAll(forceFull: true),
+              child: conversations.isEmpty
+                  ? SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: SizedBox(
+                        height: 350,
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.chat_bubble_outline, color: Color(0xFF64748B), size: 44),
+                              const SizedBox(height: 12),
+                              Text(
+                                'No conversations found in ${selectedApp.displayName} within ${selectedRange.label}.',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                              ),
+                              const SizedBox(height: 10),
+                              ElevatedButton.icon(
+                                onPressed: () => provider.setSelectedChatRange(ChatDateRange.allTime),
+                                icon: const Icon(Icons.all_inclusive, size: 16),
+                                label: const Text('Switch to "All Time" View', style: TextStyle(fontSize: 12)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF1E88E5),
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
+                      ),
+                    )
+                  : ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                      itemCount: conversations.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final conv = conversations[index];
+                        return _ConversationThreadCard(
+                          conversation: conv,
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ChatConversationDetailScreen(conversation: conv),
+                              ),
+                            );
+                          },
+                        );
+                      },
                     ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-                    itemCount: conversations.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      final conv = conversations[index];
-                      return _ConversationThreadCard(
-                        conversation: conv,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ChatConversationDetailScreen(conversation: conv),
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-          ),
+            ),  // RefreshIndicator
+          ),    // Expanded
         ],
       ),
     );

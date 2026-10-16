@@ -39,6 +39,21 @@ class ParentDashboardProvider extends ChangeNotifier {
   bool _isSupabaseSyncing = false;
   bool get isSupabaseSyncing => _isSupabaseSyncing;
 
+  DateTime? _lastSyncedAt;
+  DateTime? get lastSyncedAt => _lastSyncedAt;
+
+  /// Human-readable "Last synced X ago" string
+  String get lastSyncedLabel {
+    if (_lastSyncedAt == null) return 'Kabhi sync nahi hua';
+    final diff = DateTime.now().difference(_lastSyncedAt!);
+    if (diff.inSeconds < 60) return 'Abhi sync hua';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} min pehle';
+    final h = diff.inHours;
+    final m = diff.inMinutes % 60;
+    if (diff.inHours < 24) return '${h}h ${m}m pehle';
+    return '${diff.inDays}d pehle';
+  }
+
   Timer? _lanDiscoveryTimer;
   Timer? _supabaseSyncTimer;
   StreamSubscription<Map<String, dynamic>>? _lanLiveStreamSub;
@@ -1065,6 +1080,7 @@ class ParentDashboardProvider extends ChangeNotifier {
       debugPrint("syncFromSupabase error: $e");
     } finally {
       _isSupabaseSyncing = false;
+      _lastSyncedAt = DateTime.now();
       notifyListeners();
     }
   }

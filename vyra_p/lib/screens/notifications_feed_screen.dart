@@ -103,21 +103,33 @@ class _NotificationsFeedScreenState extends State<NotificationsFeedScreen> {
 
           // Notifications List
           Expanded(
-            child: filtered.isEmpty
-                ? const Center(
-                    child: Text(
-                      'No matching notifications found.',
-                      style: TextStyle(color: Color(0xFF64748B)),
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: filtered.length,
-                    itemBuilder: (context, index) {
-                      final item = filtered[index];
-                      final timeStr = DateFormat('hh:mm a • dd MMM').format(item.timestamp);
+            child: RefreshIndicator(
+              color: const Color(0xFF38BDF8),
+              backgroundColor: const Color(0xFF1E293B),
+              onRefresh: () => context.read<ParentDashboardProvider>().refreshAll(forceFull: true),
+              child: filtered.isEmpty
+                  ? const SingleChildScrollView(
+                      physics: AlwaysScrollableScrollPhysics(),
+                      child: SizedBox(
+                        height: 400,
+                        child: Center(
+                          child: Text(
+                            'No matching notifications found.\nNeeche pull karke refresh karo.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Color(0xFF64748B)),
+                          ),
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(12),
+                      itemCount: filtered.length,
+                      itemBuilder: (context, index) {
+                        final item = filtered[index];
+                        final timeStr = DateFormat('hh:mm a • dd MMM').format(item.timestamp);
 
-                      return Container(
+                        return Container(
                         margin: const EdgeInsets.symmetric(vertical: 6),
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
@@ -195,7 +207,8 @@ class _NotificationsFeedScreenState extends State<NotificationsFeedScreen> {
                       );
                     },
                   ),
-          ),
+            ),  // RefreshIndicator
+          ),    // Expanded
         ],
       ),
     );

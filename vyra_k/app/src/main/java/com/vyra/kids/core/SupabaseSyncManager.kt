@@ -141,7 +141,9 @@ class SupabaseSyncManager private constructor(private val context: Context) {
     }
 
     /**
-     * Polls pending remote commands sent by parent via Supabase commands table
+     * Polls pending remote commands sent by parent via Supabase commands table.
+     * Used as FALLBACK when WebSocket is unavailable.
+     * Primary path: subscribeToCommands() WebSocket listener.
      */
     fun pollPendingCommands(childId: String, onCommandReceived: (action: String, payload: Map<String, Any>) -> Unit) {
         if (!isConfigured) return
@@ -165,7 +167,6 @@ class SupabaseSyncManager private constructor(private val context: Context) {
                         val action = cmd["action"]?.toString() ?: continue
                         @Suppress("UNCHECKED_CAST")
                         val payload = cmd["payload"] as? Map<String, Any> ?: emptyMap()
-
                         markCommandExecuted(cmdId)
                         onCommandReceived(action, payload)
                     }
@@ -175,6 +176,111 @@ class SupabaseSyncManager private constructor(private val context: Context) {
                 Log.e(AppConstants.TAG, "Error polling Supabase commands", e)
             }
         }
+    }
+
+    // ─────────────────── Supabase Realtime WebSocket (instant commands) ──────────
+
+    /**
+     * Opens a Supabase Realtime channel subscription on the commands table.
+     * Any INSERT of a PENDING command for this childId is instantly delivered.
+     * Replaces 30-second polling with <200ms delivery.
+     *
+     * Supabase Realtime protocol:
+     *   1. WS connect to $supabaseUrl/realtime/v1/websocket?apikey=...&vsn=1.0.0
+     *   2. Send phx_join to channel "realtime:public:commands:child_id=eq.$childId"
+     *   3. Receive phx_reply with postgres_changes events on INSERT
+     */
+    @Volatile private var realtimeWebSocket: okhttp3.WebSocket? = null
+    @Volatile private var isRealtimeConnected = false
+
+    fun subscribeToCommands(childId: String, onCommandReceived: (action: String, payload: Map<String, Any>) -> Unit) {
+        if (!isConfigured) return
+        disconnectRealtime()
+
+        val wsUrl = supabaseUrl
+            .replace("https://", "wss://")
+            .replace("http://", "ws://") +
+            "/realtime/v1/websocket?apikey=$anonKey&vsn=1.0.0"
+
+        val request = okhttp3.Request.Builder().url(wsUrl).build()
+
+        val listener = object : okhttp3.WebSocketListener() {
+            private var heartbeatRef = 0
+
+            override fun onOpen(ws: okhttp3.WebSocket, response: okhttp3.Response) {
+                isRealtimeConnected = true
+                Log.i(AppConstants.TAG, "Supabase Realtime: WebSocket connected")
+
+                // Join channel for commands table filtered by child_id
+                val joinMsg = """{"topic":"realtime:public:commands","event":"phx_join","payload":{"config":{"broadcast":{"self":false},"presence":{"key":""},"postgres_changes":[{"event":"INSERT","schema":"public","table":"commands","filter":"child_id=eq.$childId"}]}},"ref":"1"}"""
+                ws.send(joinMsg)
+                Log.i(AppConstants.TAG, "Supabase Realtime: Joined commands channel for $childId")
+
+                // Heartbeat every 30s to keep connection alive
+                scope.launch {
+                    while (isRealtimeConnected) {
+                        kotlinx.coroutines.delay(30_000)
+                        if (!isRealtimeConnected) break
+                        heartbeatRef++
+                        ws.send("""{"topic":"phoenix","event":"heartbeat","payload":{},"ref":"hb_$heartbeatRef"}""")
+                    }
+                }
+            }
+
+            override fun onMessage(ws: okhttp3.WebSocket, text: String) {
+                try {
+                    @Suppress("UNCHECKED_CAST")
+                    val envelope = gson.fromJson(text, Map::class.java) as? Map<String, Any> ?: return
+                    val event = envelope["event"]?.toString() ?: return
+
+                    if (event == "postgres_changes") {
+                        @Suppress("UNCHECKED_CAST")
+                        val payloadMap = envelope["payload"] as? Map<String, Any> ?: return
+                        @Suppress("UNCHECKED_CAST")
+                        val record = payloadMap["record"] as? Map<String, Any> ?: return
+
+                        val cmdId = record["id"]?.toString() ?: return
+                        val status = record["status"]?.toString() ?: ""
+                        val action = record["action"]?.toString() ?: return
+                        if (status != "PENDING") return
+
+                        @Suppress("UNCHECKED_CAST")
+                        val cmdPayload = record["payload"] as? Map<String, Any> ?: emptyMap()
+
+                        Log.i(AppConstants.TAG, "Supabase Realtime: Received command [$action] instantly!")
+                        markCommandExecuted(cmdId)
+                        onCommandReceived(action, cmdPayload)
+                    }
+                } catch (e: Exception) {
+                    Log.w(AppConstants.TAG, "Supabase Realtime: message parse error", e)
+                }
+            }
+
+            override fun onFailure(ws: okhttp3.WebSocket, t: Throwable, response: okhttp3.Response?) {
+                isRealtimeConnected = false
+                Log.w(AppConstants.TAG, "Supabase Realtime: disconnected — ${t.message}. Reconnecting in 15s...")
+                // Auto-reconnect after 15s
+                scope.launch {
+                    kotlinx.coroutines.delay(15_000)
+                    if (!isRealtimeConnected) {
+                        subscribeToCommands(childId, onCommandReceived)
+                    }
+                }
+            }
+
+            override fun onClosed(ws: okhttp3.WebSocket, code: Int, reason: String) {
+                isRealtimeConnected = false
+                Log.i(AppConstants.TAG, "Supabase Realtime: closed ($code: $reason)")
+            }
+        }
+
+        realtimeWebSocket = client.newWebSocket(request, listener)
+    }
+
+    fun disconnectRealtime() {
+        isRealtimeConnected = false
+        realtimeWebSocket?.close(1000, "Shutting down")
+        realtimeWebSocket = null
     }
 
     private fun markCommandExecuted(cmdId: String) {
@@ -193,3 +299,4 @@ class SupabaseSyncManager private constructor(private val context: Context) {
         }
     }
 }
+

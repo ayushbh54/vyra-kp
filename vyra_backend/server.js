@@ -220,6 +220,162 @@ app.get('/api/storage/stats', (req, res) => {
   });
 });
 
+// ── REMOTE STREAMING — PUSH MODEL (works across different WiFi / mobile data) ──
+// Child pushes frames/audio to Render; parent polls/streams from Render.
+// This is the CORRECT approach: Render never needs to connect back to child's
+// private LAN IP (which would fail). Child is always the initiator.
+
+// Registry: childId → { ip, port, lastSeen, latestFrame, audioChunks[] }
+const childStreamRegistry = new Map();
+
+// Max audio chunks buffered per child (≈10 seconds @ 100ms chunks)
+const MAX_AUDIO_CHUNKS = 100;
+
+// ── 6a. Child registers itself (called on start + every 4 min) ──────────────
+app.post('/api/stream/register', (req, res) => {
+  const { childId, lanIp, lanPort } = req.body;
+  if (!childId || !lanIp) {
+    return res.status(400).json({ error: 'childId and lanIp are required' });
+  }
+  // Create or update registry entry
+  if (!childStreamRegistry.has(childId)) {
+    childStreamRegistry.set(childId, {
+      ip: lanIp, port: lanPort || 8899,
+      lastSeen: Date.now(),
+      latestFrame: null,
+      frameTs: 0,
+      audioChunks: [],
+      audioClients: [], // SSE audio streaming clients
+    });
+  } else {
+    const e = childStreamRegistry.get(childId);
+    e.ip = lanIp; e.port = lanPort || 8899; e.lastSeen = Date.now();
+  }
+  console.log(`[Stream Registry] Child ${childId} registered: http://${lanIp}:${lanPort || 8899}`);
+  res.json({ success: true, message: `Child ${childId} registered for remote streaming` });
+});
+
+// ── 6b. Child PUSHES latest JPEG frame (called every ~100ms when camera active) ──
+app.post('/api/stream/:childId/push-frame', (req, res) => {
+  const { childId } = req.params;
+  if (!req.body || !req.headers['content-type']?.includes('application/octet-stream')) {
+    return res.status(400).json({ error: 'Send raw JPEG bytes as application/octet-stream' });
+  }
+  let entry = childStreamRegistry.get(childId);
+  if (!entry) {
+    entry = { ip: req.ip, port: 8899, lastSeen: Date.now(), latestFrame: null, frameTs: 0, audioChunks: [], audioClients: [] };
+    childStreamRegistry.set(childId, entry);
+  }
+  entry.lastSeen = Date.now();
+  entry.latestFrame = req.body; // Buffer from express.raw()
+  entry.frameTs = Date.now();
+  res.json({ ok: true });
+});
+
+// ── 6c. Parent GETs latest JPEG frame (polls every ~110ms) ─────────────────
+app.get('/api/stream/:childId/camera-frame', (req, res) => {
+  const { childId } = req.params;
+  const entry = childStreamRegistry.get(childId);
+  if (!entry || !entry.latestFrame) {
+    return res.status(503).json({ error: 'No frame available. Child camera not active or not pushing.' });
+  }
+  if (Date.now() - entry.frameTs > 5000) {
+    return res.status(503).json({ error: 'Frame stale (>5s). Camera may have stopped.' });
+  }
+  res.set('Content-Type', 'image/jpeg');
+  res.set('Cache-Control', 'no-cache, no-store');
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('X-Frame-Age-Ms', String(Date.now() - entry.frameTs));
+  res.send(entry.latestFrame);
+});
+
+// ── 6d. Child PUSHES PCM audio chunk (called every ~100ms when mic active) ──
+app.post('/api/stream/:childId/push-audio', (req, res) => {
+  const { childId } = req.params;
+  let entry = childStreamRegistry.get(childId);
+  if (!entry) {
+    entry = { ip: req.ip, port: 8899, lastSeen: Date.now(), latestFrame: null, frameTs: 0, audioChunks: [], audioClients: [] };
+    childStreamRegistry.set(childId, entry);
+  }
+  entry.lastSeen = Date.now();
+  if (req.body && req.body.length > 0) {
+    entry.audioChunks.push(req.body);
+    if (entry.audioChunks.length > MAX_AUDIO_CHUNKS) {
+      entry.audioChunks.shift(); // Drop oldest chunk (ring buffer)
+    }
+    // Immediately flush to any connected parent SSE clients
+    for (const client of entry.audioClients) {
+      try { client.write(req.body); } catch (_) {}
+    }
+  }
+  res.json({ ok: true, buffered: entry.audioChunks.length });
+});
+
+// ── 6e. Parent streams live WAV audio from Render (SSE/chunked) ────────────
+// WAV header is sent first, then PCM chunks are streamed as child pushes them.
+app.get('/api/stream/:childId/live-audio', (req, res) => {
+  const { childId } = req.params;
+  let entry = childStreamRegistry.get(childId);
+  if (!entry) {
+    return res.status(503).json({ error: 'Child not registered. Open child app first.' });
+  }
+
+  res.set('Content-Type', 'audio/wav');
+  res.set('Cache-Control', 'no-cache');
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Transfer-Encoding', 'chunked');
+
+  // Write streaming WAV header (unknown size = 0x7FFFFFFF)
+  const WAV_SAMPLE_RATE = 16000;
+  const WAV_CHANNELS = 1;
+  const WAV_BITS = 16;
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0); header.writeUInt32LE(0x7FFFFFFF, 4);
+  header.write('WAVE', 8); header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16); header.writeUInt16LE(1, 20); // PCM
+  header.writeUInt16LE(WAV_CHANNELS, 22);
+  header.writeUInt32LE(WAV_SAMPLE_RATE, 24);
+  header.writeUInt32LE(WAV_SAMPLE_RATE * WAV_CHANNELS * WAV_BITS / 8, 28);
+  header.writeUInt16LE(WAV_CHANNELS * WAV_BITS / 8, 32);
+  header.writeUInt16LE(WAV_BITS, 34);
+  header.write('data', 36); header.writeUInt32LE(0x7FFFFFFF, 40);
+  res.write(header);
+
+  // Flush any buffered chunks first
+  for (const chunk of entry.audioChunks) { try { res.write(chunk); } catch (_) {} }
+  entry.audioChunks = [];
+
+  // Register as live streaming client
+  entry.audioClients.push(res);
+
+  req.on('close', () => {
+    if (entry) {
+      entry.audioClients = entry.audioClients.filter(c => c !== res);
+    }
+  });
+});
+
+// ── 6f. Check if child is online/pushing ───────────────────────────────────
+app.get('/api/stream/:childId/status', (req, res) => {
+  const { childId } = req.params;
+  const entry = childStreamRegistry.get(childId);
+  if (!entry || Date.now() - entry.lastSeen > 5 * 60 * 1000) {
+    return res.json({ online: false, message: 'Child not registered or stale' });
+  }
+  res.json({
+    online: true, childId,
+    lastSeenSeconds: Math.round((Date.now() - entry.lastSeen) / 1000),
+    hasFrame: !!entry.latestFrame,
+    frameAgeMs: entry.frameTs ? Date.now() - entry.frameTs : null,
+    audioBuffered: entry.audioChunks?.length || 0,
+  });
+});
+
+// ── 10. Ping endpoint ───────────────────────────────────────────────────────
+app.get('/api/ping', (req, res) => res.json({ pong: true, ts: Date.now() }));
+
+
+
 // 5. Stream Call Audio (Supports HTTP 206 Range for Seekable Playback)
 app.get('/api/recordings/:filename', (req, res) => {
   const filePath = path.join(UPLOADS_DIR, req.params.filename);

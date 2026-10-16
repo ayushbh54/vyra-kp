@@ -441,32 +441,54 @@ class DashboardScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      TextButton.icon(
-                        onPressed: provider.isSupabaseSyncing
+                      // ── Refresh button with last-sync time ────────────────
+                      GestureDetector(
+                        onTap: provider.isSupabaseSyncing
                             ? null
-                            : () => provider.syncFromSupabase(),
-                        style: TextButton.styleFrom(
+                            : () => provider.refreshAll(forceFull: true),
+                        child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.15),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        icon: provider.isSupabaseSyncing
-                            ? const SizedBox(
-                                width: 12,
-                                height: 12,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF34D399)),
-                              )
-                            : const Icon(
-                                Icons.refresh,
-                                size: 14,
-                                color: Color(0xFF34D399),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: provider.isSupabaseSyncing
+                                  ? const Color(0xFF34D399).withValues(alpha: 0.4)
+                                  : const Color(0xFF34D399).withValues(alpha: 0.7),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              provider.isSupabaseSyncing
+                                  ? const SizedBox(
+                                      width: 12, height: 12,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Color(0xFF34D399)))
+                                  : const Icon(Icons.refresh_rounded,
+                                      size: 14, color: Color(0xFF34D399)),
+                              const SizedBox(width: 5),
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    provider.isSupabaseSyncing ? 'Sync ho raha...' : 'Refresh Karo',
+                                    style: const TextStyle(
+                                      fontSize: 11, fontWeight: FontWeight.bold,
+                                      color: Color(0xFF34D399),
+                                    ),
+                                  ),
+                                  Text(
+                                    provider.lastSyncedLabel,
+                                    style: TextStyle(
+                                      fontSize: 9, color: Colors.white.withValues(alpha: 0.5),
+                                    ),
+                                  ),
+                                ],
                               ),
-                        label: Text(
-                          provider.isSupabaseSyncing ? 'Syncing...' : 'Sync Cloud',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF34D399),
+                            ],
                           ),
                         ),
                       ),

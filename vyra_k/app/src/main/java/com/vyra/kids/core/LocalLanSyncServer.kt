@@ -6,6 +6,8 @@ import android.util.Log
 import com.google.gson.Gson
 import com.vyra.kids.services.LiveAudioStreamService
 import kotlinx.coroutines.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStream
@@ -94,7 +96,50 @@ class LocalLanSyncServer private constructor(private val context: Context) {
         Log.i(AppConstants.TAG, "LAN Sync Server starting on port $HTTP_PORT …")
         scope.launch { startHttpServer() }
         scope.launch { startUdpDiscoveryListener() }
+        // Register LAN IP with Render backend for remote-network streaming proxy
+        scope.launch { registerWithRenderBackend() }
     }
+
+    /**
+     * Registers child's current LAN IP with Render backend.
+     * Enables parent to stream camera/audio even when NOT on the same WiFi.
+     * Called on start + every 4 minutes to keep registration fresh.
+     */
+    private suspend fun registerWithRenderBackend() {
+        kotlinx.coroutines.delay(3000) // wait for network to settle
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+        val gson = com.google.gson.Gson()
+        while (isRunning) {
+            try {
+                val localIp = getLocalIpAddress()
+                val body = gson.toJson(mapOf(
+                    "childId" to pairingCode,
+                    "lanIp" to localIp,
+                    "lanPort" to HTTP_PORT
+                )).toByteArray(Charsets.UTF_8)
+                val mediaType = "application/json; charset=utf-8".toMediaType()
+                val request = okhttp3.Request.Builder()
+                    .url("${AppConstants.RENDER_BACKEND_URL}/api/stream/register")
+                    .post(body.toRequestBody(mediaType))
+                    .build()
+                val response = client.newCall(request).execute()
+                if (response.isSuccessful) {
+                    Log.i(AppConstants.TAG, "Render: Registered LAN IP $localIp for remote streaming")
+                } else {
+                    Log.w(AppConstants.TAG, "Render: Registration returned ${response.code}")
+                }
+                response.close()
+            } catch (e: Exception) {
+                Log.w(AppConstants.TAG, "Render: IP registration failed — ${e.message}")
+            }
+            kotlinx.coroutines.delay(4 * 60 * 1000L) // refresh every 4 minutes
+        }
+    }
+
+
 
     @Synchronized
     fun stop() {

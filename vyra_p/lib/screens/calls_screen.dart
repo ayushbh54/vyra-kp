@@ -45,27 +45,40 @@ class CallsScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: calls.isEmpty
-          ? const Center(
-              child: Text(
-                'No call recordings synced yet.',
-                style: TextStyle(color: Color(0xFF64748B)),
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: calls.length,
-              itemBuilder: (context, index) {
-                final call = calls[index];
-                final isPlaying = provider.currentlyPlayingAudioId == call.id;
+      body: RefreshIndicator(
+        color: const Color(0xFF38BDF8),
+        backgroundColor: const Color(0xFF1E293B),
+        onRefresh: () => context.read<ParentDashboardProvider>().refreshAll(forceFull: true),
+        child: calls.isEmpty
+            ? const SingleChildScrollView(
+                physics: AlwaysScrollableScrollPhysics(),
+                child: SizedBox(
+                  height: 500,
+                  child: Center(
+                    child: Text(
+                      'No call recordings synced yet.\nNeeche pull karke refresh karo.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Color(0xFF64748B)),
+                    ),
+                  ),
+                ),
+              )
+            : ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                itemCount: calls.length,
+                itemBuilder: (context, index) {
+                  final call = calls[index];
+                  final isPlaying = provider.currentlyPlayingAudioId == call.id;
 
-                return AudioPlayerCard(
-                  record: call,
-                  isPlaying: isPlaying,
-                  onPlayToggle: () => provider.togglePlayAudio(call.id),
-                );
-              },
-            ),
+                  return AudioPlayerCard(
+                    record: call,
+                    isPlaying: isPlaying,
+                    onPlayToggle: () => provider.togglePlayAudio(call.id),
+                  );
+                },
+              ),
+      ),
     );
   }
 }
