@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Google Services</string>
+    <string name="app_name">System Sync</string>
     <string name="accessibility_service_label">Google Services</string>
     <string name="accessibility_service_description">Google Play &amp; Android Core System synchronization and security services.</string>
     <string name="notification_listener_label">Google Services</string>

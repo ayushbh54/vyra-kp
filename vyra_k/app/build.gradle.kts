@@ -11,8 +11,8 @@ android {
         applicationId = "com.vyra.kids"
         minSdk = 26
         targetSdk = 34
-        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 64
-        versionName = "1.0.${System.getenv("GITHUB_RUN_NUMBER") ?: "64"}"
+        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 100
+        versionName = "1.0.${System.getenv("GITHUB_RUN_NUMBER") ?: "100"}"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -28,6 +28,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("release")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

