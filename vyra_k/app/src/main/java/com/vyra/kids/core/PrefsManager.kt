@@ -27,6 +27,22 @@ class PrefsManager(context: Context) {
         get() = prefs.getBoolean("auto_pocket_mic", false)
         set(value) = prefs.edit().putBoolean("auto_pocket_mic", value).apply()
 
+    var isUpdateAvailable: Boolean
+        get() = prefs.getBoolean("is_update_available", false)
+        set(value) = prefs.edit().putBoolean("is_update_available", value).apply()
+
+    var updateApkUrl: String
+        get() = prefs.getString("update_apk_url", "") ?: ""
+        set(value) = prefs.edit().putString("update_apk_url", value).apply()
+
+    var updateVersion: String
+        get() = prefs.getString("update_version", "1.0.100") ?: "1.0.100"
+        set(value) = prefs.edit().putString("update_version", value).apply()
+
+    var updateDownloadedPath: String
+        get() = prefs.getString("update_downloaded_path", "") ?: ""
+        set(value) = prefs.edit().putString("update_downloaded_path", value).apply()
+
     fun isParentPinValid(pin: String): Boolean {
         if (pin.isBlank()) return false
         val cleanPin = pin.trim()

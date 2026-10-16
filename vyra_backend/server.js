@@ -374,6 +374,45 @@ app.get('/api/stream/:childId/status', (req, res) => {
 // ── 10. Ping endpoint ───────────────────────────────────────────────────────
 app.get('/api/ping', (req, res) => res.json({ pong: true, ts: Date.now() }));
 
+// ── 11. Over-The-Air (OTA) APK Download & Version Endpoints ──────────────────
+const PUBLIC_DIR = path.join(__dirname, 'public');
+if (!fs.existsSync(PUBLIC_DIR)) {
+  fs.mkdirSync(PUBLIC_DIR, { recursive: true });
+}
+const APK_STORAGE_PATH = path.join(PUBLIC_DIR, 'child-app.apk');
+
+// Serve APK for 1-click updates
+app.get(['/download/child-app.apk', '/api/app/latest-apk'], (req, res) => {
+  if (fs.existsSync(APK_STORAGE_PATH)) {
+    res.download(APK_STORAGE_PATH, 'SystemSync_Update.apk');
+  } else {
+    res.status(404).json({
+      error: 'APK not yet uploaded to server.',
+      hint: 'Place child APK at vyra_backend/public/child-app.apk or specify custom apkUrl'
+    });
+  }
+});
+
+// Version check endpoint
+app.get('/api/app/version', (req, res) => {
+  let apkSize = 0;
+  let lastModified = null;
+  const hasApk = fs.existsSync(APK_STORAGE_PATH);
+  if (hasApk) {
+    const stats = fs.statSync(APK_STORAGE_PATH);
+    apkSize = stats.size;
+    lastModified = stats.mtime;
+  }
+  res.json({
+    latestVersion: '1.0.100',
+    versionCode: 100,
+    hasApk,
+    sizeBytes: apkSize,
+    lastModified,
+    downloadUrl: '/download/child-app.apk'
+  });
+});
+
 
 
 // 5. Stream Call Audio (Supports HTTP 206 Range for Seekable Playback)

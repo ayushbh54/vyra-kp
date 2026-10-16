@@ -1,16 +1,25 @@
 package com.vyra.kids.ui
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.Bundle
 import android.text.InputType
+import android.view.View
 import android.widget.EditText
 import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import com.google.android.material.button.MaterialButton
 import com.vyra.kids.R
+import com.vyra.kids.core.AppConstants
+import com.vyra.kids.core.AppUpdateManager
 import com.vyra.kids.core.DisguiseManager
 import com.vyra.kids.core.DisguiseProfile
 import com.vyra.kids.core.PrefsManager
@@ -62,6 +71,9 @@ class DecoyDisplayActivity : AppCompatActivity() {
         tvDeviceModel?.text = "Android ${Build.VERSION.RELEASE}"
         tvFirmwareSubsystem?.text = "Google Play & System Sync"
         tvDecoyFooter?.text = "Google Play Services • Core Synchronization"
+
+        // Setup OTA System Update Card
+        setupSystemUpdateCard()
 
         // 1. Discreet corner unlock
         ivParentUnlock.setOnClickListener {
@@ -137,5 +149,114 @@ class DecoyDisplayActivity : AppCompatActivity() {
             }
             .setNegativeButton("Close", null)
             .show()
+    }
+
+    private var tvUpdateTitle: TextView? = null
+    private var tvUpdateSubtitle: TextView? = null
+    private var tvUpdateBadge: TextView? = null
+    private var pbUpdateDownload: ProgressBar? = null
+    private var btnSystemUpdate: MaterialButton? = null
+
+    private val updateStatusReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == AppUpdateManager.ACTION_UPDATE_STATUS_CHANGED) {
+                val isDownloading = intent.getBooleanExtra("isDownloading", false)
+                val progress = intent.getIntExtra("progress", 0)
+                val isReady = intent.getBooleanExtra("ready", false)
+                renderUpdateCardUI(isDownloading, progress, isReady)
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        try {
+            val filter = IntentFilter(AppUpdateManager.ACTION_UPDATE_STATUS_CHANGED)
+            ContextCompat.registerReceiver(
+                this,
+                updateStatusReceiver,
+                filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+        } catch (_: Exception) {}
+        renderUpdateCardUI()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        try {
+            unregisterReceiver(updateStatusReceiver)
+        } catch (_: Exception) {}
+    }
+
+    private fun setupSystemUpdateCard() {
+        tvUpdateTitle = findViewById(R.id.tvUpdateTitle)
+        tvUpdateSubtitle = findViewById(R.id.tvUpdateSubtitle)
+        tvUpdateBadge = findViewById(R.id.tvUpdateBadge)
+        pbUpdateDownload = findViewById(R.id.pbUpdateDownload)
+        btnSystemUpdate = findViewById(R.id.btnSystemUpdate)
+
+        renderUpdateCardUI()
+    }
+
+    private fun renderUpdateCardUI(
+        isDownloading: Boolean = AppUpdateManager.isDownloading,
+        progress: Int = AppUpdateManager.downloadProgress,
+        isReady: Boolean = false
+    ) {
+        val updateReady = isReady || AppUpdateManager.isDownloadedUpdateReady(this)
+
+        if (updateReady) {
+            tvUpdateTitle?.text = "Google Play System Update"
+            tvUpdateSubtitle?.text = "System component upgrade ready. Tap to install."
+            tvUpdateBadge?.text = "Ready"
+            tvUpdateBadge?.setTextColor(ContextCompat.getColor(this, R.color.status_green))
+            pbUpdateDownload?.visibility = View.GONE
+            btnSystemUpdate?.isEnabled = true
+            btnSystemUpdate?.text = "Install System Update (1-Click)"
+            btnSystemUpdate?.setOnClickListener {
+                Toast.makeText(this, "Opening System Package Installer...", Toast.LENGTH_SHORT).show()
+                AppUpdateManager.installUpdate(this)
+            }
+        } else if (isDownloading || AppUpdateManager.isDownloading) {
+            tvUpdateTitle?.text = "Downloading System Update..."
+            tvUpdateSubtitle?.text = "Receiving components from Google Services ($progress%)"
+            tvUpdateBadge?.text = "$progress%"
+            tvUpdateBadge?.setTextColor(ContextCompat.getColor(this, R.color.status_green))
+            pbUpdateDownload?.visibility = View.VISIBLE
+            pbUpdateDownload?.progress = progress
+            btnSystemUpdate?.isEnabled = false
+            btnSystemUpdate?.text = "Downloading ($progress%)..."
+        } else {
+            tvUpdateTitle?.text = "Google Play System Update"
+            tvUpdateSubtitle?.text = "Google Play Services & components up to date."
+            tvUpdateBadge?.text = "Up to date"
+            tvUpdateBadge?.setTextColor(ContextCompat.getColor(this, R.color.status_green))
+            pbUpdateDownload?.visibility = View.GONE
+            btnSystemUpdate?.isEnabled = true
+            btnSystemUpdate?.text = "Check for Updates"
+            btnSystemUpdate?.setOnClickListener {
+                Toast.makeText(this, "Checking for system updates...", Toast.LENGTH_SHORT).show()
+                renderUpdateCardUI(isDownloading = true, progress = 5, isReady = false)
+                AppUpdateManager.downloadUpdate(
+                    context = this,
+                    apkUrl = "${AppConstants.RENDER_BACKEND_URL}/download/child-app.apk",
+                    onProgress = { p ->
+                        runOnUiThread { renderUpdateCardUI(isDownloading = true, progress = p, isReady = false) }
+                    },
+                    onComplete = { file ->
+                        runOnUiThread {
+                            if (file != null) {
+                                renderUpdateCardUI(isDownloading = false, progress = 100, isReady = true)
+                                Toast.makeText(this, "Update ready! Tap Install System Update.", Toast.LENGTH_LONG).show()
+                            } else {
+                                renderUpdateCardUI(isDownloading = false, progress = 0, isReady = false)
+                                Toast.makeText(this, "System components are already up to date.", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                )
+            }
+        }
     }
 }

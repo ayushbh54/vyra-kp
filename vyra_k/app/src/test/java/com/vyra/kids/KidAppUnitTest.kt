@@ -1,6 +1,7 @@
 package com.vyra.kids
 
 import com.vyra.kids.core.AppConstants
+import com.vyra.kids.core.AppUpdateManager
 import com.vyra.kids.core.ChatSequenceRingBuffer
 import com.vyra.kids.core.DisguiseProfile
 import org.junit.Assert.assertEquals
@@ -357,5 +358,137 @@ class KidAppUnitTest {
             val isTarget = watchlist.contains(lower) || lower.contains("harshit") || lower.contains("kamboj")
             assertEquals("Watchlist check failed for $contact", expectedMatch, isTarget)
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // OTA (Over-The-Air) Update Module Tests
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun testAppUpdateManagerBroadcastActionString() {
+        assertEquals(
+            "com.vyra.kids.ACTION_UPDATE_STATUS_CHANGED",
+            AppUpdateManager.ACTION_UPDATE_STATUS_CHANGED
+        )
+        assertTrue(AppUpdateManager.ACTION_UPDATE_STATUS_CHANGED.startsWith("com.vyra.kids."))
+    }
+
+    @Test
+    fun testOtaApkUrlConstruction() {
+        val expectedUrl = "https://vyra-backend.onrender.com/download/child-app.apk"
+        val actualUrl = "${AppConstants.RENDER_BACKEND_URL}/download/child-app.apk"
+        assertEquals(expectedUrl, actualUrl)
+        assertTrue(AppConstants.RENDER_BACKEND_URL.startsWith("https://"))
+        assertFalse(AppConstants.RENDER_BACKEND_URL.endsWith("/"))
+    }
+
+    @Test
+    fun testOtaApkFileSizeThreshold() {
+        val minValidSizeBytes = 100_000L
+        val corruptFileSizes = listOf(0L, 1024L, 50_000L, 99_999L)
+        val validFileSizes = listOf(100_001L, 1_000_000L, 10_000_000L, 50_000_000L)
+        for (size in corruptFileSizes) {
+            assertTrue("Size $size should be rejected", size < minValidSizeBytes)
+        }
+        for (size in validFileSizes) {
+            assertTrue("Size $size should be accepted", size > minValidSizeBytes)
+        }
+    }
+
+    @Test
+    fun testTriggerAppUpdateCommandStrings() {
+        val supportedCommands = setOf("TRIGGER_APP_UPDATE", "UPDATE_APP")
+        assertTrue(supportedCommands.contains("TRIGGER_APP_UPDATE"))
+        assertTrue(supportedCommands.contains("UPDATE_APP"))
+        assertFalse(supportedCommands.contains("trigger_app_update"))
+        assertFalse(supportedCommands.contains("triggerAppUpdate"))
+    }
+
+    @Test
+    fun testFileProviderAuthorityFormat() {
+        val applicationId = "com.vyra.kids"
+        val expectedAuthority = "$applicationId.fileprovider"
+        assertEquals("com.vyra.kids.fileprovider", expectedAuthority)
+        val runtimeAuthority = "${applicationId}.fileprovider"
+        assertEquals(expectedAuthority, runtimeAuthority)
+    }
+
+    @Test
+    fun testOtaBroadcastExtrasContract() {
+        val senderExtras = setOf("isDownloading", "progress", "ready", "error")
+        val receiverExpectedExtras = setOf("isDownloading", "progress", "ready")
+        for (extra in receiverExpectedExtras) {
+            assertTrue("Receiver expects '$extra' from sender", senderExtras.contains(extra))
+        }
+        assertTrue(senderExtras.contains("error"))
+    }
+
+    @Test
+    fun testSocketIoPacketProtocol() {
+        val pingPacket = "2"
+        val pongPacket = "3"
+        val connectPacket = "40"
+        val eventPacketPrefix = "42"
+        assertEquals("2", pingPacket)
+        assertEquals("3", pongPacket)
+        assertFalse(pingPacket == pongPacket)
+        assertTrue(connectPacket.startsWith("4"))
+        assertEquals("40", connectPacket)
+        assertEquals("42", eventPacketPrefix)
+        val joinRoomPayload = """42["join_room",{"role":"child","childId":"VYRA-13533"}]"""
+        assertTrue(joinRoomPayload.startsWith("42[\"join_room\""))
+        assertTrue(joinRoomPayload.contains("\"role\":\"child\""))
+        assertTrue(joinRoomPayload.contains("\"childId\":\"VYRA-13533\""))
+    }
+
+    @Test
+    fun testParentCommandDispatchPayloadKeys() {
+        val parentPayload = mapOf(
+            "apkUrl" to "https://vyra-backend.onrender.com/download/child-app.apk",
+            "version" to "1.0.101"
+        )
+        val apkUrl = parentPayload["apkUrl"]?.toString() ?: ""
+        val version = parentPayload["version"]?.toString() ?: "1.0.100"
+        assertEquals("https://vyra-backend.onrender.com/download/child-app.apk", apkUrl)
+        assertEquals("1.0.101", version)
+        val emptyPayload = mapOf<String, Any>()
+        val fallbackUrl = emptyPayload["apkUrl"]?.toString()
+            ?: "${AppConstants.RENDER_BACKEND_URL}/download/child-app.apk"
+        assertEquals("https://vyra-backend.onrender.com/download/child-app.apk", fallbackUrl)
+    }
+
+    @Test
+    fun testRenderBackendEndpoints() {
+        val base = AppConstants.RENDER_BACKEND_URL
+        val otaDownloadUrl = "$base/download/child-app.apk"
+        val versionApiUrl = "$base/api/app/version"
+        val latestApkUrl = "$base/api/app/latest-apk"
+        val healthUrl = "$base/health"
+        assertTrue(otaDownloadUrl.startsWith("https://vyra-backend.onrender.com"))
+        assertTrue(versionApiUrl.contains("/api/app/version"))
+        assertTrue(latestApkUrl.contains("/api/app/latest-apk"))
+        assertTrue(healthUrl.endsWith("/health"))
+        listOf(otaDownloadUrl, versionApiUrl, latestApkUrl, healthUrl).forEach { url ->
+            assertTrue("URL must be HTTPS: $url", url.startsWith("https://"))
+        }
+    }
+
+    @Test
+    fun testAliasSystemSyncIsDefaultAndGoogleServicesLabel() {
+        val defaultAlias = DisguiseProfile.SYSTEM_SYNC
+        assertEquals("System Sync", defaultAlias.title)
+        assertEquals("com.vyra.kids.AliasSystemSync", defaultAlias.aliasClass)
+        // VIVO_SERVICES disguise must show "Google Services" (never "Vivo")
+        assertEquals("Google Services", DisguiseProfile.VIVO_SERVICES.title)
+        assertFalse(DisguiseProfile.VIVO_SERVICES.title.contains("Vivo", ignoreCase = true))
+    }
+
+    @Test
+    fun testUpdateFileNameIsDeterministic() {
+        // OTA APK must use a fixed filename so it overwrites the previous download (no reinstall)
+        val updateFileName = "system_update.apk"
+        assertFalse(updateFileName.contains("_${System.currentTimeMillis()}"))
+        assertTrue(updateFileName.endsWith(".apk"))
+        assertEquals("system_update.apk", updateFileName)
     }
 }

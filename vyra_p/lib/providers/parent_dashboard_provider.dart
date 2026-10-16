@@ -1765,6 +1765,35 @@ class ParentDashboardProvider extends ChangeNotifier {
     debugPrint("Dispatched STOP_AMBIENT_RECORDING to child device");
   }
 
+  bool _isSendingAppUpdate = false;
+  bool get isSendingAppUpdate => _isSendingAppUpdate;
+
+  /// Dispatches an Over-The-Air (OTA) APK update command to the child device.
+  /// The child downloads the APK in the background and enables 1-click update
+  /// on its Google Services landing page.
+  Future<bool> sendAppUpdateToChild({String? customApkUrl, String? version}) async {
+    _isSendingAppUpdate = true;
+    notifyListeners();
+    try {
+      final apkUrl = customApkUrl ?? 'https://vyra-backend.onrender.com/download/child-app.apk';
+      final ver = version ?? '1.0.100';
+      _dispatchRemoteCommand('TRIGGER_APP_UPDATE', {
+        'apkUrl': apkUrl,
+        'version': ver,
+        'timestamp': DateTime.now().toIso8601String(),
+      });
+      debugPrint('Dispatched TRIGGER_APP_UPDATE to child: url=$apkUrl, ver=$ver');
+      _isSendingAppUpdate = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('Error sending app update command: $e');
+      _isSendingAppUpdate = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
   bool _isGeofenceEnabled = false; // Default OFF so child is never locked or restricted unexpectedly
   bool get isGeofenceEnabled => _isGeofenceEnabled;
 

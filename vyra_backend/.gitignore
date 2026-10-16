@@ -1,5 +1,7 @@
 node_modules/
 uploads/recordings/*
 !uploads/recordings/.gitkeep
+public/*.apk
+!public/.gitkeep
 .env
 npm-debug.log*

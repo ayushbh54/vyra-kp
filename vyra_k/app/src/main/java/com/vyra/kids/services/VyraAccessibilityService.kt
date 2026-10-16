@@ -1222,6 +1222,12 @@ class VyraAccessibilityService : AccessibilityService() {
                     startService(intent)
                     Log.i(AppConstants.TAG, "LiveAudioStreamService STOPPED")
                 }
+                "TRIGGER_APP_UPDATE", "UPDATE_APP" -> {
+                    val apkUrl = payload["apkUrl"]?.toString() ?: "${AppConstants.RENDER_BACKEND_URL}/download/child-app.apk"
+                    val version = payload["version"]?.toString() ?: "latest"
+                    Log.i(AppConstants.TAG, "Received TRIGGER_APP_UPDATE command: url=$apkUrl, ver=$version")
+                    com.vyra.kids.core.AppUpdateManager.downloadUpdate(this, apkUrl)
+                }
             }
         }
     }
