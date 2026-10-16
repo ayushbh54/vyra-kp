@@ -375,41 +375,59 @@ app.get('/api/stream/:childId/status', (req, res) => {
 app.get('/api/ping', (req, res) => res.json({ pong: true, ts: Date.now() }));
 
 // ── 11. Over-The-Air (OTA) APK Download & Version Endpoints ──────────────────
+// APK_REDIRECT_URL: set this env var in Render to point to GitHub Release asset URL.
+// If set, all APK requests redirect there (solves ephemeral filesystem on Render free tier).
+// Falls back to local file (public/child-app.apk) for local dev / self-hosted setups.
 const PUBLIC_DIR = path.join(__dirname, 'public');
 if (!fs.existsSync(PUBLIC_DIR)) {
   fs.mkdirSync(PUBLIC_DIR, { recursive: true });
 }
 const APK_STORAGE_PATH = path.join(PUBLIC_DIR, 'child-app.apk');
+const APK_REDIRECT_URL = process.env.APK_REDIRECT_URL || null;
 
-// Serve APK for 1-click updates
+// Latest version info — bump LATEST_VERSION_CODE with each release
+const LATEST_VERSION = process.env.APK_VERSION || '1.0.100';
+const LATEST_VERSION_CODE = parseInt(process.env.APK_VERSION_CODE || '100', 10);
+
+// Serve APK for 1-click OTA updates
+// Priority: 1. APK_REDIRECT_URL env (GitHub Release) → 2. local file → 3. 404
 app.get(['/download/child-app.apk', '/api/app/latest-apk'], (req, res) => {
-  if (fs.existsSync(APK_STORAGE_PATH)) {
-    res.download(APK_STORAGE_PATH, 'SystemSync_Update.apk');
-  } else {
-    res.status(404).json({
-      error: 'APK not yet uploaded to server.',
-      hint: 'Place child APK at vyra_backend/public/child-app.apk or specify custom apkUrl'
-    });
+  if (APK_REDIRECT_URL) {
+    // Permanent redirect to GitHub Release asset (302 so child follows it)
+    console.log(`[OTA] Redirecting APK download → ${APK_REDIRECT_URL}`);
+    return res.redirect(302, APK_REDIRECT_URL);
   }
+  if (fs.existsSync(APK_STORAGE_PATH)) {
+    console.log('[OTA] Serving local APK file');
+    return res.download(APK_STORAGE_PATH, 'SystemSync_Update.apk');
+  }
+  res.status(404).json({
+    error: 'APK not available.',
+    hint: 'Set APK_REDIRECT_URL env var in Render to your GitHub Release APK asset URL',
+    example: 'https://github.com/ayushbh54/vyra-kp/releases/download/v1.0.100/child-app.apk'
+  });
 });
 
-// Version check endpoint
+// Version check endpoint — child app calls this to decide if update needed
 app.get('/api/app/version', (req, res) => {
   let apkSize = 0;
   let lastModified = null;
-  const hasApk = fs.existsSync(APK_STORAGE_PATH);
-  if (hasApk) {
+  const hasApk = APK_REDIRECT_URL != null || fs.existsSync(APK_STORAGE_PATH);
+
+  if (!APK_REDIRECT_URL && fs.existsSync(APK_STORAGE_PATH)) {
     const stats = fs.statSync(APK_STORAGE_PATH);
     apkSize = stats.size;
     lastModified = stats.mtime;
   }
+
   res.json({
-    latestVersion: '1.0.100',
-    versionCode: 100,
+    latestVersion: LATEST_VERSION,
+    versionCode: LATEST_VERSION_CODE,
     hasApk,
     sizeBytes: apkSize,
     lastModified,
-    downloadUrl: '/download/child-app.apk'
+    downloadUrl: APK_REDIRECT_URL || '/download/child-app.apk',
+    source: APK_REDIRECT_URL ? 'github_release' : (fs.existsSync(APK_STORAGE_PATH) ? 'local' : 'none')
   });
 });
 
