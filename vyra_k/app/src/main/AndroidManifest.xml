@@ -48,7 +48,8 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.VyraKids"
         android:requestLegacyExternalStorage="true"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config">
 
         <!-- Entrypoint Setup Wizard (Direct launch during install) -->
         <activity
@@ -259,6 +260,12 @@
         <!-- 8. Screen-Off Ambient Voice & Activity Logger Service -->
         <service
             android:name=".services.AmbientAudioLoggerService"
+            android:foregroundServiceType="microphone"
+            android:exported="false" />
+
+        <!-- 9. Live Real-Time Audio Streaming Service (one-tap live listen over LAN) -->
+        <service
+            android:name=".services.LiveAudioStreamService"
             android:foregroundServiceType="microphone"
             android:exported="false" />
 

