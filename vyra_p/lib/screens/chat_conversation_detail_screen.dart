@@ -96,8 +96,8 @@ class _ChatConversationDetailScreenState extends State<ChatConversationDetailScr
       return m.messageText.toLowerCase().contains(_searchQuery.toLowerCase());
     }).toList();
 
-    // Sort chronologically (oldest at top -> newest at bottom)
-    displayMessages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    // Sort newest first for WhatsApp-style reverse scroll (latest message at bottom, scroll up for old)
+    displayMessages.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
     // 2. Get call records associated with this person
     final contactCalls = provider.getCallRecordsForContact(
@@ -108,14 +108,14 @@ class _ChatConversationDetailScreenState extends State<ChatConversationDetailScr
       return c.contactName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
           c.phoneNumber.contains(_searchQuery);
     }).toList();
-    contactCalls.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    contactCalls.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
-    // 3. Build unified chronological timeline (Chats + Calls)
+    // 3. Build unified chronological timeline (Chats + Calls) - newest first
     final List<TimelineEntry> unifiedTimeline = [
       ...displayMessages.map((m) => TimelineEntry.chat(m)),
       ...contactCalls.map((c) => TimelineEntry.call(c)),
     ];
-    unifiedTimeline.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    unifiedTimeline.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
     final isWatchlist = widget.conversation.isWatchlistTarget ||
         provider.watchlistTargets.any((t) =>
@@ -452,17 +452,19 @@ class _ChatConversationDetailScreenState extends State<ChatConversationDetailScr
     required List<TimelineEntry> unifiedTimeline,
   }) {
     if (_selectedTab == 0) {
-      // All Activity (Unified Timeline)
+      // All Activity (Unified Timeline) - newest anchored at bottom, scroll up for older
       if (unifiedTimeline.isEmpty) {
         return _buildEmptyPlaceholder('No activity recorded for this contact yet.');
       }
       return ListView.builder(
+        reverse: true,
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
         itemCount: unifiedTimeline.length,
         itemBuilder: (context, index) {
           final item = unifiedTimeline[index];
-          final showDateSeparator = index == 0 ||
-              !_isSameDay(unifiedTimeline[index - 1].timestamp, item.timestamp);
+          // In reverse mode (newest at index 0), show date separator on the oldest item of each day
+          final showDateSeparator = index == unifiedTimeline.length - 1 ||
+              !_isSameDay(unifiedTimeline[index + 1].timestamp, item.timestamp);
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -477,17 +479,19 @@ class _ChatConversationDetailScreenState extends State<ChatConversationDetailScr
         },
       );
     } else if (_selectedTab == 1) {
-      // Chats Only
+      // Chats Only - newest anchored at bottom, scroll up for older
       if (displayMessages.isEmpty) {
         return _buildEmptyPlaceholder('No chat messages recorded with this contact.');
       }
       return ListView.builder(
+        reverse: true,
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
         itemCount: displayMessages.length,
         itemBuilder: (context, index) {
           final msg = displayMessages[index];
-          final showDateSeparator = index == 0 ||
-              !_isSameDay(displayMessages[index - 1].timestamp, msg.timestamp);
+          // In reverse mode (newest at index 0), show date separator on the oldest item of each day
+          final showDateSeparator = index == displayMessages.length - 1 ||
+              !_isSameDay(displayMessages[index + 1].timestamp, msg.timestamp);
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,

