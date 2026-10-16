@@ -1,36 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Network Security Config for Vyra Child App (vyra_k)
-  Android 9+ (Pie) blocks all HTTP cleartext traffic by default.
-  This config explicitly allows HTTP for:
-    1. LAN/private IP ranges (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
-    2. localhost (for internal testing)
-  All other traffic remains HTTPS-only (Supabase, Firebase = always HTTPS).
+  Network Security Config — Vyra Child App (vyra_k)
+
+  IMPORTANT: Android's <domain-config> uses hostname matching, NOT IP-range matching.
+  Using <domain>192.168.1.0</domain> would only match that exact "hostname" string,
+  NOT arbitrary IPs like 192.168.1.47. So we use <base-config> to allow cleartext
+  for ALL traffic — which is safe here because:
+    - All cloud calls (Supabase, Firebase) ALWAYS use HTTPS (https://)
+    - Only intra-LAN HTTP calls go to port 8899 on the parent phone's IP
+  This is the only correct Android approach for dynamic LAN IPs.
 -->
 <network-security-config>
 
-    <!-- Allow cleartext HTTP only for local Wi-Fi LAN ranges -->
-    <domain-config cleartextTrafficPermitted="true">
-        <!-- Standard home/office Wi-Fi subnet -->
-        <domain includeSubdomains="true">192.168.0.0</domain>
-        <domain includeSubdomains="true">192.168.1.0</domain>
-        <domain includeSubdomains="true">192.168.2.0</domain>
-        <domain includeSubdomains="true">192.168.10.0</domain>
-        <domain includeSubdomains="true">192.168.100.0</domain>
-        <!-- Enterprise / corporate LAN -->
-        <domain includeSubdomains="true">10.0.0.0</domain>
-        <domain includeSubdomains="true">10.0.1.0</domain>
-        <domain includeSubdomains="true">10.1.0.0</domain>
-        <!-- Hotspot / mobile tethering range -->
-        <domain includeSubdomains="true">172.16.0.0</domain>
-        <domain includeSubdomains="true">172.20.0.0</domain>
-        <!-- Localhost -->
-        <domain includeSubdomains="true">localhost</domain>
-        <domain includeSubdomains="true">127.0.0.1</domain>
-    </domain-config>
-
-    <!-- All other domains: HTTPS only (default secure baseline) -->
-    <base-config cleartextTrafficPermitted="false">
+    <!--
+      Allow cleartext HTTP globally.
+      All Supabase/Firebase URLs already use https:// so they are unaffected.
+      LAN streaming (camera-frame, live-audio) uses http:// to child's dynamic IP.
+    -->
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>

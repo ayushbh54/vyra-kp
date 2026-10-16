@@ -93,27 +93,33 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
     final provider = context.read<ParentDashboardProvider>();
     setState(() { _isCameraConnecting = true; _cameraError = null; });
 
+    // Dispatch camera start command to child via Supabase relay
     provider.toggleRemoteCamera();
-    await Future.delayed(const Duration(milliseconds: 800));
+
+    // Wait for: Supabase relay (~500ms) + Camera2 open (~800ms) = 1800ms total
+    await Future.delayed(const Duration(milliseconds: 1800));
+    if (!mounted) return;
 
     _frameTimer?.cancel();
     _frameCount = 0;
     _fpsTimer = DateTime.now();
+    int consecutive503 = 0;
 
     if (mounted) setState(() { _isCameraConnecting = false; _isCameraActive = true; });
 
     final capturedIp = _childIp!;
-    _frameTimer = Timer.periodic(const Duration(milliseconds: 100), (_) async {
+    _frameTimer = Timer.periodic(const Duration(milliseconds: 110), (_) async {
       if (!_isCameraActive) return;
       try {
         final client = HttpClient()
-          ..connectionTimeout = const Duration(milliseconds: 500);
+          ..connectionTimeout = const Duration(milliseconds: 600);
         final request = await client.getUrl(
           Uri.parse('http://$capturedIp:8899/api/camera-frame'),
         );
-        final response = await request.close().timeout(const Duration(milliseconds: 600));
+        final response = await request.close().timeout(const Duration(milliseconds: 700));
         if (response.statusCode == 200) {
-          // Collect response bytes manually
+          consecutive503 = 0;
+          // Drain and collect response bytes
           final chunks = <int>[];
           await for (final chunk in response) { chunks.addAll(chunk); }
           final bytes = Uint8List.fromList(chunks);
@@ -128,15 +134,25 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
             }
             setState(() { _currentFrame = bytes; _cameraError = null; });
           }
-        } else if (response.statusCode == 503 && mounted) {
-          setState(() => _cameraError = 'Camera not started on child. Retry karo.');
+        } else if (response.statusCode == 503) {
+          await response.drain<void>();
+          consecutive503++;
+          // If camera not ready after 10 polls (~1s), retry command once
+          if (consecutive503 == 10 && mounted) {
+            setState(() => _cameraError = 'Camera start ho rahi hai, thoda ruko...');
+            provider.toggleRemoteCamera(); // stop
+            await Future.delayed(const Duration(milliseconds: 500));
+            if (mounted) provider.toggleRemoteCamera(); // restart
+            consecutive503 = 0;
+          }
         }
         client.close(force: true);
       } catch (_) {
-        // Ignore individual frame errors
+        // Ignore individual frame errors silently
       }
     });
   }
+
 
   void _stopCamera() {
     _frameTimer?.cancel();
@@ -158,7 +174,7 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
     if (_childIp == null) {
       await _discoverChild();
       if (_childIp == null) {
-        setState(() => _audioError = 'Child not found on Wi-Fi.');
+        if (mounted) setState(() => _audioError = 'Child not found on Wi-Fi.');
         return;
       }
     }
@@ -166,9 +182,12 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
     final provider = context.read<ParentDashboardProvider>();
     setState(() { _isAudioConnecting = true; _audioError = null; });
 
-    // Send START_LIVE_AUDIO command to child
+    // Send START_LIVE_AUDIO → child starts LiveAudioStreamService → AudioRecord opens
     provider.startLiveAudio();
-    await Future.delayed(const Duration(milliseconds: 600)); // let AudioRecord start
+
+    // Wait: Supabase relay (~500ms) + AudioRecord.startRecording() (~600ms) + buffer fill (~400ms) = 1500ms
+    await Future.delayed(const Duration(milliseconds: 1500));
+    if (!mounted) return;
 
     try {
       final url = 'http://$_childIp:8899/api/live-audio';
@@ -177,14 +196,28 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
       if (mounted) setState(() { _isAudioActive = true; _isAudioConnecting = false; });
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _isAudioConnecting = false;
-          _audioError = 'Audio connect failed: $e';
-        });
-        provider.stopLiveAudio();
+        // One automatic retry after another 1s delay
+        await Future.delayed(const Duration(milliseconds: 1000));
+        try {
+          final url = 'http://$_childIp:8899/api/live-audio';
+          await _audioPlayer.setSourceUrl(url);
+          await _audioPlayer.resume();
+          if (mounted) setState(() { _isAudioActive = true; _isAudioConnecting = false; });
+          return;
+        } catch (e2) {
+          if (mounted) {
+            setState(() {
+              _isAudioConnecting = false;
+              _audioError = 'Live audio connect nahi hua: $e2\n(Child app open hai? Same WiFi par ho?)';
+            });
+            provider.stopLiveAudio();
+          }
+        }
       }
     }
   }
+
+
 
   Future<void> _stopAudio() async {
     await _audioPlayer.stop();
