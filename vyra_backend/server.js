@@ -64,6 +64,15 @@ const { diarizeAndTranscribeAudio } = require('./geminiAudioService');
 const recordingVault = new Map();
 let totalBytesPurgedFromCloud = 0;
 
+// Root Status Route (for Render Health Checks & Browser Navigation)
+app.get('/', (req, res) => {
+  res.json({
+    status: 'healthy',
+    service: 'Vyra Ultra HD 60FPS Signaling & Audio Hub',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // 1. Healthcheck
 app.get('/health', (req, res) => {
   res.json({
