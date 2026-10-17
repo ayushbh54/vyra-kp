@@ -67,6 +67,8 @@ dependencies {
     
     // Coroutines & Lifecycle
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    // play-services adapter: provides Task<T>.await() for ML Kit coroutine integration
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
     implementation("androidx.lifecycle:lifecycle-service:2.8.4")
     
     // JSON & Networking

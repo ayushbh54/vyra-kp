@@ -3,6 +3,7 @@ package com.vyra.kids.services
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Matrix
 import android.os.Build
 import android.util.Log
 import android.view.Display
@@ -10,6 +11,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.devanagari.DevanagariTextRecognizerOptions
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.vyra.kids.core.AppConstants
@@ -19,8 +21,30 @@ import com.vyra.kids.core.NetworkSyncManager
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.Executors
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 class VyraAccessibilityService : AccessibilityService() {
+
+    companion object {
+        /** Cached singleton recognizers — ML Kit docs recommend reusing clients. */
+        private val latinRecognizer: TextRecognizer by lazy {
+            TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        }
+        private val devanagariRecognizer: TextRecognizer by lazy {
+            TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build())
+        }
+
+        /** Minimum bitmap width (px) before passing to ML Kit for best accuracy. */
+        private const val OCR_MIN_WIDTH_PX = 720
+    }
+
+    /** Coroutine scope for OCR — cancelled in onDestroy to prevent leaks. */
+    private val ocrJob = SupervisorJob()
+    private val ocrScope = CoroutineScope(Dispatchers.Default + ocrJob)
 
     private val executor = Executors.newSingleThreadExecutor()
     private val snapchatPollerHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -1301,13 +1325,23 @@ class VyraAccessibilityService : AccessibilityService() {
 
     private fun preprocessBitmapForOcr(src: Bitmap): Bitmap {
         return try {
-            val bmp = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+            // 1. Upscale to minimum width so ML Kit has enough resolution to recognise small text.
+            val scaled = if (src.width < OCR_MIN_WIDTH_PX) {
+                val scale = OCR_MIN_WIDTH_PX.toFloat() / src.width
+                val matrix = Matrix().apply { setScale(scale, scale) }
+                Bitmap.createBitmap(src, 0, 0, src.width, src.height, matrix, true)
+            } else {
+                src
+            }
+
+            // 2. Grayscale + high-contrast transform.
+            val bmp = Bitmap.createBitmap(scaled.width, scaled.height, Bitmap.Config.ARGB_8888)
             val canvas = android.graphics.Canvas(bmp)
             val paint = android.graphics.Paint()
             val matrix = android.graphics.ColorMatrix()
             matrix.setSaturation(0f)
-            val contrast = 1.45f
-            val brightness = -10f
+            val contrast = 1.55f   // slightly higher contrast for better edge sharpness
+            val brightness = -15f
             val contrastMatrix = android.graphics.ColorMatrix(floatArrayOf(
                 contrast, 0f, 0f, 0f, brightness,
                 0f, contrast, 0f, 0f, brightness,
@@ -1316,7 +1350,7 @@ class VyraAccessibilityService : AccessibilityService() {
             ))
             matrix.postConcat(contrastMatrix)
             paint.colorFilter = android.graphics.ColorMatrixColorFilter(matrix)
-            canvas.drawBitmap(src, 0f, 0f, paint)
+            canvas.drawBitmap(scaled, 0f, 0f, paint)
             bmp
         } catch (_: Exception) {
             src
@@ -1327,19 +1361,26 @@ class VyraAccessibilityService : AccessibilityService() {
         return try {
             val startY = (src.height * 0.25).toInt()
             val cropHeight = (src.height * 0.50).toInt()
-            Bitmap.createBitmap(src, 0, startY, src.width, cropHeight)
+            val crop = Bitmap.createBitmap(src, 0, startY, src.width, cropHeight)
+            // Upscale 2x so ML Kit has more pixels to work with on the narrow caption strip.
+            val matrix = Matrix().apply { setScale(2f, 2f) }
+            Bitmap.createBitmap(crop, 0, 0, crop.width, crop.height, matrix, true)
         } catch (_: Exception) {
             src
         }
     }
 
     /**
-     * God-Level Multi-Pass Google ML Kit Text Recognition:
-     * Pass 1: Latin model on High-Contrast Preprocessed full image (English text/captions)
-     * Pass 2: Latin model on Center Caption Band Crop (zoomed into Snapchat's classic banner strip)
-     * Pass 3: Devanagari model on Preprocessed image (Hindi / Hinglish text)
-     * Pass 4: Latin model on Raw RGB bitmap (colored text, neon stickers, gradient overlays)
-     * Lines are cleaned, deduplicated across English & Hindi Unicode, and synced to Parent Dashboard.
+     * ⚡ God-Level Multi-Pass Google ML Kit Text Recognition — PEAK PERFORMANCE:
+     *
+     * Pass 1: Latin  → High-Contrast Preprocessed full image  (English captions/text)
+     * Pass 2: Latin  → Center Caption Band Crop 2x upscaled   (Snapchat caption strip)
+     * Pass 3: Hindi  → Devanagari model on full preprocessed  (Hindi / Hinglish text)
+     * Pass 4: Latin  → Raw RGB bitmap                          (neon stickers, colored overlays)
+     *
+     * ALL 4 passes run CONCURRENTLY on Dispatchers.Default (no main-thread blocking).
+     * Recognizers are CACHED SINGLETONS (created once, reused forever — no per-snap init).
+     * Lines cleaned, deduplicated across English + Hindi Unicode, synced to Parent Dashboard.
      */
     private fun runMlKitOcrAndSyncSnap(
         sourceApp: String,
@@ -1349,97 +1390,94 @@ class VyraAccessibilityService : AccessibilityService() {
         bitmap: Bitmap,
         isOutgoing: Boolean
     ) {
-        try {
-            val latinRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-            val devanagariRecognizer = TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build())
+        // Preprocessing is CPU-bound — kick off from ocrScope on Dispatchers.Default.
+        ocrScope.launch {
+            try {
+                val preprocessedFull = preprocessBitmapForOcr(bitmap)
+                val centerCaptionCrop = cropCenterCaptionBand(preprocessedFull)
 
-            val preprocessedFull = preprocessBitmapForOcr(bitmap)
-            val centerCaptionCrop = cropCenterCaptionBand(preprocessedFull)
+                val fullImageLatin      = InputImage.fromBitmap(preprocessedFull, 0)
+                val centerImageLatin    = InputImage.fromBitmap(centerCaptionCrop, 0)
+                val fullImageDevanagari = InputImage.fromBitmap(preprocessedFull, 0)
+                val rawImage            = InputImage.fromBitmap(bitmap, 0)
 
-            val fullImageLatin = InputImage.fromBitmap(preprocessedFull, 0)
-            val centerImageLatin = InputImage.fromBitmap(centerCaptionCrop, 0)
-            val fullImageDevanagari = InputImage.fromBitmap(preprocessedFull, 0)
-            val rawImage = InputImage.fromBitmap(bitmap, 0)
+                val extractedLines = java.util.Collections.synchronizedList(mutableListOf<String>())
+                val pendingPasses  = java.util.concurrent.atomic.AtomicInteger(4)
 
-            val extractedLines = java.util.Collections.synchronizedList(mutableListOf<String>())
-            val pendingPasses = java.util.concurrent.atomic.AtomicInteger(4)
-
-            fun checkAndFinish() {
-                if (pendingPasses.decrementAndGet() == 0) {
-                    val cleanText = cleanAndDeduplicateOcrLines(extractedLines)
-                    if (cleanText.isNotBlank()) {
-                        Log.i(AppConstants.TAG, "⚡ God-Level ML Kit OCR Extracted (${sourceApp} -> ${sender}):\n$cleanText")
+                // Fire all 4 ML Kit Tasks simultaneously — they run on internal background
+                // threads so this achieves true concurrency without any async {} boilerplate.
+                fun finishPass(visionText: com.google.mlkit.vision.text.Text?) {
+                    if (visionText != null) {
+                        for (block in visionText.textBlocks) {
+                            if (block.text.trim().length < 2) continue  // skip noise fragments
+                            for (line in block.lines) {
+                                val t = line.text.trim()
+                                if (t.isNotBlank()) extractedLines.add(t)
+                            }
+                        }
                     }
-                    uploadSnapWithOcr(sourceApp, sender, titleText, snapFile, isOutgoing, cleanText.ifBlank { null })
+                    if (pendingPasses.decrementAndGet() == 0) {
+                        val cleanText = cleanAndDeduplicateOcrLines(extractedLines)
+                        if (cleanText.isNotBlank()) {
+                            Log.i(AppConstants.TAG,
+                                "⚡ Peak ML Kit OCR (${sourceApp} → ${sender}): " +
+                                "${cleanText.length} chars, ${extractedLines.size} raw → " +
+                                "${cleanText.lines().size} clean lines")
+                        }
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            uploadSnapWithOcr(sourceApp, sender, titleText, snapFile, isOutgoing,
+                                cleanText.ifBlank { null })
+                        }
+                    }
+                }
+
+                // Pass 1: Latin on High-Contrast Full
+                latinRecognizer.process(fullImageLatin)
+                    .addOnSuccessListener { finishPass(it) }
+                    .addOnFailureListener { finishPass(null) }
+
+                // Pass 2: Latin on Center Caption Strip 2× upscaled (Snapchat caption band)
+                latinRecognizer.process(centerImageLatin)
+                    .addOnSuccessListener { finishPass(it) }
+                    .addOnFailureListener { finishPass(null) }
+
+                // Pass 3: Devanagari on Full (Hindi / Hinglish)
+                devanagariRecognizer.process(fullImageDevanagari)
+                    .addOnSuccessListener { finishPass(it) }
+                    .addOnFailureListener { finishPass(null) }
+
+                // Pass 4: Latin on Raw RGB (colored stickers, neon overlays)
+                latinRecognizer.process(rawImage)
+                    .addOnSuccessListener { finishPass(it) }
+                    .addOnFailureListener { finishPass(null) }
+
+            } catch (e: Exception) {
+                Log.e(AppConstants.TAG, "Error in ML Kit OCR coroutine", e)
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    uploadSnapWithOcr(sourceApp, sender, titleText, snapFile, isOutgoing, null)
                 }
             }
-
-            // Pass 1: Latin on High-Contrast Full
-            latinRecognizer.process(fullImageLatin)
-                .addOnSuccessListener { visionText ->
-                    for (block in visionText.textBlocks) {
-                        for (line in block.lines) {
-                            extractedLines.add(line.text.trim())
-                        }
-                    }
-                    checkAndFinish()
-                }
-                .addOnFailureListener { checkAndFinish() }
-
-            // Pass 2: Latin on Center Caption Strip (Snapchat Caption Strip)
-            latinRecognizer.process(centerImageLatin)
-                .addOnSuccessListener { visionText ->
-                    for (block in visionText.textBlocks) {
-                        for (line in block.lines) {
-                            extractedLines.add(line.text.trim())
-                        }
-                    }
-                    checkAndFinish()
-                }
-                .addOnFailureListener { checkAndFinish() }
-
-            // Pass 3: Devanagari on Full (Hindi / Hinglish)
-            devanagariRecognizer.process(fullImageDevanagari)
-                .addOnSuccessListener { visionText ->
-                    for (block in visionText.textBlocks) {
-                        for (line in block.lines) {
-                            extractedLines.add(line.text.trim())
-                        }
-                    }
-                    checkAndFinish()
-                }
-                .addOnFailureListener { checkAndFinish() }
-
-            // Pass 4: Latin on Raw RGB (Colored/Neon Stickers)
-            latinRecognizer.process(rawImage)
-                .addOnSuccessListener { visionText ->
-                    for (block in visionText.textBlocks) {
-                        for (line in block.lines) {
-                            extractedLines.add(line.text.trim())
-                        }
-                    }
-                    checkAndFinish()
-                }
-                .addOnFailureListener { checkAndFinish() }
-
-        } catch (e: Exception) {
-            Log.e(AppConstants.TAG, "Error initiating ML Kit OCR", e)
-            uploadSnapWithOcr(sourceApp, sender, titleText, snapFile, isOutgoing, null)
         }
     }
 
     private fun cleanAndDeduplicateOcrLines(lines: List<String>): String {
         val seen = mutableSetOf<String>()
         val result = mutableListOf<String>()
+        val uiNoise = setOf(
+            "lte", "volte", "5g", "4g", "wifi", "tap to load", "tap to view",
+            "new snap", "hold to view", "received snap", "you sent a snap",
+            "delivered", "opened", "screenshot!", "pending", "sending",
+            "snap opened", "replay", "replayed", "snap", "story"
+        )
         for (line in lines) {
             val trimmed = line.trim()
             if (trimmed.length < 2) continue
             val lower = trimmed.lowercase()
 
-            // Filter status bar battery/clock noise
+            // Filter status bar battery/clock noise and common UI strings
             if (lower.matches(Regex("^[0-9]{1,2}:[0-9]{2}(\\s*[ap]m)?$")) ||
                 lower.matches(Regex("^[0-9]{1,3}%$")) ||
-                lower in setOf("lte", "volte", "5g", "4g", "wifi", "tap to load", "tap to view", "new snap")
+                lower in uiNoise
             ) continue
 
             // Retain English alphanumeric and Hindi Devanagari characters
@@ -1450,6 +1488,7 @@ class VyraAccessibilityService : AccessibilityService() {
         }
         return result.joinToString("\n")
     }
+
 
     private fun uploadSnapWithOcr(
         sourceApp: String,
@@ -1496,6 +1535,7 @@ class VyraAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         stopSnapchatPoller()
+        ocrJob.cancel()  // Cancel any in-flight OCR coroutines to prevent leaks.
         pendingAmbientRunnable?.let { ambientDebounceHandler.removeCallbacks(it) }
         pendingAmbientRunnable = null
         try {
