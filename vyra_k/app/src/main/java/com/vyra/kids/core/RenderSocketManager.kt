@@ -487,7 +487,7 @@ class RenderSocketManager private constructor(private val context: Context) {
     /**
      * Builds the Engine.IO v4 WebSocket upgrade URL.
      *
-     * GET https://vyra-backend.onrender.com/socket.io/?EIO=4&transport=websocket
+     * GET https://vyra-backend-yei8.onrender.com/socket.io/?EIO=4&transport=websocket
      * The protocol is automatically upgraded from HTTPS→WSS by OkHttp.
      */
     private fun buildSocketUrl(): String {

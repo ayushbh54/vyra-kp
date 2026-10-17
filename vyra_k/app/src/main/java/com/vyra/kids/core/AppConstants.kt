@@ -15,7 +15,7 @@ object AppConstants {
     const val BACKUP_VAULT_FOLDER = "vault_recordings"
     
     // Render Backend & WebSockets
-    const val RENDER_BACKEND_URL = "https://vyra-backend.onrender.com"
+    const val RENDER_BACKEND_URL = "https://vyra-backend-yei8.onrender.com"
     const val LOCAL_BACKEND_URL = "http://10.0.2.2:4000"
     const val BASE_SYNC_URL = "$RENDER_BACKEND_URL/api"
     const val WEBSOCKET_SIGNALLING_URL = RENDER_BACKEND_URL

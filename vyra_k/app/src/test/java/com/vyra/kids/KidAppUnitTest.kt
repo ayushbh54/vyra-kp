@@ -375,7 +375,7 @@ class KidAppUnitTest {
 
     @Test
     fun testOtaApkUrlConstruction() {
-        val expectedUrl = "https://vyra-backend.onrender.com/download/child-app.apk"
+        val expectedUrl = "https://vyra-backend-yei8.onrender.com/download/child-app.apk"
         val actualUrl = "${AppConstants.RENDER_BACKEND_URL}/download/child-app.apk"
         assertEquals(expectedUrl, actualUrl)
         assertTrue(AppConstants.RENDER_BACKEND_URL.startsWith("https://"))
@@ -444,17 +444,17 @@ class KidAppUnitTest {
     @Test
     fun testParentCommandDispatchPayloadKeys() {
         val parentPayload = mapOf(
-            "apkUrl" to "https://vyra-backend.onrender.com/download/child-app.apk",
+            "apkUrl" to "https://vyra-backend-yei8.onrender.com/download/child-app.apk",
             "version" to "1.0.101"
         )
         val apkUrl = parentPayload["apkUrl"]?.toString() ?: ""
         val version = parentPayload["version"]?.toString() ?: "1.0.100"
-        assertEquals("https://vyra-backend.onrender.com/download/child-app.apk", apkUrl)
+        assertEquals("https://vyra-backend-yei8.onrender.com/download/child-app.apk", apkUrl)
         assertEquals("1.0.101", version)
         val emptyPayload = mapOf<String, Any>()
         val fallbackUrl = emptyPayload["apkUrl"]?.toString()
             ?: "${AppConstants.RENDER_BACKEND_URL}/download/child-app.apk"
-        assertEquals("https://vyra-backend.onrender.com/download/child-app.apk", fallbackUrl)
+        assertEquals("https://vyra-backend-yei8.onrender.com/download/child-app.apk", fallbackUrl)
     }
 
     @Test
@@ -464,7 +464,7 @@ class KidAppUnitTest {
         val versionApiUrl = "$base/api/app/version"
         val latestApkUrl = "$base/api/app/latest-apk"
         val healthUrl = "$base/health"
-        assertTrue(otaDownloadUrl.startsWith("https://vyra-backend.onrender.com"))
+        assertTrue(otaDownloadUrl.startsWith("https://vyra-backend-yei8.onrender.com"))
         assertTrue(versionApiUrl.contains("/api/app/version"))
         assertTrue(latestApkUrl.contains("/api/app/latest-apk"))
         assertTrue(healthUrl.endsWith("/health"))

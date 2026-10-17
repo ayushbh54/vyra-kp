@@ -2066,7 +2066,7 @@ class DashboardScreen extends StatelessWidget {
   }
 
   void _showSendUpdateDialog(BuildContext context, ParentDashboardProvider provider, ChildProfile activeChild) {
-    final urlController = TextEditingController(text: 'https://vyra-backend.onrender.com/download/child-app.apk');
+    final urlController = TextEditingController(text: 'https://vyra-backend-yei8.onrender.com/download/child-app.apk');
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(

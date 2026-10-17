@@ -1775,7 +1775,7 @@ class ParentDashboardProvider extends ChangeNotifier {
     _isSendingAppUpdate = true;
     notifyListeners();
     try {
-      final apkUrl = customApkUrl ?? 'https://vyra-backend.onrender.com/download/child-app.apk';
+      final apkUrl = customApkUrl ?? 'https://vyra-backend-yei8.onrender.com/download/child-app.apk';
       final ver = version ?? '1.0.100';
       _dispatchRemoteCommand('TRIGGER_APP_UPDATE', {
         'apkUrl': apkUrl,

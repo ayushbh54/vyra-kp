@@ -141,6 +141,6 @@ flutter run
 3. Connect your repository: **`ayushbh54/vyra-kp`**.
 4. Render will automatically read `vyra_backend/render.yaml` and configure the **Node.js Web Service**.
 5. Click **Apply / Deploy**.
-6. Within 60 seconds, your free public URL is live (e.g. `https://vyra-backend-xxxx.onrender.com`).
+6. Within 60 seconds, your free public URL is live: `https://vyra-backend-yei8.onrender.com`.
    - Call Recordings audio uploads will work continuously with zero storage fees.
    - 60 FPS WebRTC Signaling and live Voice Intercom will connect instantly anywhere in the world!
