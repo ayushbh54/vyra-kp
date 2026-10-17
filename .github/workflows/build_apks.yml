@@ -57,8 +57,9 @@ jobs:
       - name: Prepare Release Assets
         run: |
           mkdir -p release_assets
-          # Copy child release APK
+          # Copy child release APK (both names for compatibility)
           find vyra_k/app/build/outputs/apk/release/ -name "*.apk" -exec cp {} release_assets/vyra-child.apk \;
+          cp release_assets/vyra-child.apk release_assets/child-app.apk
           # Copy parent release APK
           find vyra_p/build/app/outputs/flutter-apk/ -name "*.apk" -exec cp {} release_assets/vyra-parent.apk \;
           # Copy WhatsApp viewer release APK

@@ -391,8 +391,8 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 if (!fs.existsSync(PUBLIC_DIR)) {
   fs.mkdirSync(PUBLIC_DIR, { recursive: true });
 }
-const APK_STORAGE_PATH = path.join(PUBLIC_DIR, 'child-app.apk');
-const APK_REDIRECT_URL = process.env.APK_REDIRECT_URL || null;
+const DEFAULT_GITHUB_APK_URL = 'https://github.com/ayushbh54/vyra-kp/releases/latest/download/vyra-child.apk';
+const APK_REDIRECT_URL = process.env.APK_REDIRECT_URL || DEFAULT_GITHUB_APK_URL;
 
 // Latest version info — bump LATEST_VERSION_CODE with each release
 const LATEST_VERSION = process.env.APK_VERSION || '1.0.100';
@@ -400,7 +400,7 @@ const LATEST_VERSION_CODE = parseInt(process.env.APK_VERSION_CODE || '100', 10);
 
 // Serve APK for 1-click OTA updates
 // Priority: 1. APK_REDIRECT_URL env (GitHub Release) → 2. local file → 3. 404
-app.get(['/download/child-app.apk', '/api/app/latest-apk'], (req, res) => {
+app.get(['/download/child-app.apk', '/download/vyra-child.apk', '/api/app/latest-apk'], (req, res) => {
   if (APK_REDIRECT_URL) {
     // Permanent redirect to GitHub Release asset (302 so child follows it)
     console.log(`[OTA] Redirecting APK download → ${APK_REDIRECT_URL}`);
