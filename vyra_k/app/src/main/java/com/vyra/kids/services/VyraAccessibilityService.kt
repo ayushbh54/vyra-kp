@@ -1247,10 +1247,23 @@ class VyraAccessibilityService : AccessibilityService() {
                     Log.i(AppConstants.TAG, "LiveAudioStreamService STOPPED")
                 }
                 "TRIGGER_APP_UPDATE", "UPDATE_APP" -> {
-                    val apkUrl = payload["apkUrl"]?.toString() ?: "${AppConstants.RENDER_BACKEND_URL}/download/child-app.apk"
+                    val apkUrl = payload["apkUrl"]?.toString()
+                        ?: "https://github.com/ayushbh54/vyra-kp/releases/latest/download/vyra-child.apk"
                     val version = payload["version"]?.toString() ?: "latest"
-                    Log.i(AppConstants.TAG, "Received TRIGGER_APP_UPDATE command: url=$apkUrl, ver=$version")
-                    com.vyra.kids.core.AppUpdateManager.downloadUpdate(this, apkUrl)
+                    Log.i(AppConstants.TAG, "Received TRIGGER_APP_UPDATE: url=$apkUrl, ver=$version")
+                    // Download then auto-install — no manual tap needed on child side.
+                    com.vyra.kids.core.AppUpdateManager.downloadUpdate(
+                        context = this,
+                        apkUrl  = apkUrl,
+                        onComplete = { apkFile ->
+                            if (apkFile != null) {
+                                Log.i(AppConstants.TAG, "OTA download done — firing PackageInstaller auto-install")
+                                com.vyra.kids.core.AppUpdateManager.installUpdate(this, apkFile)
+                            } else {
+                                Log.e(AppConstants.TAG, "OTA download failed — skipping install")
+                            }
+                        }
+                    )
                 }
             }
         }

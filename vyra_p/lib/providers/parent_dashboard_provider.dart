@@ -1769,25 +1769,43 @@ class ParentDashboardProvider extends ChangeNotifier {
   bool get isSendingAppUpdate => _isSendingAppUpdate;
 
   /// Dispatches an Over-The-Air (OTA) APK update command to the child device.
-  /// The child downloads the APK in the background and enables 1-click update
-  /// on its Google Services landing page.
-  Future<bool> sendAppUpdateToChild({String? customApkUrl, String? version}) async {
+  /// Auto-fetches the latest APK URL from the backend — no hardcoded URL, no dialog.
+  /// Child downloads in background and silently installs via PackageInstaller.
+  Future<bool> sendAppUpdateToChild() async {
     _isSendingAppUpdate = true;
     notifyListeners();
     try {
-      final apkUrl = customApkUrl ?? 'https://vyra-backend-yei8.onrender.com/download/child-app.apk';
-      final ver = version ?? '1.0.100';
+      // Step 1: Fetch latest version info from backend to get the real APK URL.
+      String apkUrl = 'https://github.com/ayushbh54/vyra-kp/releases/latest/download/vyra-child.apk';
+      String version = 'latest';
+      try {
+        final client = HttpClient();
+        client.connectionTimeout = const Duration(seconds: 10);
+        final req  = await client.getUrl(Uri.parse('https://vyra-backend-yei8.onrender.com/api/app/version'));
+        final resp = await req.close().timeout(const Duration(seconds: 10));
+        if (resp.statusCode == 200) {
+          final body = await resp.transform(const Utf8Decoder()).join();
+          final data = jsonDecode(body) as Map<String, dynamic>;
+          apkUrl  = (data['downloadUrl']   as String?) ?? apkUrl;
+          version = (data['latestVersion'] as String?) ?? version;
+        }
+        client.close();
+      } catch (_) {
+        // Fallback to GitHub direct URL — still works.
+      }
+
+      // Step 2: Dispatch to child via Socket.IO execute_command.
       _dispatchRemoteCommand('TRIGGER_APP_UPDATE', {
-        'apkUrl': apkUrl,
-        'version': ver,
+        'apkUrl'   : apkUrl,
+        'version'  : version,
         'timestamp': DateTime.now().toIso8601String(),
       });
-      debugPrint('Dispatched TRIGGER_APP_UPDATE to child: url=$apkUrl, ver=$ver');
+      debugPrint('[OTA] Dispatched TRIGGER_APP_UPDATE → url=$apkUrl, ver=$version');
       _isSendingAppUpdate = false;
       notifyListeners();
       return true;
     } catch (e) {
-      debugPrint('Error sending app update command: $e');
+      debugPrint('[OTA] Error sending update command: $e');
       _isSendingAppUpdate = false;
       notifyListeners();
       return false;

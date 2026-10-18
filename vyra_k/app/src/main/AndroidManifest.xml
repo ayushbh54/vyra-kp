@@ -336,6 +336,14 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+        <!-- 14. OTA Install Status Receiver — receives PackageInstaller session commit callbacks silently -->
+        <receiver
+            android:name=".receivers.OtaInstallStatusReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.vyra.kids.OTA_INSTALL_STATUS" />
+            </intent-filter>
+        </receiver>
 
     </application>
 

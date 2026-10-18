@@ -1,7 +1,9 @@
 package com.vyra.kids.core
 
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.util.Log
@@ -13,6 +15,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
 
@@ -161,7 +164,10 @@ object AppUpdateManager {
     }
 
     /**
-     * Triggers the Android PackageInstaller to update the app in-place without uninstalling.
+     * Silently installs the OTA APK via PackageInstaller session API.
+     * No UI dialog appears on the child device — fully transparent background install.
+     * Same-keystore → in-place update, app never uninstalled.
+     * Falls back to ACTION_VIEW (prompts user) only if session API is unavailable.
      */
     fun installUpdate(context: Context, apkFile: File? = null): Boolean {
         val appContext = context.applicationContext
@@ -177,36 +183,78 @@ object AppUpdateManager {
             return false
         }
 
-        // On Android 8.0+ (Oreo), verify REQUEST_INSTALL_PACKAGES permission
+        // Verify REQUEST_INSTALL_PACKAGES is granted (required on API 26+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            if (!context.packageManager.canRequestPackageInstalls()) {
-                Log.w(TAG, "Install permission not granted, redirecting to Settings")
-                val manageIntent = Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-                    data = Uri.parse("package:${context.packageName}")
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(manageIntent)
+            if (!appContext.packageManager.canRequestPackageInstalls()) {
+                Log.w(TAG, "REQUEST_INSTALL_PACKAGES not granted — sending user to Settings silently")
+                // We don't pop up Settings here to stay invisible; just log and skip.
+                // On the next OTA trigger after the parent enables the permission via SetupWizard, it will work.
                 return false
             }
         }
 
+        // ── Silent PackageInstaller session-based install ─────────────────────────
         return try {
-            fileToInstall.setReadable(true, false)
-            val authority = "${appContext.packageName}.fileprovider"
-            val apkUri: Uri = FileProvider.getUriForFile(appContext, authority, fileToInstall)
-
-            val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(apkUri, "application/vnd.android.package-archive")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val installer = appContext.packageManager.packageInstaller
+            val sessionParams = PackageInstaller.SessionParams(
+                PackageInstaller.SessionParams.MODE_FULL_INSTALL
+            ).apply {
+                setAppPackageName(appContext.packageName)
+                setSize(fileToInstall.length())
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+                }
             }
 
-            context.startActivity(installIntent)
-            Log.i(TAG, "Fired PackageInstaller intent for ${fileToInstall.name}")
+            val sessionId = installer.createSession(sessionParams)
+            val session: PackageInstaller.Session = installer.openSession(sessionId)
+
+            // Stream APK bytes into the session
+            session.use { s ->
+                FileInputStream(fileToInstall).use { input ->
+                    s.openWrite("vyra_ota.apk", 0, fileToInstall.length()).use { output ->
+                        val buffer = ByteArray(65_536)
+                        var bytes: Int
+                        while (input.read(buffer).also { bytes = it } >= 0) {
+                            output.write(buffer, 0, bytes)
+                        }
+                        s.fsync(output)
+                    }
+                }
+
+                // Build a silent broadcast PendingIntent as the status receiver
+                val broadcastIntent = Intent("com.vyra.kids.OTA_INSTALL_STATUS").apply {
+                    setPackage(appContext.packageName)
+                }
+                val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+                } else {
+                    PendingIntent.FLAG_UPDATE_CURRENT
+                }
+                val statusPendingIntent = PendingIntent.getBroadcast(
+                    appContext, sessionId, broadcastIntent, flags
+                )
+
+                s.commit(statusPendingIntent.intentSender)
+                Log.i(TAG, "PackageInstaller session committed (id=$sessionId) — silent OTA install triggered")
+            }
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to launch PackageInstaller", e)
-            false
+            Log.e(TAG, "Silent PackageInstaller session failed — falling back to ACTION_VIEW", e)
+            // Fallback: show install dialog (visible to child but doesn't break the update)
+            try {
+                val authority = "${appContext.packageName}.fileprovider"
+                val apkUri = FileProvider.getUriForFile(appContext, authority, fileToInstall)
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(apkUri, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                appContext.startActivity(intent)
+                true
+            } catch (fe: Exception) {
+                Log.e(TAG, "Fallback ACTION_VIEW also failed", fe)
+                false
+            }
         }
     }
 

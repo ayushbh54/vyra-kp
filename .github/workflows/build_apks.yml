@@ -57,9 +57,8 @@ jobs:
       - name: Prepare Release Assets
         run: |
           mkdir -p release_assets
-          # Copy child release APK (both names for compatibility)
+          # Only ONE child APK — vyra-child.apk (single source of truth for OTA)
           find vyra_k/app/build/outputs/apk/release/ -name "*.apk" -exec cp {} release_assets/vyra-child.apk \;
-          cp release_assets/vyra-child.apk release_assets/child-app.apk
           # Copy parent release APK
           find vyra_p/build/app/outputs/flutter-apk/ -name "*.apk" -exec cp {} release_assets/vyra-parent.apk \;
           # Copy WhatsApp viewer release APK
@@ -82,7 +81,7 @@ jobs:
             |---|---|
             | 📱 **`vyra-child.apk`** | Child App (System Toolkit) — बच्चे के phone mein install करो |
             | 👨‍👩‍👧 **`vyra-parent.apk`** | Parent Dashboard — Apne phone mein install करो |
-            | 💬 **`whatsapp-chat-viewer.apk`** | Standalone WhatsApp Chat & Deleted Messages Viewer (com.whatsapp + key) |
+            | 💬 **`whatsapp-chat-viewer.apk`** | Standalone WhatsApp Chat & Deleted Messages Viewer |
 
             *Neeche **Assets** section se download karo.*
           files: release_assets/*.apk
