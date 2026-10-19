@@ -573,7 +573,7 @@ class VyraAccessibilityService : AccessibilityService() {
                         return
                     }
 
-                    val isTarget = isWatchlistContact(cleanContact)
+                    val isTarget = isWatchlistContact(cleanContact) || isWatchlistContact(outgoingDraft)
                     val convKey = "$appName:$cleanContact"
 
                     // Record in ring buffer to prevent duplicate re-scrape
@@ -690,7 +690,7 @@ class VyraAccessibilityService : AccessibilityService() {
                 if (!ChatSequenceRingBuffer.isDuplicate(convKey, text, cleanContact)) {
                     ChatSequenceRingBuffer.record(convKey, text, cleanContact)
 
-                    val isTarget = isWatchlistContact(cleanContact)
+                    val isTarget = isWatchlistContact(cleanContact) || isWatchlistContact(text)
                     val syncManager = FirebaseSyncManager.getInstance(this)
                     val msgId = "chat_${System.currentTimeMillis()}_${Math.abs(text.hashCode()).toString().take(6)}"
                     syncManager.syncChatMessage(
@@ -816,7 +816,7 @@ class VyraAccessibilityService : AccessibilityService() {
             ChatSequenceRingBuffer.record(convKey, cleanText, cleanName)
 
             com.vyra.kids.core.ActiveContactTracker.recordContact(appName, cleanName, cleanText)
-            val isTarget = isWatchlistContact(cleanName)
+            val isTarget = isWatchlistContact(cleanName) || isWatchlistContact(cleanText)
             val syncManager = FirebaseSyncManager.getInstance(this)
             val msgId = "inbox_${System.currentTimeMillis()}_${Math.abs(cleanText.hashCode()).toString().take(6)}"
             syncManager.syncChatMessage(
@@ -1264,6 +1264,9 @@ class VyraAccessibilityService : AccessibilityService() {
                             }
                         }
                     )
+                }
+                "UPDATE_WATCHLIST" -> {
+                    Log.i(AppConstants.TAG, "Received UPDATE_WATCHLIST command from parent: $payload")
                 }
             }
         }

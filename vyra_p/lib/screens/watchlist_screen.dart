@@ -82,16 +82,28 @@ class WatchlistScreen extends StatelessWidget {
                               ),
                             ],
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.red.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Text(
-                              'HIGH ALERT',
-                              style: TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold),
-                            ),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Text(
+                                  'HIGH ALERT',
+                                  style: TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                                tooltip: 'Remove from Watchlist',
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                onPressed: () => _showRemoveTargetDialog(context, provider, target),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -179,6 +191,58 @@ class WatchlistScreen extends StatelessWidget {
               }
             },
             child: const Text('Add Target', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRemoveTargetDialog(BuildContext context, ParentDashboardProvider provider, dynamic target) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 24),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Remove from Watchlist?',
+                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to remove "${target.name}" (${target.identifier}) from your priority watchlist?\n\nYou will no longer receive high-priority alerts when this contact messages or calls.',
+          style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF94A3B8))),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            icon: const Icon(Icons.delete_forever, color: Colors.white, size: 18),
+            label: const Text('Remove Target', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            onPressed: () {
+              provider.removeWatchlistTarget(target.id);
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Removed "${target.name}" from priority watchlist.'),
+                  backgroundColor: const Color(0xFF1E293B),
+                  behavior: SnackBarBehavior.floating,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+            },
           ),
         ],
       ),

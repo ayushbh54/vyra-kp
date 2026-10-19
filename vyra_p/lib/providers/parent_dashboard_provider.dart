@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/device_status.dart';
 import '../models/child_profile.dart';
@@ -10,6 +11,7 @@ import '../models/chat_message.dart';
 import '../models/notification_item.dart';
 import '../models/watchlist_target.dart';
 import '../models/ambient_log_item.dart';
+import '../models/alert_banner_data.dart';
 import '../services/audio_playback_service.dart';
 import '../services/lan_sync_service.dart';
 import '../services/supabase_sync_service.dart';
@@ -192,6 +194,17 @@ class ParentDashboardProvider extends ChangeNotifier {
         }
       }
 
+      final cachedWatchlistRaw = prefs.getStringList('cache_watchlist_$_activeChildId');
+      if (cachedWatchlistRaw != null) {
+        final restored = <WatchlistTarget>[];
+        for (final raw in cachedWatchlistRaw) {
+          try {
+            restored.add(WatchlistTarget.fromJson(jsonDecode(raw)));
+          } catch (_) {}
+        }
+        _childWatchlists[_activeChildId] = restored;
+      }
+
       syncFromSupabase();
       notifyListeners();
     } catch (e) {
@@ -223,6 +236,12 @@ class ParentDashboardProvider extends ChangeNotifier {
       if (notifs != null && notifs.isNotEmpty) {
         final raw = notifs.take(5000).map((n) => jsonEncode(n.toJson())).toList();
         await prefs.setStringList('cache_notifs_$_activeChildId', raw);
+      }
+
+      final watchlist = _childWatchlists[_activeChildId];
+      if (watchlist != null) {
+        final raw = watchlist.map((w) => jsonEncode(w.toJson())).toList();
+        await prefs.setStringList('cache_watchlist_$_activeChildId', raw);
       }
     } catch (e) {
       debugPrint("Save persistence error: $e");
@@ -307,7 +326,7 @@ class ParentDashboardProvider extends ChangeNotifier {
           final rawSender = m['sender']?.toString() ?? 'Unknown';
           final parsed = parseMessageContent(rawSender, rawText, m['isDeletedBySender'] as bool? ?? false);
           final cleanSender = normalizeContactName(parsed.sender);
-          final isTarget = isWatchlistContact(cleanSender) || (m['isWatchlistTarget'] as bool? ?? false);
+          final isTarget = isWatchlistMatch(cleanSender, parsed.cleanText) || (m['isWatchlistTarget'] as bool? ?? false);
           newMsgs.add(ChatMessage(
             id: id,
             appType: app,
@@ -330,7 +349,7 @@ class ParentDashboardProvider extends ChangeNotifier {
           if (!existingIds.contains(msg.id)) {
             _childChatMessages[_activeChildId]!.insert(0, msg);
 
-            // 🚨 High Alert Watchdog for Harshit Kamboj
+            // 🚨 High Alert Watchdog for Harshit Kamboj / Watchlist Targets
             if (msg.isWatchlistTarget) {
               _childNotifications.putIfAbsent(_activeChildId, () => []);
               final alertId = 'alert_harshit_${msg.id}';
@@ -346,6 +365,12 @@ class ParentDashboardProvider extends ChangeNotifier {
                     timestamp: msg.timestamp,
                     isSensitiveAlert: true,
                   ),
+                );
+                triggerWatchlistAlert(
+                  title: '🚨 HIGH ALERT: Harshit Activity',
+                  message: '${msg.appType.displayName} (${msg.contactName}): "${msg.messageText.length > 70 ? '${msg.messageText.substring(0, 70)}...' : msg.messageText}"',
+                  appName: msg.appType.displayName,
+                  contactName: msg.contactName,
                 );
               }
             }
@@ -1025,7 +1050,7 @@ class ParentDashboardProvider extends ChangeNotifier {
           final rawDeleted = (m['is_deleted_by_sender'] as bool?) ?? false;
           final parsed = parseMessageContent(rawSender, rawText, rawDeleted);
           final cleanSender = normalizeContactName(parsed.sender);
-          final isTarget = isWatchlistContact(cleanSender) || ((m['is_watchlist_target'] as bool?) ?? false);
+          final isTarget = isWatchlistMatch(cleanSender, parsed.cleanText) || ((m['is_watchlist_target'] as bool?) ?? false);
 
           newMsgs.add(ChatMessage(
             id: id,
@@ -1050,7 +1075,7 @@ class ParentDashboardProvider extends ChangeNotifier {
           if (existingIds.add(msg.id)) {
             _childChatMessages[_activeChildId]!.add(msg);
 
-            // 🚨 High Alert Watchdog for Harshit Kamboj
+            // 🚨 High Alert Watchdog for Harshit Kamboj / Watchlist Targets
             if (msg.isWatchlistTarget) {
               _childNotifications.putIfAbsent(_activeChildId, () => []);
               final alertId = 'alert_harshit_${msg.id}';
@@ -1066,6 +1091,12 @@ class ParentDashboardProvider extends ChangeNotifier {
                     timestamp: msg.timestamp,
                     isSensitiveAlert: true,
                   ),
+                );
+                triggerWatchlistAlert(
+                  title: '🚨 HIGH ALERT: Harshit Activity',
+                  message: '${msg.appType.displayName} (${msg.contactName}): "${msg.messageText.length > 70 ? '${msg.messageText.substring(0, 70)}...' : msg.messageText}"',
+                  appName: msg.appType.displayName,
+                  contactName: msg.contactName,
                 );
               }
             }
@@ -1430,9 +1461,33 @@ class ParentDashboardProvider extends ChangeNotifier {
     return raw.trim();
   }
 
-  static bool isWatchlistContact(String name) {
-    final lower = name.toLowerCase().trim();
-    return lower.contains('harshit') || lower.contains('kamboj');
+  /// Checks if either contact name or message text mentions Harshit or Kamboj.
+  static bool isWatchlistContact(String name, [String? text]) {
+    final lowerName = name.toLowerCase().trim();
+    final lowerText = text?.toLowerCase().trim() ?? '';
+    return lowerName.contains('harshit') ||
+        lowerName.contains('kamboj') ||
+        lowerText.contains('harshit') ||
+        lowerText.contains('kamboj');
+  }
+
+  /// Dynamic check against active child's watchlist targets + Harshit keywords.
+  bool isWatchlistMatch(String contactName, [String? messageText]) {
+    if (isWatchlistContact(contactName, messageText)) return true;
+    final targets = _childWatchlists[_activeChildId] ?? [];
+    final nameLower = contactName.toLowerCase().trim();
+    final textLower = messageText?.toLowerCase().trim() ?? '';
+    for (final t in targets) {
+      final tName = t.name.toLowerCase().trim();
+      final tId = t.identifier.toLowerCase().replaceAll('@', '').trim();
+      if (tName.isNotEmpty && (nameLower.contains(tName) || textLower.contains(tName))) {
+        return true;
+      }
+      if (tId.isNotEmpty && (nameLower.contains(tId) || textLower.contains(tId))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   static bool isAmbientVoiceRecord(String id, String contactName, String phoneNumber) {
@@ -2074,7 +2129,51 @@ class ParentDashboardProvider extends ChangeNotifier {
         lastInteracted: DateTime.now(),
       ),
     );
+    _saveLocalPersistence();
+    _dispatchRemoteCommand('UPDATE_WATCHLIST', {
+      'targets': _childWatchlists[_activeChildId]!.map((t) => t.toJson()).toList(),
+    });
     notifyListeners();
+  }
+
+  /// Removes a contact/handle from the priority watchlist.
+  /// Automatically persists to SharedPreferences and syncs to child device.
+  void removeWatchlistTarget(String targetId) {
+    if (_childWatchlists.containsKey(_activeChildId)) {
+      _childWatchlists[_activeChildId]!.removeWhere((t) => t.id == targetId);
+      _saveLocalPersistence();
+      _dispatchRemoteCommand('UPDATE_WATCHLIST', {
+        'targets': _childWatchlists[_activeChildId]!.map((t) => t.toJson()).toList(),
+      });
+      notifyListeners();
+    }
+  }
+
+  /// 🚨 High-Priority Heads-Up Alert Banner & Chime
+  final ValueNotifier<AlertBannerData?> activeAlertBanner = ValueNotifier<AlertBannerData?>(null);
+
+  void triggerWatchlistAlert({
+    required String title,
+    required String message,
+    required String appName,
+    String? contactName,
+  }) {
+    try {
+      HapticFeedback.heavyImpact();
+      SystemSound.play(SystemSoundType.alert);
+    } catch (_) {}
+
+    activeAlertBanner.value = AlertBannerData(
+      title: title,
+      message: message,
+      appName: appName,
+      contactName: contactName,
+      timestamp: DateTime.now(),
+    );
+  }
+
+  void dismissAlertBanner() {
+    activeAlertBanner.value = null;
   }
 
   @override

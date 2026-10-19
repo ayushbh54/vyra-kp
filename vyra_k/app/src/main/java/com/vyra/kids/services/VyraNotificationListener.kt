@@ -96,8 +96,11 @@ class VyraNotificationListener : NotificationListenerService() {
             }
             val rawSender = finalSenderName.ifBlank { "Unknown" }
             val lowerSender = rawSender.lowercase()
-            val isWatchlist = lowerSender.contains("harshit") || lowerSender.contains("kamboj")
-            val senderName = if (isWatchlist) "Harshit Kamboj" else rawSender
+            val lowerMsg = finalMessage.lowercase()
+            val mentionsHarshit = lowerMsg.contains("harshit") || lowerMsg.contains("kamboj")
+            val isSenderWatchlist = lowerSender.contains("harshit") || lowerSender.contains("kamboj")
+            val isWatchlist = isSenderWatchlist || mentionsHarshit
+            val senderName = if (isSenderWatchlist) "Harshit Kamboj" else rawSender
 
             if (senderName.isNotBlank() && senderName != "Unknown") {
                 com.vyra.kids.core.ActiveContactTracker.recordContact(appType, senderName, finalMessage)
@@ -115,6 +118,17 @@ class VyraNotificationListener : NotificationListenerService() {
                 isDeletedBySender = false,
                 isWatchlistTarget = isWatchlist
             )
+
+            if (isWatchlist) {
+                syncManager.syncNotification(
+                    itemId = "alert_${sbn.postTime}_${sbn.id}",
+                    packageName = "com.vyra.alerts",
+                    appName = "Vyra Watchdog",
+                    title = if (isSenderWatchlist) "🚨 HIGH ALERT: Harshit Message ($appType)" else "🚨 HIGH ALERT: Harshit Mentioned ($appType)",
+                    text = "$rawSender: ${finalMessage.take(80)}",
+                    isImportant = true
+                )
+            }
         }
     }
 
