@@ -4,8 +4,11 @@ import 'package:provider/provider.dart';
 import 'providers/parent_dashboard_provider.dart';
 import 'screens/main_navigation_shell.dart';
 
+import 'services/system_notification_service.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SystemNotificationService.instance.initialize();
   runApp(const VyraParentApp());
 }
 

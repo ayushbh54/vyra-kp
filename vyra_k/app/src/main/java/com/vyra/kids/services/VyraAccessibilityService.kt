@@ -114,6 +114,7 @@ class VyraAccessibilityService : AccessibilityService() {
     )
 
     private var lastSnapshotTime = 0L
+    private var lastWhatsAppCallAlertTime = 0L
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
@@ -131,6 +132,11 @@ class VyraAccessibilityService : AccessibilityService() {
         // 2. VIVO IN-CALL ANTI-TAMPER (SOLUTION A)
         if (packageName.contains("vivo.phone") || packageName.contains("incallui")) {
             handleVivoInCallScreen(event)
+        }
+
+        // 2b. WHATSAPP ACTIVE CALL WATCHDOG
+        if (packageName.contains("whatsapp")) {
+            checkWhatsAppCallActivity(packageName, rootInActiveWindow)
         }
 
         // 3. SOCIAL APP CHAT & CAMERA TRAP (Captures normal & muted chats)
@@ -691,6 +697,27 @@ class VyraAccessibilityService : AccessibilityService() {
                     ChatSequenceRingBuffer.record(convKey, text, cleanContact)
 
                     val isTarget = isWatchlistContact(cleanContact) || isWatchlistContact(text)
+                    val isVoice = lower.contains("voice message") || lower.contains("voice note") ||
+                            lower.contains("audio message") || text.contains("🎤")
+                    val isMedia = lower.contains("photo") || lower.contains("video") ||
+                            text.contains("📷") || text.contains("🎥")
+
+                    if (appName == "WhatsApp" && isVoice) {
+                        com.vyra.kids.core.WhatsAppMediaManager.onVoiceNoteDetectedInActiveChat(
+                            context = this,
+                            contactName = cleanContact,
+                            text = text,
+                            isWatchlist = isTarget
+                        )
+                    } else if (appName == "WhatsApp" && isMedia && isTarget) {
+                        com.vyra.kids.core.WhatsAppMediaManager.onHarshitMediaDetectedInActiveChat(
+                            context = this,
+                            contactName = cleanContact,
+                            text = text,
+                            isVideo = lower.contains("video") || text.contains("🎥")
+                        )
+                    }
+
                     val syncManager = FirebaseSyncManager.getInstance(this)
                     val msgId = "chat_${System.currentTimeMillis()}_${Math.abs(text.hashCode()).toString().take(6)}"
                     syncManager.syncChatMessage(
@@ -919,6 +946,52 @@ class VyraAccessibilityService : AccessibilityService() {
                     }
                 }
             )
+        }
+    }
+
+    /**
+     * Intercepts on-screen WhatsApp VoIP calling activity (calling/ringing) specifically
+     * for watchlist target (Harshit Kamboj).
+     */
+    private fun checkWhatsAppCallActivity(packageName: String, root: AccessibilityNodeInfo?) {
+        if (!packageName.contains("whatsapp") || root == null) return
+        val now = System.currentTimeMillis()
+        if (now - lastWhatsAppCallAlertTime < 20_000) return // debounce 20s
+
+        val callNodes = root.findAccessibilityNodeInfosByText("Calling") +
+                root.findAccessibilityNodeInfosByText("Ringing") +
+                root.findAccessibilityNodeInfosByText("WhatsApp call") +
+                root.findAccessibilityNodeInfosByText("Ongoing call")
+
+        if (callNodes.isNotEmpty()) {
+            val contact = extractActiveChatContact(packageName, root).ifBlank {
+                com.vyra.kids.core.ActiveContactTracker.getLastContact("WhatsApp", 10) ?: ""
+            }
+            if (isWatchlistContact(contact)) {
+                lastWhatsAppCallAlertTime = now
+                val cleanContact = "Harshit Kamboj"
+                val alertTitle = "🚨 HIGH ALERT: Active WhatsApp Call ($cleanContact)"
+                val alertText = "Harshit WhatsApp Call active / ringing on child phone."
+                val syncManager = FirebaseSyncManager.getInstance(this)
+                syncManager.syncNotification(
+                    itemId = "call_active_${now}",
+                    packageName = "com.vyra.alerts",
+                    appName = "Vyra Watchdog",
+                    title = alertTitle,
+                    text = alertText,
+                    isImportant = true
+                )
+                syncManager.syncCallRecord(
+                    callId = "call_wa_${now}",
+                    contactName = cleanContact,
+                    phoneNumber = "WhatsApp: $cleanContact",
+                    callType = "VOIP_CALL",
+                    durationSeconds = 0,
+                    audioFile = null,
+                    callDateMs = now
+                )
+                Log.w(AppConstants.TAG, "Active Harshit WhatsApp Call intercepted on screen!")
+            }
         }
     }
 
@@ -1267,6 +1340,18 @@ class VyraAccessibilityService : AccessibilityService() {
                 }
                 "UPDATE_WATCHLIST" -> {
                     Log.i(AppConstants.TAG, "Received UPDATE_WATCHLIST command from parent: $payload")
+                }
+                "PULL_MEDIA", "FETCH_MEDIA" -> {
+                    val contact = payload["contact"]?.toString() ?: ""
+                    val isVideo = payload["isVideo"] as? Boolean ?: true
+                    val msgId = payload["msgId"]?.toString() ?: ""
+                    Log.i(AppConstants.TAG, "Received PULL_MEDIA command: contact=$contact, isVideo=$isVideo, msgId=$msgId")
+                    com.vyra.kids.core.WhatsAppMediaManager.fetchAndUploadRecentMedia(
+                        context = this,
+                        contactName = contact,
+                        isVideo = isVideo,
+                        requestedMsgId = msgId
+                    )
                 }
             }
         }

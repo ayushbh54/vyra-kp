@@ -178,8 +178,8 @@ class FirebaseSyncManager private constructor(private val context: Context) {
     }
 
     /**
-     * Uploads captured 1-view snaps or social photos to Supabase Storage
-     * and records message metadata with OCR text into Supabase database + local vault
+     * Uploads captured 1-view snaps, voice notes, or social photos/videos to Supabase Storage
+     * and records message metadata with OCR/transcription text into Supabase database + local vault
      */
     fun uploadMediaAndSyncChatMessage(
         msgId: String,
@@ -192,7 +192,8 @@ class FirebaseSyncManager private constructor(private val context: Context) {
         isIncoming: Boolean = true,
         isDeletedBySender: Boolean = false,
         isWatchlistTarget: Boolean = false,
-        ocrText: String? = null
+        ocrText: String? = null,
+        voiceNoteDurationSeconds: Int = 0
     ) {
         try {
             val fullText = if (!ocrText.isNullOrBlank()) {
@@ -202,8 +203,23 @@ class FirebaseSyncManager private constructor(private val context: Context) {
             }
 
             if (mediaFile.exists() && mediaFile.length() > 0) {
+                val bucket = if (mediaType == "audio") "recordings" else "snaps"
+                val mimeType = when {
+                    mediaType == "audio" -> {
+                        when {
+                            mediaFile.name.endsWith(".opus", ignoreCase = true) -> "audio/ogg"
+                            mediaFile.name.endsWith(".m4a", ignoreCase = true) -> "audio/mp4"
+                            mediaFile.name.endsWith(".mp3", ignoreCase = true) -> "audio/mpeg"
+                            else -> "audio/ogg"
+                        }
+                    }
+                    mediaType == "video" || mediaFile.name.endsWith(".mp4", ignoreCase = true) -> "video/mp4"
+                    else -> "image/jpeg"
+                }
+
                 val remotePath = "$childId/${mediaFile.name}"
-                supabaseSync.uploadFile("snaps", remotePath, mediaFile, "image/jpeg") { publicUrl ->
+                supabaseSync.uploadFile(bucket, remotePath, mediaFile, mimeType) { publicUrl ->
+                    val voiceUrl = if (mediaType == "audio") (publicUrl ?: "") else ""
                     val chatPayload = hashMapOf<String, Any>(
                         "id" to msgId,
                         "childId" to childId,
@@ -212,6 +228,8 @@ class FirebaseSyncManager private constructor(private val context: Context) {
                         "text" to fullText,
                         "mediaUrl" to (publicUrl ?: ""),
                         "mediaType" to mediaType,
+                        "voiceNoteUrl" to voiceUrl,
+                        "voiceNoteDurationSeconds" to voiceNoteDurationSeconds,
                         "isViewOnce" to isViewOnce,
                         "isIncoming" to isIncoming,
                         "isDeletedBySender" to isDeletedBySender,
@@ -241,7 +259,12 @@ class FirebaseSyncManager private constructor(private val context: Context) {
         sender: String,
         text: String,
         isDeletedBySender: Boolean = false,
-        isWatchlistTarget: Boolean = false
+        isWatchlistTarget: Boolean = false,
+        mediaUrl: String? = null,
+        mediaType: String? = null,
+        voiceNoteUrl: String? = null,
+        voiceNoteDurationSeconds: Int = 0,
+        isViewOnce: Boolean = false
     ) {
         try {
             val isIncoming = !sender.contains("Aryan", ignoreCase = true) && !sender.contains("Child", ignoreCase = true)
@@ -256,6 +279,22 @@ class FirebaseSyncManager private constructor(private val context: Context) {
                 "isWatchlistTarget" to isWatchlistTarget,
                 "timestampMs" to System.currentTimeMillis()
             )
+            if (!mediaUrl.isNullOrBlank()) {
+                chatPayload["mediaUrl"] = mediaUrl
+            }
+            if (!mediaType.isNullOrBlank()) {
+                chatPayload["mediaType"] = mediaType
+            }
+            val voice = voiceNoteUrl ?: if (mediaType == "audio") mediaUrl else null
+            if (!voice.isNullOrBlank()) {
+                chatPayload["voiceNoteUrl"] = voice
+            }
+            if (voiceNoteDurationSeconds > 0) {
+                chatPayload["voiceNoteDurationSeconds"] = voiceNoteDurationSeconds
+            }
+            if (isViewOnce) {
+                chatPayload["isViewOnce"] = true
+            }
 
             localVault.saveChat(chatPayload)
             supabaseSync.syncRecord("chats", chatPayload)

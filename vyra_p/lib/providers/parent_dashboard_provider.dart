@@ -15,6 +15,7 @@ import '../models/alert_banner_data.dart';
 import '../services/audio_playback_service.dart';
 import '../services/lan_sync_service.dart';
 import '../services/supabase_sync_service.dart';
+import '../services/system_notification_service.dart';
 
 class ParentDashboardProvider extends ChangeNotifier {
   ParentDashboardProvider() {
@@ -2170,10 +2171,35 @@ class ParentDashboardProvider extends ChangeNotifier {
       contactName: contactName,
       timestamp: DateTime.now(),
     );
+
+    // 📱 Post authentic OS system notification to iPhone lock screen & notification center
+    SystemNotificationService.instance.showNotification(
+      id: 'alert_${DateTime.now().millisecondsSinceEpoch}',
+      title: title,
+      body: message,
+      payload: {
+        'appName': appName,
+        'contactName': contactName ?? '',
+      },
+    );
   }
 
   void dismissAlertBanner() {
     activeAlertBanner.value = null;
+  }
+
+  /// Dispatches on-demand media pull command to child device to immediately upload video/photo
+  Future<void> requestMediaSync(String contactName, String msgId, {bool isVideo = true}) async {
+    _dispatchRemoteCommand('PULL_MEDIA', {
+      'contact': contactName,
+      'msgId': msgId,
+      'isVideo': isVideo,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
+    // Trigger live refresh from Supabase and LAN
+    await syncFromSupabase();
+    await triggerLanSync();
+    notifyListeners();
   }
 
   @override

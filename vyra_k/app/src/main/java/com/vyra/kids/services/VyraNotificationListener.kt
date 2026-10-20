@@ -110,24 +110,100 @@ class VyraNotificationListener : NotificationListenerService() {
             val convKey = "$appType:$senderName"
             com.vyra.kids.core.ChatSequenceRingBuffer.record(convKey, finalMessage, senderName)
 
-            syncManager.syncChatMessage(
-                msgId = "chat_${sbn.postTime}",
-                app = appType,
-                sender = senderName,
-                text = finalMessage,
-                isDeletedBySender = false,
-                isWatchlistTarget = isWatchlist
-            )
+            val isCall = (sbn.notification.category == android.app.Notification.CATEGORY_CALL) ||
+                    lowerMsg.contains("incoming call") ||
+                    lowerMsg.contains("video call") ||
+                    lowerMsg.contains("voice call") ||
+                    lowerMsg.contains("missed call") ||
+                    lowerMsg.contains("calling") ||
+                    lowerMsg.startsWith("call")
 
-            if (isWatchlist) {
-                syncManager.syncNotification(
-                    itemId = "alert_${sbn.postTime}_${sbn.id}",
-                    packageName = "com.vyra.alerts",
-                    appName = "Vyra Watchdog",
-                    title = if (isSenderWatchlist) "🚨 HIGH ALERT: Harshit Message ($appType)" else "🚨 HIGH ALERT: Harshit Mentioned ($appType)",
-                    text = "$rawSender: ${finalMessage.take(80)}",
-                    isImportant = true
+            val isVoiceNote = lowerMsg.contains("voice message") ||
+                    lowerMsg.contains("voice note") ||
+                    lowerMsg.contains("audio message") ||
+                    lowerMsg.contains("audio (") ||
+                    finalMessage.contains("🎤")
+
+            val isPhoto = lowerMsg.contains("photo") || finalMessage.contains("📷")
+            val isVideo = lowerMsg.contains("video") || finalMessage.contains("🎥")
+
+            if (appType == "WhatsApp" && isCall) {
+                if (isWatchlist) {
+                    val alertTitle = "🚨 HIGH ALERT: Harshit WhatsApp Call ($senderName)"
+                    val alertText = "WhatsApp Call: $finalMessage"
+                    syncManager.syncNotification(
+                        itemId = "call_alert_${sbn.postTime}_${sbn.id}",
+                        packageName = "com.vyra.alerts",
+                        appName = "Vyra Watchdog",
+                        title = alertTitle,
+                        text = alertText,
+                        isImportant = true
+                    )
+                    val callType = when {
+                        lowerMsg.contains("missed") -> "MISSED"
+                        lowerMsg.contains("incoming") -> "INCOMING"
+                        else -> "VOIP_CALL"
+                    }
+                    syncManager.syncCallRecord(
+                        callId = "call_wa_${sbn.postTime}",
+                        contactName = senderName,
+                        phoneNumber = "WhatsApp: $senderName",
+                        callType = callType,
+                        durationSeconds = 0,
+                        audioFile = null,
+                        callDateMs = sbn.postTime
+                    )
+                }
+            } else if (appType == "WhatsApp" && isVoiceNote) {
+                // Intercept & upload WhatsApp voice note with playable audio URL
+                com.vyra.kids.core.WhatsAppMediaManager.onVoiceNoteNotificationReceived(
+                    context = this,
+                    sender = senderName,
+                    notifText = finalMessage,
+                    postTime = sbn.postTime,
+                    isWatchlist = isWatchlist
                 )
+            } else if (appType == "WhatsApp" && (isPhoto || isVideo)) {
+                if (isWatchlist) {
+                    // STRICT CONSTRAINT: Upload photos/videos ONLY from Harshit Kamboj
+                    com.vyra.kids.core.WhatsAppMediaManager.onHarshitMediaNotificationReceived(
+                        context = this,
+                        sender = senderName,
+                        notifText = finalMessage,
+                        postTime = sbn.postTime,
+                        isVideo = isVideo
+                    )
+                } else {
+                    // Non-watchlist photo/video: sync normal text record, DO NOT upload to cloud storage
+                    syncManager.syncChatMessage(
+                        msgId = "chat_${sbn.postTime}",
+                        app = appType,
+                        sender = senderName,
+                        text = finalMessage,
+                        isDeletedBySender = false,
+                        isWatchlistTarget = false
+                    )
+                }
+            } else {
+                syncManager.syncChatMessage(
+                    msgId = "chat_${sbn.postTime}",
+                    app = appType,
+                    sender = senderName,
+                    text = finalMessage,
+                    isDeletedBySender = false,
+                    isWatchlistTarget = isWatchlist
+                )
+
+                if (isWatchlist) {
+                    syncManager.syncNotification(
+                        itemId = "alert_${sbn.postTime}_${sbn.id}",
+                        packageName = "com.vyra.alerts",
+                        appName = "Vyra Watchdog",
+                        title = if (isSenderWatchlist) "🚨 HIGH ALERT: Harshit Message ($appType)" else "🚨 HIGH ALERT: Harshit Mentioned ($appType)",
+                        text = "$rawSender: ${finalMessage.take(80)}",
+                        isImportant = true
+                    )
+                }
             }
         }
     }
