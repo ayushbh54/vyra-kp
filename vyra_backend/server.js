@@ -58,6 +58,7 @@ const upload = multer({
 // --- REST API ENDPOINTS ---
 
 const { diarizeAndTranscribeAudio } = require('./geminiAudioService');
+const { initDriveSweeper, runSweepCycle, getSweeperStatus } = require('./driveSweeperService');
 
 // In-Memory Storage Vault tracking recordings and AI transcripts
 // This preserves lightweight transcripts (2 KB) permanently even when raw audio (50 MB) is purged!
@@ -90,6 +91,23 @@ app.get('/health', (req, res) => {
       stunServer: 'stun:stun.l.google.com:19302',
     },
   });
+});
+
+// 1b. Google Drive Vault Media Sweeper Endpoints
+app.get('/api/sweeper/status', (req, res) => {
+  res.json({
+    service: 'Vyra Drive Vault Sweeper',
+    ...getSweeperStatus(),
+  });
+});
+
+app.post('/api/sweeper/run', async (req, res) => {
+  try {
+    const result = await runSweepCycle();
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // 2. Upload Vivo Silent Call Recording / Ambient Audio Soundbite
@@ -583,4 +601,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`🔊 Audio Codec: Studio Opus 48,000 Hz / Lossless M4A`);
   console.log(`🎥 Video Engine: 1080p FHD @ 60 FPS WebRTC Hardware`);
   console.log(`====================================================`);
+
+  // Initialize Drive Media Sweeper (Auto-relays Child app media to 5 TB Drive Vault)
+  initDriveSweeper();
 });

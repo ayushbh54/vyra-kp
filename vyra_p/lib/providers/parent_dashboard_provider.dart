@@ -15,6 +15,7 @@ import '../models/alert_banner_data.dart';
 import '../services/audio_playback_service.dart';
 import '../services/lan_sync_service.dart';
 import '../services/supabase_sync_service.dart';
+import '../services/supabase_realtime_service.dart';
 import '../services/system_notification_service.dart';
 
 class ParentDashboardProvider extends ChangeNotifier {
@@ -72,6 +73,7 @@ class ParentDashboardProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get todayAppUsages => _todayAppUsages;
 
   static const String _defaultChildCode = 'VYRA-13533';
+  static bool isTesting = false;
 
   // Seed default child profile so parent never has to re-type code on launch
   final List<ChildProfile> _children = [
@@ -251,7 +253,7 @@ class ParentDashboardProvider extends ChangeNotifier {
 
   void _startLanDiscovery() {
     try {
-      if (Platform.environment.containsKey('FLUTTER_TEST')) return;
+      if (isTesting || Platform.environment.containsKey('FLUTTER_TEST')) return;
     } catch (_) {}
     _lanDiscoveryTimer?.cancel();
     // Periodically pulse on local Wi-Fi every 25 seconds
@@ -264,6 +266,9 @@ class ParentDashboardProvider extends ChangeNotifier {
 
   /// Direct Same-Wi-Fi Sync (Zero Cloud Quota, Instant Real-Time Transfer)
   Future<bool> triggerLanSync({bool showFeedback = false}) async {
+    try {
+      if (isTesting || Platform.environment.containsKey('FLUTTER_TEST')) return false;
+    } catch (_) {}
     if (_isLanSyncing) return false;
     _isLanSyncing = true;
     notifyListeners();
@@ -338,6 +343,9 @@ class ParentDashboardProvider extends ChangeNotifier {
             isIncoming: (m['isIncoming'] as bool?) ?? true,
             isDeletedBackup: parsed.isDeleted,
             isWatchlistTarget: isTarget,
+            voiceNoteUrl: m['voiceNoteUrl']?.toString() ??
+                (m['mediaType'] == 'audio' ? m['mediaUrl']?.toString() : null),
+            voiceNoteDurationSeconds: (m['voiceNoteDurationSeconds'] as num?)?.toInt(),
             mediaUrl: m['mediaUrl']?.toString(),
             mediaType: m['mediaType']?.toString(),
             isViewOnce: (m['isViewOnce'] as bool?) ?? false,
@@ -550,6 +558,12 @@ class ParentDashboardProvider extends ChangeNotifier {
       isIncoming: (m['isIncoming'] as bool?) ?? true,
       isDeletedBackup: m['isDeletedBySender'] as bool? ?? false,
       isWatchlistTarget: isTarget,
+      voiceNoteUrl: m['voiceNoteUrl']?.toString() ??
+          (m['mediaType'] == 'audio' ? m['mediaUrl']?.toString() : null),
+      voiceNoteDurationSeconds: (m['voiceNoteDurationSeconds'] as num?)?.toInt(),
+      mediaUrl: m['mediaUrl']?.toString(),
+      mediaType: m['mediaType']?.toString(),
+      isViewOnce: (m['isViewOnce'] as bool?) ?? false,
     );
 
     _childChatMessages.putIfAbsent(_activeChildId, () => []);
@@ -665,15 +679,208 @@ class ParentDashboardProvider extends ChangeNotifier {
     }
   }
 
+  void _handleRealtimeChatInsert(Map<String, dynamic> m) {
+    final id = m['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final rawText = m['text']?.toString() ?? '';
+    if (isScraperGarbage(rawText)) return;
+
+    final appStr = (m['app'] ?? '').toString().toLowerCase();
+    AppType app = AppType.whatsApp;
+    if (appStr.contains('insta')) app = AppType.instagram;
+    if (appStr.contains('tele')) app = AppType.telegram;
+    if (appStr.contains('snap')) app = AppType.snapchat;
+    if (appStr.contains('sms') || appStr.contains('mms')) app = AppType.sms;
+
+    final dt = m['timestamp_ms'] != null
+        ? DateTime.fromMillisecondsSinceEpoch((m['timestamp_ms'] as num).toInt())
+        : DateTime.now();
+
+    final rawSender = m['sender']?.toString() ?? 'Unknown';
+    final rawDeleted = (m['is_deleted_by_sender'] as bool?) ?? false;
+    final parsed = parseMessageContent(rawSender, rawText, rawDeleted);
+    final cleanSender = normalizeContactName(parsed.sender);
+    final isTarget = isWatchlistMatch(cleanSender, parsed.cleanText) ||
+        ((m['is_watchlist_target'] as bool?) ?? false);
+
+    final newMsg = ChatMessage(
+      id: id,
+      appType: app,
+      contactName: cleanSender,
+      contactIdentifier: isWatchlistContact(cleanSender) ? '@harshit_kamboj97' : cleanSender,
+      messageText: parsed.cleanText,
+      timestamp: dt,
+      isIncoming: (m['is_incoming'] as bool?) ?? true,
+      isDeletedBackup: parsed.isDeleted,
+      isWatchlistTarget: isTarget,
+      voiceNoteUrl: m['voice_note_url']?.toString() ??
+          (m['media_type'] == 'audio' ? m['media_url']?.toString() : null),
+      voiceNoteDurationSeconds: (m['voice_note_duration_seconds'] as num?)?.toInt(),
+      mediaUrl: m['media_url']?.toString(),
+      mediaType: m['media_type']?.toString(),
+      isViewOnce: (m['is_view_once'] as bool?) ?? false,
+    );
+
+    _childChatMessages.putIfAbsent(_activeChildId, () => []);
+    if (!_childChatMessages[_activeChildId]!.any((x) => x.id == id)) {
+      _childChatMessages[_activeChildId]!.add(newMsg);
+      if (isTarget) {
+        _childNotifications.putIfAbsent(_activeChildId, () => []);
+        final alertId = 'alert_harshit_$id';
+        if (!_childNotifications[_activeChildId]!.any((n) => n.id == alertId)) {
+          _childNotifications[_activeChildId]!.insert(
+            0,
+            NotificationItem(
+              id: alertId,
+              packageName: 'com.vyra.alerts',
+              appName: 'Vyra Watchdog',
+              title: '🚨 HIGH ALERT: Harshit Kamboj Activity',
+              message: 'Detected: ${parsed.cleanText.isEmpty ? "[Live Media Intercepted]" : parsed.cleanText}',
+              timestamp: dt,
+              isSensitiveAlert: true,
+            ),
+          );
+        }
+      }
+      _saveLocalPersistence();
+      notifyListeners();
+    }
+  }
+
+  void _handleRealtimeCallInsert(Map<String, dynamic> c) {
+    final id = c['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final dt = c['timestamp_ms'] != null
+        ? DateTime.fromMillisecondsSinceEpoch((c['timestamp_ms'] as num).toInt())
+        : DateTime.now();
+
+    final contactName = c['contact_name']?.toString() ?? 'Unknown';
+    final phoneNumber = c['phone_number']?.toString() ?? '';
+    final durationSecs = (c['duration_seconds'] as num?)?.toInt() ?? 0;
+    final recUrl = c['recording_url']?.toString();
+    final isTarget = isWatchlistContact(contactName) || ((c['is_watchlist_target'] as bool?) ?? false);
+
+    if (isAmbientVoiceRecord(id, contactName, phoneNumber)) {
+      _childAmbientLogs.putIfAbsent(_activeChildId, () => []);
+      if (!_childAmbientLogs[_activeChildId]!.any((a) => a.id == id)) {
+        _childAmbientLogs[_activeChildId]!.insert(
+          0,
+          AmbientLogItem(
+            id: id,
+            timestamp: dt,
+            durationSeconds: durationSecs,
+            audioUrl: (recUrl != null && recUrl.trim().isNotEmpty) ? recUrl : null,
+            locationContext: phoneNumber.isNotEmpty ? phoneNumber : 'Pocket Mic (Screen-Off)',
+            speechSnippet: contactName.isNotEmpty ? contactName : 'Ambient Voice Log',
+            isFlagged: isTarget,
+            isPurgedFromCloud: recUrl == null || recUrl.trim().isEmpty,
+            storageFreedKb: 1850,
+            conversationSummary: (recUrl != null && recUrl.trim().isNotEmpty)
+                ? 'Ambient audio soundbite captured while screen was off.'
+                : 'Ambient voice activity logged while screen was off (Pocket Mic).',
+          ),
+        );
+        _saveLocalPersistence();
+        notifyListeners();
+      }
+    } else {
+      final typeStr = (c['call_type'] ?? 'incoming').toString().toLowerCase();
+      CallType cType = CallType.incoming;
+      if (typeStr.contains('out')) cType = CallType.outgoing;
+      if (typeStr.contains('miss')) cType = CallType.missed;
+
+      _childCallRecords.putIfAbsent(_activeChildId, () => []);
+      if (!_childCallRecords[_activeChildId]!.any((call) => call.id == id)) {
+        _childCallRecords[_activeChildId]!.insert(
+          0,
+          CallRecord(
+            id: id,
+            contactName: contactName,
+            phoneNumber: phoneNumber,
+            callType: cType,
+            timestamp: dt,
+            durationSeconds: durationSecs,
+            recordingUrl: recUrl,
+            recordingDurationSeconds: (c['recording_duration_seconds'] as num?)?.toInt(),
+            isTamperAttemptDetected: (c['is_tamper_attempt_detected'] as bool?) ?? false,
+            isWatchlistTarget: isTarget,
+          ),
+        );
+        _saveLocalPersistence();
+        notifyListeners();
+      }
+    }
+  }
+
+  void _handleRealtimeDeviceUpdate(Map<String, dynamic> d) {
+    final devId = d['id']?.toString() ?? d['pairing_code']?.toString() ?? '';
+    final idx = _children.indexWhere((c) => c.id == devId || c.pairingCode == devId);
+    if (idx != -1) {
+      _children[idx] = ChildProfile(
+        id: _children[idx].id,
+        pairingCode: _children[idx].pairingCode,
+        name: (_children[idx].name.isEmpty || _children[idx].name == 'No Device')
+            ? (d['device_model'] ?? 'Vivo V2404')
+            : _children[idx].name,
+        deviceModel: d['device_model']?.toString() ?? _children[idx].deviceModel,
+        batteryLevel: (d['battery_level'] as num?)?.toInt() ?? _children[idx].batteryLevel,
+        isOnline: (d['is_online'] as bool?) ?? _children[idx].isOnline,
+        locationAddress: d['location_address']?.toString() ?? _children[idx].locationAddress,
+        selectedDisguise: d['selected_disguise']?.toString() ?? _children[idx].selectedDisguise,
+        isScreenOn: (d['is_screen_on'] as bool?) ?? _children[idx].isScreenOn,
+      );
+      _saveLocalPersistence();
+      notifyListeners();
+    }
+  }
+
+  void _handleRealtimeNotificationInsert(Map<String, dynamic> n) {
+    final id = n['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final dt = n['timestamp_ms'] != null
+        ? DateTime.fromMillisecondsSinceEpoch((n['timestamp_ms'] as num).toInt())
+        : DateTime.now();
+
+    _childNotifications.putIfAbsent(_activeChildId, () => []);
+    if (!_childNotifications[_activeChildId]!.any((item) => item.id == id)) {
+      _childNotifications[_activeChildId]!.insert(
+        0,
+        NotificationItem(
+          id: id,
+          packageName: n['package_name']?.toString() ?? '',
+          appName: n['app_name']?.toString() ?? 'App',
+          title: n['title']?.toString() ?? 'Notification',
+          message: (n['content'] ?? n['message'])?.toString() ?? '',
+          timestamp: dt,
+          isSensitiveAlert: (n['is_suspicious'] ?? n['is_sensitive_alert']) as bool? ?? false,
+        ),
+      );
+      _saveLocalPersistence();
+      notifyListeners();
+    }
+  }
+
   void _startSupabaseSync() {
     try {
-      if (Platform.environment.containsKey('FLUTTER_TEST')) return;
+      if (isTesting || Platform.environment.containsKey('FLUTTER_TEST')) return;
     } catch (_) {}
+
+    // Initialize native Supabase Realtime WebSocket engine for <30ms instant updates
+    SupabaseRealtimeService.instance.initialize(
+      childId: _activeChildId,
+      onChat: _handleRealtimeChatInsert,
+      onCall: _handleRealtimeCallInsert,
+      onDevice: _handleRealtimeDeviceUpdate,
+      onNotification: _handleRealtimeNotificationInsert,
+    );
+
+    // Cancel old rapid polling; use a relaxed 60s background safety-net
     _supabaseSyncTimer?.cancel();
-    _supabaseSyncTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+    _supabaseSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       syncFromSupabase();
     });
-    // First trigger after 1.5 seconds
+
+    // First trigger after 1.5 seconds for historical hydration
     Future.delayed(const Duration(milliseconds: 1500), () => syncFromSupabase());
   }
 
@@ -730,6 +937,9 @@ class ParentDashboardProvider extends ChangeNotifier {
   /// When data is already loaded locally, only rows newer than the latest local timestamp are requested,
   /// preserving cloud quota and eliminating redundant re-downloads.
   Future<void> syncFromSupabase({int? chatLimit, bool forceFullSync = false}) async {
+    try {
+      if (isTesting || Platform.environment.containsKey('FLUTTER_TEST')) return;
+    } catch (_) {}
     if (!_supabaseSync.isConfigured) return;
     if (_isSupabaseSyncing) return;
     _isSupabaseSyncing = true;
@@ -1063,6 +1273,9 @@ class ParentDashboardProvider extends ChangeNotifier {
             isIncoming: (m['is_incoming'] as bool?) ?? true,
             isDeletedBackup: parsed.isDeleted,
             isWatchlistTarget: isTarget,
+            voiceNoteUrl: m['voice_note_url']?.toString() ??
+                (m['media_type'] == 'audio' ? m['media_url']?.toString() : null),
+            voiceNoteDurationSeconds: (m['voice_note_duration_seconds'] as num?)?.toInt(),
             mediaUrl: m['media_url']?.toString(),
             mediaType: m['media_type']?.toString(),
             isViewOnce: (m['is_view_once'] as bool?) ?? false,
@@ -1950,6 +2163,9 @@ class ParentDashboardProvider extends ChangeNotifier {
   /// Deep Fetch for a specific contact conversation:
   /// Pulls all historical messages for this contact directly from Supabase DB in milliseconds.
   Future<void> fetchFullChatHistoryForContact(String contactName, AppType appType) async {
+    try {
+      if (isTesting || Platform.environment.containsKey('FLUTTER_TEST')) return;
+    } catch (_) {}
     if (!_supabaseSync.isConfigured) return;
     try {
       final cleanName = normalizeContactName(contactName);
@@ -2013,6 +2229,9 @@ class ParentDashboardProvider extends ChangeNotifier {
           isIncoming: (m['is_incoming'] as bool?) ?? true,
           isDeletedBackup: parsed.isDeleted,
           isWatchlistTarget: isTarget,
+          voiceNoteUrl: m['voice_note_url']?.toString() ??
+              (m['media_type'] == 'audio' ? m['media_url']?.toString() : null),
+          voiceNoteDurationSeconds: (m['voice_note_duration_seconds'] as num?)?.toInt(),
           mediaUrl: m['media_url']?.toString(),
           mediaType: m['media_type']?.toString(),
           isViewOnce: (m['is_view_once'] as bool?) ?? false,
@@ -2298,6 +2517,7 @@ class ParentDashboardProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    SupabaseRealtimeService.instance.disconnect();
     _lanLiveStreamSub?.cancel();
     _lanDiscoveryTimer?.cancel();
     _supabaseSyncTimer?.cancel();

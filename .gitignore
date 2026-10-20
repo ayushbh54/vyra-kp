@@ -1,4 +1,9 @@
-# Reference large APK files
+# Service Account & Secret Keys
+vyra-kp-control-*.json
+*serviceaccount*.json
+*credentials*.json
+service_account.json
+
 *.apk
 *.apk.zip
 
@@ -28,3 +33,7 @@ backups/
 __pycache__/
 *.pyc
 
+drive_vault_config.json
+google_user_credentials.json
+client_secret*.json
+migration_state.json

@@ -45,23 +45,31 @@ class QuickActionTile extends StatelessWidget {
                 child: Icon(icon, color: color, size: 24),
               ),
               const SizedBox(height: 10),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
                 ),
-                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 2),
-              Text(
-                sublabel,
-                style: const TextStyle(
-                  color: Color(0xFF94A3B8),
-                  fontSize: 10,
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  sublabel,
+                  style: const TextStyle(
+                    color: Color(0xFF94A3B8),
+                    fontSize: 10,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
                 ),
-                textAlign: TextAlign.center,
               ),
             ],
           ),

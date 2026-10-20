@@ -64,6 +64,8 @@ class AudioPlayerCard extends StatelessWidget {
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
                       ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -72,6 +74,8 @@ class AudioPlayerCard extends StatelessWidget {
                         color: Color(0xFF94A3B8),
                         fontSize: 11,
                       ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
                   ],
                 ),

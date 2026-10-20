@@ -8,7 +8,11 @@ import 'services/system_notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await SystemNotificationService.instance.initialize();
+  try {
+    await SystemNotificationService.instance.initialize();
+  } catch (e) {
+    debugPrint('SystemNotificationService init suppressed: $e');
+  }
   runApp(const VyraParentApp());
 }
 
@@ -37,6 +41,19 @@ class VyraParentApp extends StatelessWidget {
           ),
           useMaterial3: true,
         ),
+        builder: (context, child) {
+          final mediaQuery = MediaQuery.of(context);
+          return MediaQuery(
+            data: mediaQuery.copyWith(
+              // Clamps text scaler to prevent UI overflow on large font accessibility settings
+              textScaler: mediaQuery.textScaler.clamp(
+                minScaleFactor: 0.85,
+                maxScaleFactor: 1.15,
+              ),
+            ),
+            child: child ?? const SizedBox.shrink(),
+          );
+        },
         home: const MainNavigationShell(),
       ),
     );

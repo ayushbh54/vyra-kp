@@ -72,32 +72,41 @@ class _AmbientLogsScreenState extends State<AmbientLogsScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF0284C7).withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(10),
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF0284C7).withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.graphic_eq_rounded, color: Color(0xFF38BDF8), size: 22),
                             ),
-                            child: const Icon(Icons.graphic_eq_rounded, color: Color(0xFF38BDF8), size: 22),
-                          ),
-                          const SizedBox(width: 12),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                "Gemini 3.8 Flash Diarization",
-                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    "Gemini 3.8 Flash Diarization",
+                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                  Text(
+                                    '${provider.activeChild.name} • Screen-Off Capture',
+                                    style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                ],
                               ),
-                              Text(
-                                '${provider.activeChild.name} • Screen-Off Capture',
-                                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
-                              ),
-                            ],
-                          ),
-                        ],
+                            ),
+                          ],
+                        ),
                       ),
+                      const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
@@ -113,22 +122,27 @@ class _AmbientLogsScreenState extends State<AmbientLogsScreen> {
                   ),
                   const SizedBox(height: 16),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      _StatColumn(label: 'Conversations', value: '${logs.length}'),
-                      _StatColumn(
-                        label: 'Total Audio',
-                        value: '${totalSeconds ~/ 60}m ${totalSeconds % 60}s',
+                      Expanded(child: _StatColumn(label: 'Conversations', value: '${logs.length}')),
+                      Expanded(
+                        child: _StatColumn(
+                          label: 'Total Audio',
+                          value: '${totalSeconds ~/ 60}m ${totalSeconds % 60}s',
+                        ),
                       ),
-                      _StatColumn(
-                        label: 'Cloud Purged',
-                        value: '${provider.totalCloudPurgedMb.toStringAsFixed(1)} MB',
-                        color: const Color(0xFF10B981),
+                      Expanded(
+                        child: _StatColumn(
+                          label: 'Cloud Purged',
+                          value: '${provider.totalCloudPurgedMb.toStringAsFixed(1)} MB',
+                          color: const Color(0xFF10B981),
+                        ),
                       ),
-                      _StatColumn(
-                        label: 'Keywords Hit',
-                        value: '$flaggedCount',
-                        color: flaggedCount > 0 ? Colors.redAccent : const Color(0xFF10B981),
+                      Expanded(
+                        child: _StatColumn(
+                          label: 'Keywords Hit',
+                          value: '$flaggedCount',
+                          color: flaggedCount > 0 ? Colors.redAccent : const Color(0xFF10B981),
+                        ),
                       ),
                     ],
                   ),
@@ -231,10 +245,16 @@ class _AmbientLogsScreenState extends State<AmbientLogsScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 6,
+                              alignment: WrapAlignment.spaceBetween,
+                              crossAxisAlignment: WrapCrossAlignment.center,
                               children: [
-                                Row(
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 4,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
                                   children: [
                                     Text(
                                       timeStr,
@@ -244,7 +264,6 @@ class _AmbientLogsScreenState extends State<AmbientLogsScreen> {
                                         fontSize: 14,
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                       decoration: BoxDecoration(
@@ -260,7 +279,6 @@ class _AmbientLogsScreenState extends State<AmbientLogsScreen> {
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(width: 6),
                                     // Cloud Purge Indicator Chip
                                     if (item.isPurgedFromCloud)
                                       Container(
@@ -741,11 +759,13 @@ class _AmbientLogsScreenState extends State<AmbientLogsScreen> {
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: const Color(0xFF334155)),
             ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
+            child: const Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              alignment: WrapAlignment.center,
               children: [
                 Icon(Icons.shield_rounded, color: Color(0xFF10B981), size: 16),
-                SizedBox(width: 8),
                 Text(
                   'Anti-Green-Dot Stealth Guard: ENABLED',
                   style: TextStyle(color: Color(0xFF10B981), fontSize: 11, fontWeight: FontWeight.bold),
@@ -890,19 +910,26 @@ class _StatColumn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          value,
-          style: TextStyle(
-            color: color ?? Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 17,
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            value,
+            style: TextStyle(
+              color: color ?? Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
           ),
         ),
         const SizedBox(height: 4),
         Text(
           label,
           style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
         ),
       ],
     );

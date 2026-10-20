@@ -60,12 +60,15 @@ class ChatBubble extends StatelessWidget {
                   children: [
                     Icon(Icons.delete_forever_rounded, size: 12, color: Color(0xFFFECDD3)),
                     SizedBox(width: 4),
-                    Text(
-                      'Deleted for Everyone (Saved by Vyra)',
-                      style: TextStyle(
-                        color: Color(0xFFFECDD3),
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.bold,
+                    Flexible(
+                      child: Text(
+                        'Deleted for Everyone (Saved by Vyra)',
+                        style: TextStyle(
+                          color: Color(0xFFFECDD3),
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
@@ -97,14 +100,17 @@ class ChatBubble extends StatelessWidget {
                       color: isIncoming ? const Color(0xFFE9D5FF) : const Color(0xFFBAE6FD),
                     ),
                     const SizedBox(width: 4),
-                    Text(
-                      isIncoming
-                          ? '👁️ Incoming 1-View (Captured before vanishing)'
-                          : '👁️ Outgoing 1-View (Sent by child)',
-                      style: TextStyle(
-                        color: isIncoming ? const Color(0xFFF3E8FF) : const Color(0xFFF0F9FF),
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.bold,
+                    Flexible(
+                      child: Text(
+                        isIncoming
+                            ? '👁️ Incoming 1-View (Captured before vanishing)'
+                            : '👁️ Outgoing 1-View (Sent by child)',
+                        style: TextStyle(
+                          color: isIncoming ? const Color(0xFFF3E8FF) : const Color(0xFFF0F9FF),
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
@@ -119,16 +125,19 @@ class ChatBubble extends StatelessWidget {
                 children: [
                   const Icon(Icons.person_outline_rounded, size: 11, color: Color(0xFF38BDF8)),
                   const SizedBox(width: 4),
-                  Text(
-                    (message.contactName == 'WhatsApp Contact' || message.contactName == 'Instagram Contact' || message.contactName == 'Snapchat Chat')
-                        ? 'Received Message'
-                        : message.contactName,
-                    style: TextStyle(
-                      color: message.isWatchlistTarget
-                          ? Colors.redAccent
-                          : (message.isDeletedBackup ? const Color(0xFFFDA4AF) : const Color(0xFF38BDF8)),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
+                  Flexible(
+                    child: Text(
+                      (message.contactName == 'WhatsApp Contact' || message.contactName == 'Instagram Contact' || message.contactName == 'Snapchat Chat')
+                          ? 'Received Message'
+                          : message.contactName,
+                      style: TextStyle(
+                        color: message.isWatchlistTarget
+                            ? Colors.redAccent
+                            : (message.isDeletedBackup ? const Color(0xFFFDA4AF) : const Color(0xFF38BDF8)),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   if (message.isWatchlistTarget) ...[
@@ -154,12 +163,15 @@ class ChatBubble extends StatelessWidget {
                 children: [
                   Icon(Icons.check_circle_outline_rounded, size: 11, color: Color(0xFFBAE6FD)),
                   SizedBox(width: 4),
-                  Text(
-                    'Sent by Aryan (Child)',
-                    style: TextStyle(
-                      color: Color(0xFFBAE6FD),
-                      fontWeight: FontWeight.w600,
-                      fontSize: 10.5,
+                  Flexible(
+                    child: Text(
+                      'Sent by Aryan (Child)',
+                      style: TextStyle(
+                        color: Color(0xFFBAE6FD),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 10.5,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
@@ -292,14 +304,18 @@ class ChatBubble extends StatelessWidget {
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text(
-                                  (message.messageText.contains('🎥') || message.messageText.contains('Video'))
-                                      ? 'Video Media File'
-                                      : (message.isViewOnce ? '1-View Photo Snapshot' : 'Shared Photo'),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
+                                Flexible(
+                                  child: Text(
+                                    (message.messageText.contains('🎥') || message.messageText.contains('Video'))
+                                        ? 'Video Media File'
+                                        : (message.isViewOnce ? '1-View Photo Snapshot' : 'Shared Photo'),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
                                   ),
                                 ),
                                 const SizedBox(width: 6),
@@ -324,6 +340,8 @@ class ChatBubble extends StatelessWidget {
                             Text(
                               isIncoming ? 'Saved from recipient screen • Tap to stream' : 'Captured from child phone • Tap to play',
                               style: const TextStyle(color: Colors.white70, fontSize: 10),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
                             ),
                           ],
                         ),
@@ -371,9 +389,12 @@ class ChatBubble extends StatelessWidget {
                             size: 22,
                           ),
                           const SizedBox(width: 8),
-                          Text(
-                            isCurrentPlaying ? 'Playing Voice Note...' : 'Voice Note (${message.voiceNoteDurationSeconds ?? 0}s)',
-                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                          Flexible(
+                            child: Text(
+                              isCurrentPlaying ? 'Playing Voice Note...' : 'Voice Note (${message.voiceNoteDurationSeconds ?? 0}s)',
+                              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ],
                       ),

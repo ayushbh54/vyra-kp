@@ -55,49 +55,60 @@ class WatchlistScreen extends StatelessWidget {
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: Colors.redAccent.withValues(alpha: 0.15),
-                                  shape: BoxShape.circle,
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.redAccent.withValues(alpha: 0.15),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 20),
                                 ),
-                                child: const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 22),
-                              ),
-                              const SizedBox(width: 12),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    target.name,
-                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        target.name,
+                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 1,
+                                      ),
+                                      Text(
+                                        target.identifier,
+                                        style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11),
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 1,
+                                      ),
+                                    ],
                                   ),
-                                  Text(
-                                    target.identifier,
-                                    style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 12),
-                                  ),
-                                ],
-                              ),
-                            ],
+                                ),
+                              ],
+                            ),
                           ),
+                          const SizedBox(width: 6),
                           Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                                 decoration: BoxDecoration(
                                   color: Colors.red.withValues(alpha: 0.2),
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: const Text(
                                   'HIGH ALERT',
-                                  style: TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                                  style: TextStyle(color: Colors.redAccent, fontSize: 9, fontWeight: FontWeight.bold),
                                 ),
                               ),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: 4),
                               IconButton(
-                                icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                                icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
                                 tooltip: 'Remove from Watchlist',
                                 padding: EdgeInsets.zero,
                                 constraints: const BoxConstraints(),
@@ -115,8 +126,11 @@ class WatchlistScreen extends StatelessWidget {
                       const SizedBox(height: 12),
                       const Divider(color: Color(0xFF334155), height: 1),
                       const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Text(
                             'Calls: ${target.totalCalls}  •  Chats: ${target.totalChats}',

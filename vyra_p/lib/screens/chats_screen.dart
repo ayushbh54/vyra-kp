@@ -194,24 +194,18 @@ class _ChatsScreenState extends State<ChatsScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: FilterChip(
                     selected: isSelected,
-                    label: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(app.iconAsset),
-                        const SizedBox(width: 6),
-                        Text(
-                          app.displayName,
-                          style: TextStyle(
-                            color: isSelected ? Colors.white : const Color(0xFF94A3B8),
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
+                    showCheckmark: false,
+                    avatar: Text(app.iconAsset),
+                    label: Text(
+                      app.displayName,
+                      style: TextStyle(
+                        color: isSelected ? Colors.white : const Color(0xFF94A3B8),
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        fontSize: 13,
+                      ),
                     ),
                     backgroundColor: const Color(0xFF1E293B),
                     selectedColor: const Color(0xFF1E88E5),
-                    checkmarkColor: Colors.white,
                     side: BorderSide(
                       color: isSelected ? const Color(0xFF1E88E5) : const Color(0xFF334155),
                     ),
@@ -285,21 +279,28 @@ class _ChatsScreenState extends State<ChatsScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Showing: ${selectedRange.label} (${conversations.length} contacts • ${validMessages.length} msgs)',
-                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
-                    ),
-                    Text(
-                      totalAppArchived > validMessages.length
-                          ? '${totalAppArchived - validMessages.length} older messages available in deep vault'
-                          : 'Tap any contact to view full chat history',
-                      style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10),
-                    ),
-                  ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Showing: ${selectedRange.label} (${conversations.length} contacts • ${validMessages.length} msgs)',
+                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        totalAppArchived > validMessages.length
+                            ? '${totalAppArchived - validMessages.length} older messages available in deep vault'
+                            : 'Tap any contact to view full chat history',
+                        style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 8),
                 TextButton.icon(
                   onPressed: () => _showDeepHistoricalFetchDialog(context, provider),
                   icon: const Icon(Icons.download_rounded, color: Color(0xFF38BDF8), size: 14),
@@ -1193,12 +1194,15 @@ class _OneViewMediaVaultCard extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          const Text(
-                            '1-View Snaps & Media Vault',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.bold,
+                          const Flexible(
+                            child: Text(
+                              '1-View Snaps & Media Vault',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           const SizedBox(width: 6),

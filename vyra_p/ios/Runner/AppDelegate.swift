@@ -3,7 +3,7 @@ import UIKit
 import UserNotifications
 
 @main
-@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+@objc class AppDelegate: FlutterAppDelegate {
 
   private let notificationChannelName = "com.vyra.parent/notifications"
 
@@ -11,6 +11,8 @@ import UserNotifications
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    GeneratedPluginRegistrant.register(with: self)
+
     UNUserNotificationCenter.current().delegate = self
 
     // Request notification permissions for lock screen, banner, sound, and badge
@@ -22,42 +24,37 @@ import UserNotifications
       }
     }
 
-    application.registerForRemoteNotifications()
     application.setMinimumBackgroundFetchInterval(UIApplication.backgroundFetchIntervalMinimum)
 
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-  }
-
-  func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
-    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-
-    let controller = engineBridge.pluginRegistry.window?.rootViewController as? FlutterViewController
-      ?? FlutterViewController()
-    let channel = FlutterMethodChannel(name: notificationChannelName, binaryMessenger: controller.binaryMessenger)
-
-    channel.setMethodCallHandler { [weak self] (call, result) in
-      guard let self = self else { return }
-      switch call.method {
-      case "requestPermissions":
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-          DispatchQueue.main.async {
-            result(granted)
+    let registrar = self.registrar(forPlugin: "SystemNotificationService")
+    if let messenger = registrar?.messenger() {
+      let channel = FlutterMethodChannel(name: notificationChannelName, binaryMessenger: messenger)
+      channel.setMethodCallHandler { [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) in
+        guard let self = self else { return }
+        switch call.method {
+        case "requestPermissions":
+          UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+            DispatchQueue.main.async {
+              result(granted)
+            }
           }
+        case "showSystemNotification":
+          guard let args = call.arguments as? [String: Any],
+                let title = args["title"] as? String,
+                let body = args["body"] as? String else {
+            result(FlutterError(code: "INVALID_ARGS", message: "Title and body required", details: nil))
+            return
+          }
+          let notifId = (args["id"] as? String) ?? "vyra_alert_\(Date().timeIntervalSince1970)"
+          self.postLocalSystemNotification(id: notifId, title: title, body: body, payload: args)
+          result(true)
+        default:
+          result(FlutterMethodNotImplemented)
         }
-      case "showSystemNotification":
-        guard let args = call.arguments as? [String: Any],
-              let title = args["title"] as? String,
-              let body = args["body"] as? String else {
-          result(FlutterError(code: "INVALID_ARGS", message: "Title and body required", details: nil))
-          return
-        }
-        let notifId = (args["id"] as? String) ?? "vyra_alert_\(Date().timeIntervalSince1970)"
-        self.postLocalSystemNotification(id: notifId, title: title, body: body, payload: args)
-        result(true)
-      default:
-        result(FlutterMethodNotImplemented)
       }
     }
+
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
   /// Posts a real iOS system notification to Notification Center and Lock Screen with sound

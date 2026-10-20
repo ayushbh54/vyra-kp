@@ -78,9 +78,14 @@ class LanSyncService {
         }
       });
 
-      // Send 3 discovery pulses
+      // Send 3 discovery pulses (safely wrapped to handle offline / no route to host)
       for (int i = 0; i < 3; i++) {
-        socket.send(message, broadcastAddr, udpDiscoveryPort);
+        try {
+          socket.send(message, broadcastAddr, udpDiscoveryPort);
+        } catch (e) {
+          debugPrint("UDP send pulse ignored (no route to host / offline): $e");
+          break;
+        }
         await Future.delayed(const Duration(milliseconds: 250));
       }
 

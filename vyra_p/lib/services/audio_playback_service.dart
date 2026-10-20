@@ -52,6 +52,16 @@ class AudioPlaybackService extends ChangeNotifier {
     if (trimmed.startsWith('/')) return trimmed;
 
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      // 1. Google Drive direct byte-range acceleration:
+      // Convert drive.google.com/uc?export=download&id=... or /file/d/... into direct content stream
+      if (trimmed.contains('drive.google.com') || trimmed.contains('drive.usercontent.google.com')) {
+        final idMatch = RegExp(r'(?:id=|\/d\/)([a-zA-Z0-9_-]+)').firstMatch(trimmed);
+        if (idMatch != null) {
+          final fileId = idMatch.group(1);
+          return 'https://drive.usercontent.google.com/download?id=$fileId&export=download';
+        }
+      }
+
       const marker = '/storage/v1/object/public/recordings/';
       final idx = trimmed.indexOf(marker);
       if (idx != -1) {

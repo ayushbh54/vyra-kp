@@ -78,6 +78,7 @@ class _NotificationsFeedScreenState extends State<NotificationsFeedScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: FilterChip(
                     selected: isSelected,
+                    showCheckmark: false,
                     label: Text(
                       app,
                       style: TextStyle(
@@ -148,39 +149,47 @@ class _NotificationsFeedScreenState extends State<NotificationsFeedScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: Text(
-                                        item.appName,
-                                        style: const TextStyle(
-                                          color: Color(0xFF38BDF8),
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
+                                Flexible(
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Flexible(
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Text(
+                                            item.appName,
+                                            style: const TextStyle(
+                                              color: Color(0xFF38BDF8),
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                            maxLines: 1,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    if (item.isDeletedBackup) ...[
-                                      const SizedBox(width: 8),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: Colors.pink.withValues(alpha: 0.2),
-                                          borderRadius: BorderRadius.circular(4),
+                                      if (item.isDeletedBackup) ...[
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.pink.withValues(alpha: 0.2),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: const Text(
+                                            'PRESERVED',
+                                            style: TextStyle(color: Colors.pinkAccent, fontSize: 9, fontWeight: FontWeight.bold),
+                                          ),
                                         ),
-                                        child: const Text(
-                                          'PRESERVED',
-                                          style: TextStyle(color: Colors.pinkAccent, fontSize: 9, fontWeight: FontWeight.bold),
-                                        ),
-                                      ),
+                                      ],
                                     ],
-                                  ],
+                                  ),
                                 ),
+                                const SizedBox(width: 8),
                                 Text(
                                   timeStr,
                                   style: const TextStyle(color: Color(0xFF64748B), fontSize: 11),

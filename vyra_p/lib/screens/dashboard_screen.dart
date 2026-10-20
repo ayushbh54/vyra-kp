@@ -40,18 +40,23 @@ class DashboardScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Vyra Parent',
-                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  'Active: ${activeChild.name} (${activeChild.deviceModel})',
-                  style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
-                ),
-              ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Vyra Parent',
+                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    'Active: ${activeChild.name} (${activeChild.deviceModel})',
+                    style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -415,11 +420,11 @@ class DashboardScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 10),
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
+                            const Text(
                               '✅ SUPABASE CLOUD ARCHIVE & SYNC',
                               style: TextStyle(
                                 color: Color(0xFF34D399),
@@ -427,27 +432,31 @@ class DashboardScreen extends StatelessWidget {
                                 fontWeight: FontWeight.bold,
                                 letterSpacing: 0.8,
                               ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
                             ),
-                            SizedBox(height: 2),
-                            Text(
+                            const SizedBox(height: 2),
+                            const Text(
                               '100% Supabase Cloud-Synced • Real-Time Archive',
                               style: TextStyle(
                                 color: Colors.white,
-                                fontSize: 12,
+                                fontSize: 11.5,
                                 fontWeight: FontWeight.w500,
                               ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       // ── Refresh button with last-sync time ────────────────
                       GestureDetector(
                         onTap: provider.isSupabaseSyncing
                             ? null
                             : () => provider.refreshAll(forceFull: true),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                           decoration: BoxDecoration(
                             color: const Color(0xFF10B981).withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(10),
@@ -468,25 +477,13 @@ class DashboardScreen extends StatelessWidget {
                                         strokeWidth: 2, color: Color(0xFF34D399)))
                                   : const Icon(Icons.refresh_rounded,
                                       size: 14, color: Color(0xFF34D399)),
-                              const SizedBox(width: 5),
-                              Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    provider.isSupabaseSyncing ? 'Sync ho raha...' : 'Refresh Karo',
-                                    style: const TextStyle(
-                                      fontSize: 11, fontWeight: FontWeight.bold,
-                                      color: Color(0xFF34D399),
-                                    ),
-                                  ),
-                                  Text(
-                                    provider.lastSyncedLabel,
-                                    style: TextStyle(
-                                      fontSize: 9, color: Colors.white.withValues(alpha: 0.5),
-                                    ),
-                                  ),
-                                ],
+                              const SizedBox(width: 4),
+                              Text(
+                                provider.isSupabaseSyncing ? 'Sync...' : 'Refresh',
+                                style: const TextStyle(
+                                  fontSize: 10.5, fontWeight: FontWeight.bold,
+                                  color: Color(0xFF34D399),
+                                ),
                               ),
                             ],
                           ),
@@ -496,38 +493,49 @@ class DashboardScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.25),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        Text(
-                          '💬 ${provider.totalChatsCount} Chats',
-                          style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 11, fontWeight: FontWeight.w600),
-                        ),
-                        Container(width: 1, height: 12, color: const Color(0xFF475569)),
-                        Text(
-                          '📞 ${provider.totalCallsCount} Calls',
-                          style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 11, fontWeight: FontWeight.w600),
-                        ),
-                        Container(width: 1, height: 12, color: const Color(0xFF475569)),
-                        Text(
-                          '🔔 ${provider.totalNotifsCount} Notifs',
-                          style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 11, fontWeight: FontWeight.w600),
-                        ),
-                        Container(width: 1, height: 12, color: const Color(0xFF475569)),
-                        const Text(
-                          '🟢 Supabase Active',
-                          style: TextStyle(
-                            color: Color(0xFF34D399),
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          Text(
+                            '💬 ${provider.totalChatsCount} Chats',
+                            style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 11, fontWeight: FontWeight.w600),
                           ),
-                        ),
-                      ],
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: Container(width: 1, height: 12, color: const Color(0xFF475569)),
+                          ),
+                          Text(
+                            '📞 ${provider.totalCallsCount} Calls',
+                            style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 11, fontWeight: FontWeight.w600),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: Container(width: 1, height: 12, color: const Color(0xFF475569)),
+                          ),
+                          Text(
+                            '🔔 ${provider.totalNotifsCount} Notifs',
+                            style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 11, fontWeight: FontWeight.w600),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: Container(width: 1, height: 12, color: const Color(0xFF475569)),
+                          ),
+                          const Text(
+                            '🟢 Supabase Active',
+                            style: TextStyle(
+                              color: Color(0xFF34D399),
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -553,38 +561,44 @@ class DashboardScreen extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            activeChild.deviceModel,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              activeChild.deviceModel,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          InkWell(
-                            onTap: () => _showDisguisePickerSheet(context, provider),
-                            borderRadius: BorderRadius.circular(6),
-                            child: Row(
-                              children: [
-                                Text(
-                                  'Icon: ${activeChild.selectedDisguise}',
-                                  style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.w600),
-                                ),
-                                const SizedBox(width: 4),
-                                const Icon(Icons.edit, color: Color(0xFF38BDF8), size: 12),
-                                const Text(
-                                  ' • Android 14',
-                                  style: TextStyle(color: Color(0xFF64748B), fontSize: 11),
-                                ),
-                              ],
+                            const SizedBox(height: 2),
+                            InkWell(
+                              onTap: () => _showDisguisePickerSheet(context, provider),
+                              borderRadius: BorderRadius.circular(6),
+                              child: Wrap(
+                                spacing: 4,
+                                runSpacing: 2,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  Text(
+                                    'Icon: ${activeChild.selectedDisguise}',
+                                    style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.w600),
+                                  ),
+                                  const Icon(Icons.edit, color: Color(0xFF38BDF8), size: 12),
+                                  const Text(
+                                    '• Android 14',
+                                    style: TextStyle(color: Color(0xFF64748B), fontSize: 11),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
+                      const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
@@ -676,7 +690,10 @@ class DashboardScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
                             Text(
                               provider.isStealthScreenGuardEnabled
@@ -690,7 +707,6 @@ class DashboardScreen extends StatelessWidget {
                                 fontSize: 13,
                               ),
                             ),
-                            const SizedBox(width: 6),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
@@ -1066,13 +1082,15 @@ class DashboardScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
                               const Text(
                                 'Ambient Voice Logs',
                                 style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
                               ),
-                              const SizedBox(width: 8),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
