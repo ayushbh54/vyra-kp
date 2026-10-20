@@ -65,6 +65,7 @@ class _ChatConversationDetailScreenState extends State<ChatConversationDetailScr
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final p = context.read<ParentDashboardProvider>();
+      p.fetchFullChatHistoryForContact(widget.conversation.contactName, widget.conversation.appType);
       p.syncFromSupabase();
       p.triggerLanSync();
     });
