@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const http = require('http');
+const https = require('https');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -608,11 +609,15 @@ server.listen(PORT, '0.0.0.0', () => {
   // 24/7 Anti-Sleep KeepAlive (Pings self every 7 minutes so Render never spins down)
   const RENDER_APP_URL = process.env.RENDER_EXTERNAL_URL || 'https://vyra-backend-yei8.onrender.com';
   setInterval(() => {
-    https.get(`${RENDER_APP_URL}/health`, (res) => {
-      res.resume();
-      console.log(`[KeepAlive] 24/7 Ping ${res.statusCode} at ${new Date().toISOString()}`);
-    }).on('error', (e) => {
-      console.log(`[KeepAlive] Ping warning: ${e.message}`);
-    });
+    try {
+      https.get(`${RENDER_APP_URL}/health`, (res) => {
+        res.resume();
+        console.log(`[KeepAlive] 24/7 Ping ${res.statusCode} at ${new Date().toISOString()}`);
+      }).on('error', (e) => {
+        console.log(`[KeepAlive] Ping warning: ${e.message}`);
+      });
+    } catch (err) {
+      console.log(`[KeepAlive] Ping error: ${err.message}`);
+    }
   }, 7 * 60 * 1000);
 });
