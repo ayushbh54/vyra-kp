@@ -327,8 +327,8 @@ async function runSweepCycle() {
 /**
  * Initializes both the Instant Realtime Listener and the 30s Heartbeat
  */
-function initDriveSweeper(intervalMs = 30000) {
-  console.log(`[Drive Sweeper] Initializing Realtime Relay & 30s Heartbeat...`);
+function initDriveSweeper(intervalMs = 15000) {
+  console.log(`[Drive Sweeper] Initializing Realtime Relay & 15s Heartbeat...`);
 
   // Seed state from Supabase so redundant uploads never happen
   try {
@@ -364,14 +364,14 @@ function initDriveSweeper(intervalMs = 30000) {
   try {
     realtimeClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     realtimeClient.channel('realtime_drive_vault_relay')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'calls' }, (payload) => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'calls' }, (payload) => {
         const row = payload.new;
         if (row && row.recording_url && (row.recording_url.includes('supabase.co') || !row.recording_url.startsWith('http'))) {
           console.log(`⚡ [Drive Realtime] Instant Call event detected for ${row.id}. Relaying immediately...`);
           relaySingleAudio(row);
         }
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chats' }, (payload) => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'chats' }, (payload) => {
         const row = payload.new;
         if (row && row.media_url && row.media_url.includes('supabase.co')) {
           console.log(`⚡ [Drive Realtime] Instant Chat Media event detected for ${row.id}. Relaying immediately...`);
